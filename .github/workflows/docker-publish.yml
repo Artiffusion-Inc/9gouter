@@ -6,10 +6,6 @@ on:
       - "v*"
   workflow_dispatch:
 
-env:
-  GHCR_IMAGE: ghcr.io/${{ github.repository }}
-  DOCKERHUB_IMAGE: artiffusion/9router
-
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -21,6 +17,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-buildx-action@v3
+
+      - name: Lowercase GHCR owner
+        id: ghcr
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -40,8 +40,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ env.GHCR_IMAGE }}
-            ${{ env.DOCKERHUB_IMAGE }}
+            ghcr.io/${{ steps.ghcr.outputs.owner }}/9router
+            artiffusion/9router
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
@@ -53,8 +53,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=${{ env.GHCR_IMAGE }}:buildcache
-          cache-to: type=registry,ref=${{ env.GHCR_IMAGE }}:buildcache,mode=max
+          cache-from: type=registry,ref=ghcr.io/${{ steps.ghcr.outputs.owner }}/9router:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ steps.ghcr.outputs.owner }}/9router:buildcache,mode=max
           platforms: linux/amd64,linux/arm64
           provenance: false
           sbom: false

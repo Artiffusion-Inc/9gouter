@@ -30,3 +30,15 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+
+# CI
+.github
+
+# Lockfiles not needed (bun.lock is the source of truth, npm/yarn locks are redundant)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Docs & dev tooling
+gitbook
+cli

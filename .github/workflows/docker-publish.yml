@@ -55,6 +55,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=ghcr.io/${{ steps.ghcr.outputs.owner }}/9router:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ steps.ghcr.outputs.owner }}/9router:buildcache,mode=max
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           provenance: false
           sbom: false

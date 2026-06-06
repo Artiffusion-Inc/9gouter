@@ -35,22 +35,21 @@ ENV DATA_DIR=/app/data
 RUN apk --no-cache add su-exec && \
     adduser -D -u 1000 appuser && \
     mkdir -p /app/data /app/data-home && \
-    chown -R appuser:appuser /app/data /app/data-home && \
+    chown appuser:appuser /app/data /app/data-home && \
     ln -sf /app/data-home /root/.9router 2>/dev/null || true
 
-# Standalone Next.js output
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/.next/standalone ./
+# Standalone Next.js output (owned by appuser)
+COPY --from=builder --chown=1000:1000 /app/public ./public
+COPY --from=builder --chown=1000:1000 /app/.next/static ./.next/static
+COPY --from=builder --chown=1000:1000 /app/.next/standalone ./
 # MITM child process and its deps
-COPY --from=builder /app/src/mitm ./src/mitm
+COPY --from=builder --chown=1000:1000 /app/src/mitm ./src/mitm
 # Next file tracing can miss these; copy explicitly
-COPY --from=builder /app/node_modules/node-forge ./node_modules/node-forge
-COPY --from=builder /app/node_modules/next ./node_modules/next
+COPY --from=builder --chown=1000:1000 /app/node_modules/node-forge ./node_modules/node-forge
+COPY --from=builder --chown=1000:1000 /app/node_modules/next ./node_modules/next
 
-# Fix ownership + entrypoint for runtime volume permissions
-RUN chown -R appuser:appuser /app && \
-    printf '#!/bin/sh\nchown -R appuser:appuser /app/data /app/data-home 2>/dev/null\nexec su-exec appuser "$@"\n' > /entrypoint.sh && \
+# Entrypoint for runtime volume permissions
+RUN printf '#!/bin/sh\nchown -R appuser:appuser /app/data /app/data-home 2>/dev/null\nexec su-exec appuser "$@"\n' > /entrypoint.sh && \
     chmod +x /entrypoint.sh
 
 EXPOSE 20128

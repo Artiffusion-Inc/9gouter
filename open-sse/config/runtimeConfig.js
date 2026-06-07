@@ -35,6 +35,10 @@ export const MEMORY_CONFIG = {
 // Override via STREAM_STALL_TIMEOUT_MS env var (ms)
 export const STREAM_STALL_TIMEOUT_MS = parseInt(process.env.STREAM_STALL_TIMEOUT_MS, 10) || 120 * 1000;
 
+// Reasoning/thinking models get extended stall timeout (they can think 5+ min)
+// Override via STREAM_STALL_TIMEOUT_REASONING_MS env var (ms), default 5 min
+export const STREAM_STALL_TIMEOUT_REASONING_MS = parseInt(process.env.STREAM_STALL_TIMEOUT_REASONING_MS, 10) || 5 * 60 * 1000;
+
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 // Override via FETCH_CONNECT_TIMEOUT_MS env var (ms)
 export const FETCH_CONNECT_TIMEOUT_MS = parseInt(process.env.FETCH_CONNECT_TIMEOUT_MS, 10) || 120 * 1000;

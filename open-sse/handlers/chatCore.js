@@ -7,7 +7,8 @@ import { refreshWithRetry } from "../services/tokenRefresh.js";
 import { createRequestLogger } from "../utils/requestLogger.js";
 import { getModelTargetFormat, getModelStrip, getModelUpstreamId, getModelType, PROVIDER_ID_TO_ALIAS } from "../config/providerModels.js";
 import { createErrorResult, parseUpstreamError, formatProviderError } from "../utils/error.js";
-import { HTTP_STATUS } from "../config/runtimeConfig.js";
+import { HTTP_STATUS, STREAM_STALL_TIMEOUT_MS, STREAM_STALL_TIMEOUT_REASONING_MS } from "../config/runtimeConfig.js";
+import { isThinkingEnabled } from "../config/kiroConstants.js";
 import { handleBypassRequest } from "../utils/bypassHandler.js";
 import { trackPendingRequest, appendRequestLog, saveRequestDetail } from "@/lib/usageDb.js";
 import { getExecutor } from "../executors/index.js";
@@ -272,9 +273,13 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     return result;
   }
 
-  // Streaming response
+  // Streaming response — extend stall timeout for reasoning/thinking models
+  const isReasoning = isThinkingEnabled(body, clientRawRequest?.headers, model);
+  const stallTimeoutMs = isReasoning ? STREAM_STALL_TIMEOUT_REASONING_MS : STREAM_STALL_TIMEOUT_MS;
+  if (isReasoning) log?.debug?.("STALL", `reasoning model detected, stall timeout=${stallTimeoutMs}ms`);
+
   const { onStreamComplete } = buildOnStreamComplete({ ...sharedCtx });
-  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete });
+  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, stallTimeoutMs });
 }
 
 export function isTokenExpiringSoon(expiresAt, bufferMs = 5 * 60 * 1000) {

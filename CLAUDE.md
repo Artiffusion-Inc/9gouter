@@ -8,13 +8,17 @@
 |-------|------|-----------------|
 | Env-overridable timeouts (defaults 120s) | `open-sse/config/runtimeConfig.js` | PRs #1680, #1688 closed without merge |
 | Error SSE on stream stall/abort | `open-sse/utils/streamHandler.js` | Not submitted — our fix |
+| Reasoning model stall timeout extension | `open-sse/handlers/chatCore.js`, `streamHandler.js` | Not submitted — our fix |
 
 ### Timeout Configuration (env vars)
 
 ```
-FETCH_CONNECT_TIMEOUT_MS=120000   # default 120s (upstream: 60s)
-STREAM_STALL_TIMEOUT_MS=180000   # default 120s (upstream: 60s), set 180s in compose
+FETCH_CONNECT_TIMEOUT_MS=120000                     # default 120s (upstream: 60s)
+STREAM_STALL_TIMEOUT_MS=180000                     # default 120s (upstream: 60s), set 180s in compose
+STREAM_STALL_TIMEOUT_REASONING_MS=600000            # default 300s (5min), set 600s (10min) in compose
 ```
+
+Reasoning/thinking models (detected via `isThinkingEnabled()`) get `STREAM_STALL_TIMEOUT_REASONING_MS` instead of `STREAM_STALL_TIMEOUT_MS`. Detection: `Anthropic-Beta` header, `thinking.type=enabled`, `reasoning_effort`, model name contains `thinking` or `-reason`.
 
 Per-provider `config.timeoutMs` override also available via dashboard.
 

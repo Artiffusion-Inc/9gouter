@@ -38,7 +38,10 @@ RUN apk --no-cache add su-exec && \
     chown appuser:appuser /app/data /app/data-home && \
     ln -sf /app/data-home /root/.9router 2>/dev/null || true
 
+# Custom server wraps Next standalone to derive real client IP from the TCP
+# socket and strip spoofable forwarding headers (security: commit 7648c34).
 # Standalone Next.js output (owned by appuser)
+COPY --from=builder --chown=1000:1000 /app/custom-server.js ./custom-server.js
 COPY --from=builder --chown=1000:1000 /app/public ./public
 COPY --from=builder --chown=1000:1000 /app/.next/static ./.next/static
 COPY --from=builder --chown=1000:1000 /app/.next/standalone ./
@@ -55,4 +58,4 @@ RUN printf '#!/bin/sh\nchown -R appuser:appuser /app/data /app/data-home 2>/dev/
 EXPOSE 20128
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["bun", "run", "server.js"]
+CMD ["bun", "run", "custom-server.js"]

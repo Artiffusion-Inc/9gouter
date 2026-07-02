@@ -17,6 +17,8 @@ import UsageTable, { fmt, fmtTime } from "@/app/(dashboard)/dashboard/usage/comp
 import ProviderTopology from "@/app/(dashboard)/dashboard/usage/components/ProviderTopology";
 import UsageChart from "@/app/(dashboard)/dashboard/usage/components/UsageChart";
 
+const fmtTps = (avgTps) => avgTps != null ? `${avgTps.toFixed(1)} tok/s` : "—";
+
 function timeAgo(timestamp) {
   const diff = Math.floor((Date.now() - new Date(timestamp)) / 1000);
   if (diff < 60) return `${diff}s ago`;
@@ -321,6 +323,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3 text-text-muted">—</td>
               <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
+              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap" title={`avg streamMs from ${group.summary.requests || 0} requests`}>{fmtTps(group.summary.avgTps)}</td>
             </>
           ),
           renderDetailCells: (item) => (
@@ -329,6 +332,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
+              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap" title={`on ${item.requests} requests`}>{fmtTps(item.avgTps)}</td>
             </>
           ),
         };
@@ -355,6 +359,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3 text-text-muted">—</td>
               <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
+              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTps(group.summary.avgTps)}</td>
             </>
           ),
           renderDetailCells: (item) => (
@@ -364,6 +369,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
+              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTps(item.avgTps)}</td>
             </>
           ),
         };
@@ -380,6 +386,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3 text-text-muted">—</td>
               <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
+              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTps(group.summary.avgTps)}</td>
             </>
           ),
           renderDetailCells: (item) => (
@@ -389,6 +396,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3"><Badge variant="neutral" size="sm">{item.provider}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
+              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTps(item.avgTps)}</td>
             </>
           ),
         };
@@ -406,6 +414,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3 text-text-muted">—</td>
               <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
+              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTps(group.summary.avgTps)}</td>
             </>
           ),
           renderDetailCells: (item) => (
@@ -415,6 +424,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3"><Badge variant="neutral" size="sm">{item.provider}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
+              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTps(item.avgTps)}</td>
             </>
           ),
         };

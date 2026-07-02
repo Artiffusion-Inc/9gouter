@@ -51,11 +51,15 @@ function getLocalDateKey(timestamp) {
 }
 
 function addToCounter(target, key, values) {
-  if (!target[key]) target[key] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0 };
+  if (!target[key]) target[key] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, tpsSum: 0, tpsCount: 0 };
   target[key].requests += values.requests || 1;
   target[key].promptTokens += values.promptTokens || 0;
   target[key].completionTokens += values.completionTokens || 0;
   target[key].cost += values.cost || 0;
+  if (values.tps != null) {
+    target[key].tpsSum += values.tps;
+    target[key].tpsCount += 1;
+  }
   if (values.meta) Object.assign(target[key], values.meta);
 }
 
@@ -63,7 +67,7 @@ function aggregateEntryToDay(day, entry) {
   const promptTokens = entry.tokens?.prompt_tokens || entry.tokens?.input_tokens || 0;
   const completionTokens = entry.tokens?.completion_tokens || entry.tokens?.output_tokens || 0;
   const cost = entry.cost || 0;
-  const vals = { promptTokens, completionTokens, cost };
+  const vals = { promptTokens, completionTokens, cost, tps: entry.tps };
 
   day.requests = (day.requests || 0) + 1;
   day.promptTokens = (day.promptTokens || 0) + promptTokens;
@@ -75,6 +79,9 @@ function aggregateEntryToDay(day, entry) {
   day.byAccount ||= {};
   day.byApiKey ||= {};
   day.byEndpoint ||= {};
+  day.streamMsTotal = (day.streamMsTotal || 0) + (entry.streamMs || 0);
+  day.tpsCount = (day.tpsCount || 0) + (entry.tps ? 1 : 0);
+  day.tpsSum = (day.tpsSum || 0) + (entry.tps || 0);
 
   if (entry.provider) addToCounter(day.byProvider, entry.provider, vals);
 
@@ -299,12 +306,14 @@ export async function saveRequestUsage(entry) {
       }
 
       db.run(
-        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, streamMs, tps) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           entry.timestamp, entry.provider || null, entry.model || null,
           entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
           promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
           stringifyJson(tokens), stringifyJson({}),
+          entry.streamMs ?? null,
+          entry.tps != null ? +entry.tps.toFixed(2) : null,
         ]
       );
 
@@ -477,11 +486,14 @@ export async function getUsageStats(period = "all") {
       stats.totalCost += day.cost || 0;
 
       for (const [prov, p] of Object.entries(day.byProvider || {})) {
-        if (!stats.byProvider[prov]) stats.byProvider[prov] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0 };
+        if (!stats.byProvider[prov]) stats.byProvider[prov] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, tpsSum: 0, tpsCount: 0 };
         stats.byProvider[prov].requests += p.requests || 0;
         stats.byProvider[prov].promptTokens += p.promptTokens || 0;
         stats.byProvider[prov].completionTokens += p.completionTokens || 0;
         stats.byProvider[prov].cost += p.cost || 0;
+        stats.byProvider[prov].tpsSum += p.tpsSum || 0;
+        stats.byProvider[prov].tpsCount += p.tpsCount || 0;
+        stats.byProvider[prov].avgTps = p.tpsCount > 0 ? +(p.tpsSum / p.tpsCount).toFixed(2) : null;
       }
 
       for (const [mk, m] of Object.entries(day.byModel || {})) {
@@ -497,6 +509,7 @@ export async function getUsageStats(period = "all") {
         stats.byModel[statsKey].completionTokens += m.completionTokens || 0;
         stats.byModel[statsKey].cost += m.cost || 0;
         if (dateKey > (stats.byModel[statsKey].lastUsed || "")) stats.byModel[statsKey].lastUsed = dateKey;
+        stats.byModel[statsKey].avgTps = m.tpsCount > 0 ? +(m.tpsSum / m.tpsCount).toFixed(2) : null;
       }
 
       for (const [connId, a] of Object.entries(day.byAccount || {})) {
@@ -513,6 +526,7 @@ export async function getUsageStats(period = "all") {
         stats.byAccount[accountKey].completionTokens += a.completionTokens || 0;
         stats.byAccount[accountKey].cost += a.cost || 0;
         if (dateKey > (stats.byAccount[accountKey].lastUsed || "")) stats.byAccount[accountKey].lastUsed = dateKey;
+        stats.byAccount[accountKey].avgTps = a.tpsCount > 0 ? +(a.tpsSum / a.tpsCount).toFixed(2) : null;
       }
 
       for (const [akKey, ak] of Object.entries(day.byApiKey || {})) {
@@ -532,6 +546,7 @@ export async function getUsageStats(period = "all") {
         stats.byApiKey[akKey].completionTokens += ak.completionTokens || 0;
         stats.byApiKey[akKey].cost += ak.cost || 0;
         if (dateKey > (stats.byApiKey[akKey].lastUsed || "")) stats.byApiKey[akKey].lastUsed = dateKey;
+        stats.byApiKey[akKey].avgTps = ak.tpsCount > 0 ? +(ak.tpsSum / ak.tpsCount).toFixed(2) : null;
       }
 
       for (const [epKey, ep] of Object.entries(day.byEndpoint || {})) {
@@ -547,6 +562,7 @@ export async function getUsageStats(period = "all") {
         stats.byEndpoint[epKey].completionTokens += ep.completionTokens || 0;
         stats.byEndpoint[epKey].cost += ep.cost || 0;
         if (dateKey > (stats.byEndpoint[epKey].lastUsed || "")) stats.byEndpoint[epKey].lastUsed = dateKey;
+        stats.byEndpoint[epKey].avgTps = ep.tpsCount > 0 ? +(ep.tpsSum / ep.tpsCount).toFixed(2) : null;
       }
     }
 
@@ -587,7 +603,7 @@ export async function getUsageStats(period = "all") {
       cutoff = new Date(Date.now() - PERIOD_MS["24h"]).toISOString();
     }
     const filtered = db.all(
-      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ?`,
+      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, tokens, streamMs, tps FROM usageHistory WHERE timestamp >= ?`,
       [cutoff]
     );
 
@@ -602,33 +618,54 @@ export async function getUsageStats(period = "all") {
       stats.totalCompletionTokens += completionTokens;
       stats.totalCost += entryCost;
 
-      if (!stats.byProvider[r.provider]) stats.byProvider[r.provider] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0 };
+      if (!stats.byProvider[r.provider]) stats.byProvider[r.provider] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, tpsSum: 0, tpsCount: 0 };
       stats.byProvider[r.provider].requests++;
       stats.byProvider[r.provider].promptTokens += promptTokens;
       stats.byProvider[r.provider].completionTokens += completionTokens;
       stats.byProvider[r.provider].cost += entryCost;
+      if (r.tps != null) {
+        stats.byProvider[r.provider].tpsSum += r.tps;
+        stats.byProvider[r.provider].tpsCount += 1;
+        stats.byProvider[r.provider].avgTps = stats.byProvider[r.provider].tpsCount > 0
+          ? +(stats.byProvider[r.provider].tpsSum / stats.byProvider[r.provider].tpsCount).toFixed(2)
+          : null;
+      }
 
       const modelKey = r.provider ? `${r.model} (${r.provider})` : r.model;
       if (!stats.byModel[modelKey]) {
-        stats.byModel[modelKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, lastUsed: r.timestamp };
+        stats.byModel[modelKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, tpsSum: 0, tpsCount: 0, rawModel: r.model, provider: providerDisplayName, lastUsed: r.timestamp };
       }
       stats.byModel[modelKey].requests++;
       stats.byModel[modelKey].promptTokens += promptTokens;
       stats.byModel[modelKey].completionTokens += completionTokens;
       stats.byModel[modelKey].cost += entryCost;
       if (new Date(r.timestamp) > new Date(stats.byModel[modelKey].lastUsed)) stats.byModel[modelKey].lastUsed = r.timestamp;
+      if (r.tps != null) {
+        stats.byModel[modelKey].tpsSum += r.tps;
+        stats.byModel[modelKey].tpsCount += 1;
+        stats.byModel[modelKey].avgTps = stats.byModel[modelKey].tpsCount > 0
+          ? +(stats.byModel[modelKey].tpsSum / stats.byModel[modelKey].tpsCount).toFixed(2)
+          : null;
+      }
 
       if (r.connectionId) {
         const accountName = connectionMap[r.connectionId] || `Account ${r.connectionId.slice(0, 8)}...`;
         const accountKey = `${r.model} (${r.provider} - ${accountName})`;
         if (!stats.byAccount[accountKey]) {
-          stats.byAccount[accountKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, connectionId: r.connectionId, accountName, lastUsed: r.timestamp };
+          stats.byAccount[accountKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, tpsSum: 0, tpsCount: 0, rawModel: r.model, provider: providerDisplayName, connectionId: r.connectionId, accountName, lastUsed: r.timestamp };
         }
         stats.byAccount[accountKey].requests++;
         stats.byAccount[accountKey].promptTokens += promptTokens;
         stats.byAccount[accountKey].completionTokens += completionTokens;
         stats.byAccount[accountKey].cost += entryCost;
         if (new Date(r.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = r.timestamp;
+        if (r.tps != null) {
+          stats.byAccount[accountKey].tpsSum += r.tps;
+          stats.byAccount[accountKey].tpsCount += 1;
+          stats.byAccount[accountKey].avgTps = stats.byAccount[accountKey].tpsCount > 0
+            ? +(stats.byAccount[accountKey].tpsSum / stats.byAccount[accountKey].tpsCount).toFixed(2)
+            : null;
+        }
       }
 
       if (r.apiKey && typeof r.apiKey === "string") {
@@ -637,28 +674,43 @@ export async function getUsageStats(period = "all") {
         const apiKeyMasked = maskApiKey(r.apiKey);
         const akKey = `${apiKeyMasked}|${r.model}|${r.provider || "unknown"}`;
         if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey: apiKeyMasked, lastUsed: r.timestamp };
+          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, tpsSum: 0, tpsCount: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey: apiKeyMasked, lastUsed: r.timestamp };
         }
         const ake = stats.byApiKey[akKey];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cost += entryCost;
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
+        if (r.tps != null) {
+          ake.tpsSum += r.tps;
+          ake.tpsCount += 1;
+          ake.avgTps = ake.tpsCount > 0 ? +(ake.tpsSum / ake.tpsCount).toFixed(2) : null;
+        }
       } else {
         if (!stats.byApiKey["local-no-key"]) {
-          stats.byApiKey["local-no-key"] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked: null, keyName: "Local (No API Key)", apiKeyKey: "local-no-key", lastUsed: r.timestamp };
+          stats.byApiKey["local-no-key"] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, tpsSum: 0, tpsCount: 0, rawModel: r.model, provider: providerDisplayName, apiKeyMasked: null, keyName: "Local (No API Key)", apiKeyKey: "local-no-key", lastUsed: r.timestamp };
         }
         const ake = stats.byApiKey["local-no-key"];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cost += entryCost;
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
+        if (r.tps != null) {
+          ake.tpsSum += r.tps;
+          ake.tpsCount += 1;
+          ake.avgTps = ake.tpsCount > 0 ? +(ake.tpsSum / ake.tpsCount).toFixed(2) : null;
+        }
       }
 
       const endpoint = r.endpoint || "Unknown";
       const epKey = `${endpoint}|${r.model}|${r.provider || "unknown"}`;
       if (!stats.byEndpoint[epKey]) {
-        stats.byEndpoint[epKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, endpoint, rawModel: r.model, provider: providerDisplayName, lastUsed: r.timestamp };
+        stats.byEndpoint[epKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, tpsSum: 0, tpsCount: 0, endpoint, rawModel: r.model, provider: providerDisplayName, lastUsed: r.timestamp };
       }
       const epe = stats.byEndpoint[epKey];
       epe.requests++; epe.promptTokens += promptTokens; epe.completionTokens += completionTokens; epe.cost += entryCost;
       if (new Date(r.timestamp) > new Date(epe.lastUsed)) epe.lastUsed = r.timestamp;
+      if (r.tps != null) {
+        epe.tpsSum += r.tps;
+        epe.tpsCount += 1;
+        epe.avgTps = epe.tpsCount > 0 ? +(epe.tpsSum / epe.tpsCount).toFixed(2) : null;
+      }
     }
   }
 

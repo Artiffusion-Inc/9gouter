@@ -61,7 +61,7 @@ export function buildRequestDetail(base, overrides = {}) {
     model: base.model || "unknown",
     connectionId: base.connectionId || undefined,
     timestamp: new Date().toISOString(),
-    latency: base.latency || { ttft: 0, total: 0 },
+    latency: base.latency || { ttft: 0, total: 0, streamMs: null, tps: null },
     tokens: base.tokens || { prompt_tokens: 0, completion_tokens: 0 },
     request: base.request,
     providerRequest: base.providerRequest || null,
@@ -72,7 +72,7 @@ export function buildRequestDetail(base, overrides = {}) {
   };
 }
 
-export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE" }) {
+export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, endpoint, label = "USAGE", streamMs, tps }) {
   if (!tokens || typeof tokens !== "object") return;
 
   const inTokens = tokens.input_tokens ?? tokens.prompt_tokens ?? 0;
@@ -82,7 +82,8 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
 
   const time = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const accountSuffix = connectionId ? ` | account=${connectionId.slice(0, 8)}...` : "";
-  console.log(`${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`);
+  const tpsSuffix = tps != null ? ` | tps=${tps.toFixed(1)}` : "";
+  console.log(`${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${tpsSuffix}${COLORS.reset}`);
 
   // Normalize to OpenAI token shape for storage
   const normalized = {
@@ -97,6 +98,8 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
     timestamp: new Date().toISOString(),
     connectionId: connectionId || undefined,
     apiKey: apiKey || undefined,
-    endpoint: endpoint || null
+    endpoint: endpoint || null,
+    streamMs: streamMs ?? null,
+    tps: tps != null ? +tps.toFixed(2) : null
   }).catch(() => {});
 }

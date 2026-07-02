@@ -96,11 +96,18 @@ export function handleStreamingResponse({ providerResponse, provider, model, sou
 export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
-  const onStreamComplete = (contentObj, usage, ttftAt) => {
-    const latency = {
-      ttft: ttftAt ? ttftAt - requestStartTime : Date.now() - requestStartTime,
-      total: Date.now() - requestStartTime
-    };
+  const onStreamComplete = (contentObj, usage, ttftAt, streamEndAt) => {
+    const now = Date.now();
+    const ttft = ttftAt ? ttftAt - requestStartTime : now - requestStartTime;
+    const total = now - requestStartTime;
+    const streamMs = (streamEndAt && ttftAt && streamEndAt > ttftAt)
+      ? streamEndAt - ttftAt
+      : null;
+    const completionTokens = usage?.completion_tokens || usage?.output_tokens || 0;
+    const tps = (streamMs && streamMs > 0 && completionTokens > 0)
+      ? completionTokens / (streamMs / 1000)
+      : null;
+    const latency = { ttft, total, streamMs, tps };
     const safeContent = contentObj?.content || "[Empty streaming response]";
     const safeThinking = contentObj?.thinking || null;
 
@@ -117,7 +124,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
       console.error("[RequestDetail] Failed to update streaming content:", err.message);
     });
 
-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE" });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE", streamMs, tps });
   };
 
   return { onStreamComplete, streamDetailId };

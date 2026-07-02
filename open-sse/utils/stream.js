@@ -361,10 +361,11 @@ export function createSSEStream(options = {}) {
           }
 
           if (onStreamComplete) {
+            const streamEndAt = Date.now();
             onStreamComplete({
               content: accumulatedContent,
               thinking: accumulatedThinking
-            }, usage, ttftAt);
+            }, usage, ttftAt, streamEndAt);
           }
           return;
         }
@@ -438,10 +439,11 @@ export function createSSEStream(options = {}) {
         }
         
         if (onStreamComplete) {
+          const streamEndAt = Date.now();
           onStreamComplete({
             content: accumulatedContent,
             thinking: accumulatedThinking
-          }, state?.usage, ttftAt);
+          }, state?.usage, ttftAt, streamEndAt);
         }
       } catch (error) {
         console.log("Error in flush:", error);

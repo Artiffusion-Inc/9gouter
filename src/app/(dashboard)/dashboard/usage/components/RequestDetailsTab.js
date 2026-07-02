@@ -292,6 +292,8 @@ export default function RequestDetailsTab() {
                     <td className="p-4 text-sm text-text-muted">
                       <div className="flex flex-col gap-0.5">
                         <div>TTFT: <span className="font-mono">{detail.latency?.ttft || 0}ms</span></div>
+                        <div>Stream: <span className="font-mono">{detail.latency?.streamMs != null ? `${detail.latency.streamMs}ms` : "—"}</span></div>
+                        <div>TPS: <span className="font-mono">{detail.latency?.tps != null ? detail.latency.tps.toFixed(2) : "—"}</span></div>
                         <div>Total: <span className="font-mono">{detail.latency?.total || 0}ms</span></div>
                       </div>
                     </td>

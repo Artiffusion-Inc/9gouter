@@ -17,6 +17,7 @@ import { handleComboChat, handleFusionChat } from "open-sse/services/combo.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
+import { isOllamaSubscriptionError } from "open-sse/utils/ollamaSubscriptionError.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
@@ -275,6 +276,18 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     });
 
     if (result.success) return result.response;
+
+    // Bypass: Ollama Cloud rejects premium models on no-subscription
+    // accounts with 403 "this model requires a subscription". Skip the
+    // global markAccountUnavailable lock — the account may still work
+    // for free-tier models in a parallel request.
+    if (isOllamaSubscriptionError(result.status, result.error)) {
+      log.warn("AUTH", `Account ${credentials.connectionName} lacks subscription for ${model} — trying next`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = result.error;
+      lastStatus = result.status;
+      continue;
+    }
 
     // Mark account unavailable (auto-calculates cooldown with exponential backoff, or precise resetsAtMs)
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, result.resetsAtMs);

@@ -313,8 +313,8 @@ export async function saveRequestUsage(entry) {
           promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
           stringifyJson(tokens), stringifyJson({}),
           entry.streamMs ?? null,
-          // ponytail: streamMs < 100ms is TTFT (time to first token), not full stream duration → tps is bogus
-          (entry.tps != null && entry.streamMs != null && entry.streamMs >= 100) ? +entry.tps.toFixed(2)
+          // ponytail: streamMs < 1s is TTFT or too short for realistic TPS → bogus values
+          (entry.tps != null && entry.streamMs != null && entry.streamMs >= 1000) ? +entry.tps.toFixed(2)
             : (entry.tps != null && entry.streamMs == null) ? +entry.tps.toFixed(2)
             : null,
         ]
@@ -624,8 +624,8 @@ export async function getUsageStats(period = "all") {
       const completionTokens = tokens.completion_tokens || 0;
       const entryCost = r.cost || 0;
       const providerDisplayName = providerNodeNameMap[r.provider] || r.provider;
-      // ponytail: streamMs < 100ms is TTFT, not full stream → tps is bogus
-      const validTps = (r.streamMs != null && r.streamMs >= 100 && r.tps != null) ? r.tps
+      // ponytail: streamMs < 1s is TTFT or too short for realistic TPS → bogus values
+      const validTps = (r.streamMs != null && r.streamMs >= 1000 && r.tps != null) ? r.tps
         : (r.streamMs == null && r.tps != null) ? r.tps
         : null;
 

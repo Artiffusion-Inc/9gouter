@@ -21,11 +21,11 @@ export function makeKv(scope) {
     },
     async setMany(obj) {
       const db = await getAdapter();
-      db.transaction(() => {
+      const __tx = db.transaction(() => {
         for (const [k, v] of Object.entries(obj)) {
           db.run(`INSERT INTO kv(scope, key, value) VALUES(?, ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`, [scope, k, stringifyJson(v)]);
         }
-      });
+      }); __tx();
     },
     async remove(key) {
       const db = await getAdapter();

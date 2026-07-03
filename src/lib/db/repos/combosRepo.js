@@ -53,7 +53,7 @@ export async function createCombo(data) {
 export async function updateCombo(id, data) {
   const db = await getAdapter();
   let result = null;
-  db.transaction(() => {
+  const __tx = db.transaction(() => {
     const row = db.get(`SELECT * FROM combos WHERE id = ?`, [id]);
     if (!row) return;
     const merged = { ...rowToCombo(row), ...data, updatedAt: new Date().toISOString() };
@@ -62,7 +62,7 @@ export async function updateCombo(id, data) {
       [merged.name, merged.kind, stringifyJson(merged.models || []), merged.updatedAt, id]
     );
     result = merged;
-  });
+  }); __tx();
   return result;
 }
 

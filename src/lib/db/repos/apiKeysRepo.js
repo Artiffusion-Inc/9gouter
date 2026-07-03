@@ -48,7 +48,7 @@ export async function createApiKey(name, machineId) {
 export async function updateApiKey(id, data) {
   const db = await getAdapter();
   let result = null;
-  db.transaction(() => {
+  const __tx = db.transaction(() => {
     const row = db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id]);
     if (!row) return;
     const merged = { ...rowToKey(row), ...data };
@@ -57,7 +57,7 @@ export async function updateApiKey(id, data) {
       [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, id]
     );
     result = merged;
-  });
+  }); __tx();
   return result;
 }
 

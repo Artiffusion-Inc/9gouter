@@ -65,10 +65,11 @@ function runVersionedMigrations(adapter) {
   const pending = MIGRATIONS.filter((m) => m.version > current);
   let lastApplied = current;
   for (const m of pending) {
-    adapter.transaction(() => {
+    const tx = adapter.transaction(() => {
       m.up(adapter);
       setMetaSync(adapter, "schemaVersion", m.version);
     });
+    tx();
     lastApplied = m.version;
     console.log(`[DB][migrate] applied #${m.version} ${m.name}`);
   }
@@ -241,7 +242,7 @@ export async function runMigrationOnce(adapter) {
     for (const f of Object.values(LEGACY_FILES)) backupFile(f, backupDir);
 
     try {
-      adapter.transaction(() => {
+      const tx = adapter.transaction(() => {
         importLegacyMain(adapter, legacyMain);
         importLegacyUsage(adapter, legacyUsage);
         importLegacyDisabled(adapter, legacyDisabled);
@@ -249,6 +250,7 @@ export async function runMigrationOnce(adapter) {
         setMetaSync(adapter, "appVersion", getAppVersion());
         setMetaSync(adapter, "migratedAt", new Date().toISOString());
       });
+      tx();
     } catch (err) {
       if (err instanceof MigrationAborted) {
         console.error(`[DB][migrate] aborted: ${err.message} | legacy JSON kept | backup: ${backupDir}`);

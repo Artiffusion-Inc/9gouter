@@ -59,7 +59,7 @@ export async function getPricingForModel(provider, model) {
 // Atomic merge inside transaction (per-provider read-modify-write)
 export async function updatePricing(pricingData) {
   const db = await getAdapter();
-  db.transaction(() => {
+  const __tx = db.transaction(() => {
     for (const [provider, models] of Object.entries(pricingData)) {
       const row = db.get(`SELECT value FROM kv WHERE scope = 'pricing' AND key = ?`, [provider]);
       const current = row ? (parseJson(row.value, {}) || {}) : {};
@@ -72,7 +72,7 @@ export async function updatePricing(pricingData) {
         [provider, stringifyJson(merged)]
       );
     }
-  });
+  }); __tx();
   invalidate();
   return await getUserPricing();
 }
@@ -80,7 +80,7 @@ export async function updatePricing(pricingData) {
 export async function resetPricing(provider, model) {
   if (!provider) return await getUserPricing();
   const db = await getAdapter();
-  db.transaction(() => {
+  const __tx = db.transaction(() => {
     if (!model) {
       db.run(`DELETE FROM kv WHERE scope = 'pricing' AND key = ?`, [provider]);
       return;
@@ -96,7 +96,7 @@ export async function resetPricing(provider, model) {
         [provider, stringifyJson(current)]
       );
     }
-  });
+  }); __tx();
   invalidate();
   return await getUserPricing();
 }

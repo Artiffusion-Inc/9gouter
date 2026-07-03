@@ -49,10 +49,10 @@ export async function createBunSqliteAdapter(filePath) {
     },
     exec(sql) { return db.exec(sql); },
     transaction(fn) {
-      // ponytail: db.transaction returns a callable wrapper (better-sqlite3
-      // convention), not a result. Saves that capture `const tx = db.txn(fn);
-      // tx();` rely on the lazy form — calling fn eagerly here makes `tx`
-      // undefined and the subsequent tx() throws "is not a function".
+      // ponytail: return callable wrapper (better-sqlite3 convention).
+      // Callers must invoke it: `const tx = db.transaction(fn); tx();`.
+      // usageRepo.js uses this pattern. Eager call would break it because
+      // `tx` would hold the result, not a function.
       return db.transaction(fn);
     },
     checkpoint() { try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {} },

@@ -80,24 +80,24 @@ export async function createProxyPool(data) {
 export async function updateProxyPool(id, data) {
   const db = await getAdapter();
   let result = null;
-  db.transaction(() => {
+  const __tx = db.transaction(() => {
     const row = db.get(`SELECT * FROM proxyPools WHERE id = ?`, [id]);
     if (!row) return;
     const merged = { ...rowToPool(row), ...data, updatedAt: new Date().toISOString() };
     upsert(db, merged);
     result = merged;
-  });
+  }); __tx();
   return result;
 }
 
 export async function deleteProxyPool(id) {
   const db = await getAdapter();
   let removed = null;
-  db.transaction(() => {
+  const __tx = db.transaction(() => {
     const row = db.get(`SELECT * FROM proxyPools WHERE id = ?`, [id]);
     if (!row) return;
     removed = rowToPool(row);
     db.run(`DELETE FROM proxyPools WHERE id = ?`, [id]);
-  });
+  }); __tx();
   return removed;
 }

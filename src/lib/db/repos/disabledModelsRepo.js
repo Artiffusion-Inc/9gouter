@@ -21,7 +21,7 @@ export async function getDisabledByProvider(providerAlias) {
 export async function disableModels(providerAlias, ids) {
   if (!providerAlias || !Array.isArray(ids)) return;
   const db = await getAdapter();
-  db.transaction(() => {
+  const __tx = db.transaction(() => {
     const row = db.get(`SELECT value FROM kv WHERE scope = ? AND key = ?`, [SCOPE, providerAlias]);
     const current = row ? (parseJson(row.value, []) || []) : [];
     const merged = [...new Set([...current, ...ids])];
@@ -29,13 +29,13 @@ export async function disableModels(providerAlias, ids) {
       `INSERT INTO kv(scope, key, value) VALUES(?, ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,
       [SCOPE, providerAlias, stringifyJson(merged)]
     );
-  });
+  }); __tx();
 }
 
 export async function enableModels(providerAlias, ids) {
   if (!providerAlias) return;
   const db = await getAdapter();
-  db.transaction(() => {
+  const __tx = db.transaction(() => {
     if (!Array.isArray(ids) || ids.length === 0) {
       db.run(`DELETE FROM kv WHERE scope = ? AND key = ?`, [SCOPE, providerAlias]);
       return;
@@ -52,5 +52,5 @@ export async function enableModels(providerAlias, ids) {
         [SCOPE, providerAlias, stringifyJson(next)]
       );
     }
-  });
+  }); __tx();
 }

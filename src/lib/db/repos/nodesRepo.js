@@ -72,24 +72,24 @@ export async function createProviderNode(data) {
 export async function updateProviderNode(id, data) {
   const db = await getAdapter();
   let result = null;
-  db.transaction(() => {
+  const __tx = db.transaction(() => {
     const row = db.get(`SELECT * FROM providerNodes WHERE id = ?`, [id]);
     if (!row) return;
     const merged = { ...rowToNode(row), ...data, updatedAt: new Date().toISOString() };
     upsert(db, merged);
     result = merged;
-  });
+  }); __tx();
   return result;
 }
 
 export async function deleteProviderNode(id) {
   const db = await getAdapter();
   let removed = null;
-  db.transaction(() => {
+  const __tx = db.transaction(() => {
     const row = db.get(`SELECT * FROM providerNodes WHERE id = ?`, [id]);
     if (!row) return;
     removed = rowToNode(row);
     db.run(`DELETE FROM providerNodes WHERE id = ?`, [id]);
-  });
+  }); __tx();
   return removed;
 }

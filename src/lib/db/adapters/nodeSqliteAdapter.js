@@ -62,17 +62,21 @@ export async function createNodeSqliteAdapter(filePath) {
     },
     exec(sql) { return db.exec(sql); },
     transaction(fn) {
-      // node:sqlite has no transaction wrapper. Use SAVEPOINT for nested support.
+      // ponytail: return callable wrapper (better-sqlite3 convention). Callers
+      // use `const tx = db.transaction(fn); tx();` — executing eagerly here
+      // breaks that pattern (`tx` holds the result, not a function).
       const sp = `sp_${Math.random().toString(36).slice(2)}`;
-      db.exec(`SAVEPOINT ${sp}`);
-      try {
-        const r = fn();
-        db.exec(`RELEASE ${sp}`);
-        return r;
-      } catch (e) {
-        try { db.exec(`ROLLBACK TO ${sp}`); db.exec(`RELEASE ${sp}`); } catch {}
-        throw e;
-      }
+      return () => {
+        db.exec(`SAVEPOINT ${sp}`);
+        try {
+          const r = fn();
+          db.exec(`RELEASE ${sp}`);
+          return r;
+        } catch (e) {
+          try { db.exec(`ROLLBACK TO ${sp}`); db.exec(`RELEASE ${sp}`); } catch {}
+          throw e;
+        }
+      };
     },
     checkpoint() { try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch {} },
     close() {

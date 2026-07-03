@@ -79,7 +79,7 @@ async function flushToDatabase() {
       const db = await getAdapter();
       const config = await getObservabilityConfig();
 
-      db.transaction(() => {
+      const __tx = db.transaction(() => {
         for (const item of items) {
           if (!item.id) item.id = generateDetailId(item.model);
           if (!item.timestamp) item.timestamp = new Date().toISOString();
@@ -113,7 +113,7 @@ async function flushToDatabase() {
             [cnt.c - config.maxRecords]
           );
         }
-      });
+      }); __tx();
     }
   } catch (e) {
     console.error("[requestDetailsRepo] Batch write failed:", e);

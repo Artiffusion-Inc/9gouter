@@ -10,6 +10,7 @@ import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleImageGenerationCore } from "open-sse/handlers/imageGenerationCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+import { isOllamaSubscriptionError } from "open-sse/utils/ollamaSubscriptionError.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat } from "open-sse/services/combo.js";
 import * as log from "../utils/logger.js";
@@ -127,6 +128,18 @@ async function handleSingleModelImage(body, modelStr, { wantsStream, binaryOutpu
     });
 
     if (result.success) return result.response;
+
+    // Bypass: Ollama Cloud rejects premium models on no-subscription
+    // accounts with 403 "this model requires a subscription". Skip the
+    // global markAccountUnavailable lock — the account may still work
+    // for free-tier models in a parallel request.
+    if (isOllamaSubscriptionError(result.status, result.error)) {
+      log.warn("AUTH", `Account ${credentials.connectionName} lacks subscription for ${model} — trying next`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = result.error;
+      lastStatus = result.status;
+      continue;
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
 

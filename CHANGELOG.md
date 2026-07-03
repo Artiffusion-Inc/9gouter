@@ -1,3 +1,8 @@
+## [Unreleased]
+
+## Fixes
+- fix(ollama): bypass per-request on `403 this model requires a subscription` so a no-subscription account no longer triggers a global 2-minute lock for the rest of the model catalog. Subscribed accounts are tried first when their `priority` is lower — use the dashboard drag-and-drop to reorder if needed.
+
 # v0.5.15 (2026-06-29)
 
 ## Features

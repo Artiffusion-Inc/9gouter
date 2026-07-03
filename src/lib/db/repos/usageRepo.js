@@ -493,7 +493,7 @@ export async function getUsageStats(period = "all") {
         stats.byProvider[prov].cost += p.cost || 0;
         stats.byProvider[prov].tpsSum += p.tpsSum || 0;
         stats.byProvider[prov].tpsCount += p.tpsCount || 0;
-        stats.byProvider[prov].avgTps = p.tpsCount > 0 ? +(p.tpsSum / p.tpsCount).toFixed(2) : null;
+        stats.byProvider[prov].avgTps = stats.byProvider[prov].tpsCount > 0 ? +(stats.byProvider[prov].tpsSum / stats.byProvider[prov].tpsCount).toFixed(2) : null;
       }
 
       for (const [mk, m] of Object.entries(day.byModel || {})) {
@@ -502,14 +502,16 @@ export async function getUsageStats(period = "all") {
         const statsKey = provider ? `${rawModel} (${provider})` : rawModel;
         const providerDisplayName = providerNodeNameMap[provider] || provider;
         if (!stats.byModel[statsKey]) {
-          stats.byModel[statsKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel, provider: providerDisplayName, lastUsed: dateKey };
+          stats.byModel[statsKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, tpsSum: 0, tpsCount: 0, rawModel, provider: providerDisplayName, lastUsed: dateKey };
         }
         stats.byModel[statsKey].requests += m.requests || 0;
         stats.byModel[statsKey].promptTokens += m.promptTokens || 0;
         stats.byModel[statsKey].completionTokens += m.completionTokens || 0;
         stats.byModel[statsKey].cost += m.cost || 0;
+        stats.byModel[statsKey].tpsSum += m.tpsSum || 0;
+        stats.byModel[statsKey].tpsCount += m.tpsCount || 0;
         if (dateKey > (stats.byModel[statsKey].lastUsed || "")) stats.byModel[statsKey].lastUsed = dateKey;
-        stats.byModel[statsKey].avgTps = m.tpsCount > 0 ? +(m.tpsSum / m.tpsCount).toFixed(2) : null;
+        stats.byModel[statsKey].avgTps = stats.byModel[statsKey].tpsCount > 0 ? +(stats.byModel[statsKey].tpsSum / stats.byModel[statsKey].tpsCount).toFixed(2) : null;
       }
 
       for (const [connId, a] of Object.entries(day.byAccount || {})) {
@@ -519,14 +521,16 @@ export async function getUsageStats(period = "all") {
         const providerDisplayName = providerNodeNameMap[provider] || provider;
         const accountKey = `${rawModel} (${provider} - ${accountName})`;
         if (!stats.byAccount[accountKey]) {
-          stats.byAccount[accountKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel, provider: providerDisplayName, connectionId: connId, accountName, lastUsed: dateKey };
+          stats.byAccount[accountKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, tpsSum: 0, tpsCount: 0, rawModel, provider: providerDisplayName, connectionId: connId, accountName, lastUsed: dateKey };
         }
         stats.byAccount[accountKey].requests += a.requests || 0;
         stats.byAccount[accountKey].promptTokens += a.promptTokens || 0;
         stats.byAccount[accountKey].completionTokens += a.completionTokens || 0;
         stats.byAccount[accountKey].cost += a.cost || 0;
+        stats.byAccount[accountKey].tpsSum += a.tpsSum || 0;
+        stats.byAccount[accountKey].tpsCount += a.tpsCount || 0;
         if (dateKey > (stats.byAccount[accountKey].lastUsed || "")) stats.byAccount[accountKey].lastUsed = dateKey;
-        stats.byAccount[accountKey].avgTps = a.tpsCount > 0 ? +(a.tpsSum / a.tpsCount).toFixed(2) : null;
+        stats.byAccount[accountKey].avgTps = stats.byAccount[accountKey].tpsCount > 0 ? +(stats.byAccount[accountKey].tpsSum / stats.byAccount[accountKey].tpsCount).toFixed(2) : null;
       }
 
       for (const [akKey, ak] of Object.entries(day.byApiKey || {})) {
@@ -539,14 +543,16 @@ export async function getUsageStats(period = "all") {
         const apiKeyMasked = maskApiKey(apiKeyVal);
         const apiKeyKey = apiKeyMasked || "local-no-key";
         if (!stats.byApiKey[akKey]) {
-          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, rawModel, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey, lastUsed: dateKey };
+          stats.byApiKey[akKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, tpsSum: 0, tpsCount: 0, rawModel, provider: providerDisplayName, apiKeyMasked, keyName, apiKeyKey, lastUsed: dateKey };
         }
         stats.byApiKey[akKey].requests += ak.requests || 0;
         stats.byApiKey[akKey].promptTokens += ak.promptTokens || 0;
         stats.byApiKey[akKey].completionTokens += ak.completionTokens || 0;
         stats.byApiKey[akKey].cost += ak.cost || 0;
+        stats.byApiKey[akKey].tpsSum += ak.tpsSum || 0;
+        stats.byApiKey[akKey].tpsCount += ak.tpsCount || 0;
         if (dateKey > (stats.byApiKey[akKey].lastUsed || "")) stats.byApiKey[akKey].lastUsed = dateKey;
-        stats.byApiKey[akKey].avgTps = ak.tpsCount > 0 ? +(ak.tpsSum / ak.tpsCount).toFixed(2) : null;
+        stats.byApiKey[akKey].avgTps = stats.byApiKey[akKey].tpsCount > 0 ? +(stats.byApiKey[akKey].tpsSum / stats.byApiKey[akKey].tpsCount).toFixed(2) : null;
       }
 
       for (const [epKey, ep] of Object.entries(day.byEndpoint || {})) {
@@ -555,14 +561,16 @@ export async function getUsageStats(period = "all") {
         const provider = ep.provider || "";
         const providerDisplayName = providerNodeNameMap[provider] || provider;
         if (!stats.byEndpoint[epKey]) {
-          stats.byEndpoint[epKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, endpoint, rawModel, provider: providerDisplayName, lastUsed: dateKey };
+          stats.byEndpoint[epKey] = { requests: 0, promptTokens: 0, completionTokens: 0, cost: 0, tpsSum: 0, tpsCount: 0, endpoint, rawModel, provider: providerDisplayName, lastUsed: dateKey };
         }
         stats.byEndpoint[epKey].requests += ep.requests || 0;
         stats.byEndpoint[epKey].promptTokens += ep.promptTokens || 0;
         stats.byEndpoint[epKey].completionTokens += ep.completionTokens || 0;
         stats.byEndpoint[epKey].cost += ep.cost || 0;
+        stats.byEndpoint[epKey].tpsSum += ep.tpsSum || 0;
+        stats.byEndpoint[epKey].tpsCount += ep.tpsCount || 0;
         if (dateKey > (stats.byEndpoint[epKey].lastUsed || "")) stats.byEndpoint[epKey].lastUsed = dateKey;
-        stats.byEndpoint[epKey].avgTps = ep.tpsCount > 0 ? +(ep.tpsSum / ep.tpsCount).toFixed(2) : null;
+        stats.byEndpoint[epKey].avgTps = stats.byEndpoint[epKey].tpsCount > 0 ? +(stats.byEndpoint[epKey].tpsSum / stats.byEndpoint[epKey].tpsCount).toFixed(2) : null;
       }
     }
 

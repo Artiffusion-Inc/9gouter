@@ -98,6 +98,10 @@ function sortData(dataMap, pendingMap = {}, sortBy, sortOrder) {
     .sort((a, b) => {
       let valA = a[sortBy];
       let valB = b[sortBy];
+      // Null values sort to the bottom regardless of order
+      if (valA == null && valB == null) return 0;
+      if (valA == null) return 1;
+      if (valB == null) return -1;
       if (typeof valA === "string") valA = valA.toLowerCase();
       if (typeof valB === "string") valB = valB.toLowerCase();
       if (valA < valB) return sortOrder === "asc" ? -1 : 1;
@@ -124,7 +128,7 @@ function groupDataByKey(data, keyField) {
     if (!groups[gk]) {
       groups[gk] = {
         groupKey: gk,
-        summary: { requests: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0, inputCost: 0, outputCost: 0, lastUsed: null, pending: 0 },
+        summary: { requests: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, cost: 0, inputCost: 0, outputCost: 0, lastUsed: null, pending: 0, tpsSum: 0, tpsCount: 0 },
         items: [],
       };
     }
@@ -137,12 +141,18 @@ function groupDataByKey(data, keyField) {
     s.inputCost += item.inputCost || 0;
     s.outputCost += item.outputCost || 0;
     s.pending += item.pending || 0;
+    s.tpsSum += item.tpsSum || 0;
+    s.tpsCount += item.tpsCount || 0;
     if (item.lastUsed && (!s.lastUsed || new Date(item.lastUsed) > new Date(s.lastUsed))) {
       s.lastUsed = item.lastUsed;
     }
     groups[gk].items.push(item);
   });
-  return Object.values(groups);
+  // Compute avgTps for each group summary
+  return Object.values(groups).map((g) => {
+    g.summary.avgTps = g.summary.tpsCount > 0 ? +(g.summary.tpsSum / g.summary.tpsCount).toFixed(2) : null;
+    return g;
+  });
 }
 
 const MODEL_COLUMNS = [

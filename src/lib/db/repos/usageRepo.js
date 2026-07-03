@@ -313,7 +313,10 @@ export async function saveRequestUsage(entry) {
           promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
           stringifyJson(tokens), stringifyJson({}),
           entry.streamMs ?? null,
-          entry.tps != null ? +entry.tps.toFixed(2) : null,
+          // ponytail: streamMs < 100ms is TTFT (time to first token), not full stream duration → tps is bogus
+          (entry.tps != null && entry.streamMs != null && entry.streamMs >= 100) ? +entry.tps.toFixed(2)
+            : (entry.tps != null && entry.streamMs == null) ? +entry.tps.toFixed(2)
+            : null,
         ]
       );
 
@@ -621,6 +624,10 @@ export async function getUsageStats(period = "all") {
       const completionTokens = tokens.completion_tokens || 0;
       const entryCost = r.cost || 0;
       const providerDisplayName = providerNodeNameMap[r.provider] || r.provider;
+      // ponytail: streamMs < 100ms is TTFT, not full stream → tps is bogus
+      const validTps = (r.streamMs != null && r.streamMs >= 100 && r.tps != null) ? r.tps
+        : (r.streamMs == null && r.tps != null) ? r.tps
+        : null;
 
       stats.totalPromptTokens += promptTokens;
       stats.totalCompletionTokens += completionTokens;
@@ -631,8 +638,8 @@ export async function getUsageStats(period = "all") {
       stats.byProvider[r.provider].promptTokens += promptTokens;
       stats.byProvider[r.provider].completionTokens += completionTokens;
       stats.byProvider[r.provider].cost += entryCost;
-      if (r.tps != null) {
-        stats.byProvider[r.provider].tpsSum += r.tps;
+      if (validTps != null) {
+        stats.byProvider[r.provider].tpsSum += validTps;
         stats.byProvider[r.provider].tpsCount += 1;
         stats.byProvider[r.provider].avgTps = stats.byProvider[r.provider].tpsCount > 0
           ? +(stats.byProvider[r.provider].tpsSum / stats.byProvider[r.provider].tpsCount).toFixed(2)
@@ -648,8 +655,8 @@ export async function getUsageStats(period = "all") {
       stats.byModel[modelKey].completionTokens += completionTokens;
       stats.byModel[modelKey].cost += entryCost;
       if (new Date(r.timestamp) > new Date(stats.byModel[modelKey].lastUsed)) stats.byModel[modelKey].lastUsed = r.timestamp;
-      if (r.tps != null) {
-        stats.byModel[modelKey].tpsSum += r.tps;
+      if (validTps != null) {
+        stats.byModel[modelKey].tpsSum += validTps;
         stats.byModel[modelKey].tpsCount += 1;
         stats.byModel[modelKey].avgTps = stats.byModel[modelKey].tpsCount > 0
           ? +(stats.byModel[modelKey].tpsSum / stats.byModel[modelKey].tpsCount).toFixed(2)
@@ -667,8 +674,8 @@ export async function getUsageStats(period = "all") {
         stats.byAccount[accountKey].completionTokens += completionTokens;
         stats.byAccount[accountKey].cost += entryCost;
         if (new Date(r.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = r.timestamp;
-        if (r.tps != null) {
-          stats.byAccount[accountKey].tpsSum += r.tps;
+        if (validTps != null) {
+          stats.byAccount[accountKey].tpsSum += validTps;
           stats.byAccount[accountKey].tpsCount += 1;
           stats.byAccount[accountKey].avgTps = stats.byAccount[accountKey].tpsCount > 0
             ? +(stats.byAccount[accountKey].tpsSum / stats.byAccount[accountKey].tpsCount).toFixed(2)
@@ -687,8 +694,8 @@ export async function getUsageStats(period = "all") {
         const ake = stats.byApiKey[akKey];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cost += entryCost;
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
-        if (r.tps != null) {
-          ake.tpsSum += r.tps;
+        if (validTps != null) {
+          ake.tpsSum += validTps;
           ake.tpsCount += 1;
           ake.avgTps = ake.tpsCount > 0 ? +(ake.tpsSum / ake.tpsCount).toFixed(2) : null;
         }
@@ -699,8 +706,8 @@ export async function getUsageStats(period = "all") {
         const ake = stats.byApiKey["local-no-key"];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cost += entryCost;
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
-        if (r.tps != null) {
-          ake.tpsSum += r.tps;
+        if (validTps != null) {
+          ake.tpsSum += validTps;
           ake.tpsCount += 1;
           ake.avgTps = ake.tpsCount > 0 ? +(ake.tpsSum / ake.tpsCount).toFixed(2) : null;
         }
@@ -714,8 +721,8 @@ export async function getUsageStats(period = "all") {
       const epe = stats.byEndpoint[epKey];
       epe.requests++; epe.promptTokens += promptTokens; epe.completionTokens += completionTokens; epe.cost += entryCost;
       if (new Date(r.timestamp) > new Date(epe.lastUsed)) epe.lastUsed = r.timestamp;
-      if (r.tps != null) {
-        epe.tpsSum += r.tps;
+      if (validTps != null) {
+        epe.tpsSum += validTps;
         epe.tpsCount += 1;
         epe.avgTps = epe.tpsCount > 0 ? +(epe.tpsSum / epe.tpsCount).toFixed(2) : null;
       }

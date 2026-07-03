@@ -9,6 +9,7 @@ import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleEmbeddingsCore } from "open-sse/handlers/embeddingsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
+import { isOllamaSubscriptionError } from "open-sse/utils/ollamaSubscriptionError.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
@@ -125,6 +126,18 @@ export async function handleEmbeddings(request) {
     });
 
     if (result.success) return result.response;
+
+    // Bypass: Ollama Cloud rejects premium models on no-subscription
+    // accounts with 403 "this model requires a subscription". Skip the
+    // global markAccountUnavailable lock — the account may still work
+    // for free-tier models in a parallel request.
+    if (isOllamaSubscriptionError(result.status, result.error)) {
+      log.warn("AUTH", `Account ${credentials.connectionName} lacks subscription for ${model} — trying next`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = result.error;
+      lastStatus = result.status;
+      continue;
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);
 

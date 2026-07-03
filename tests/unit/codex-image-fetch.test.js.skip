@@ -8,10 +8,19 @@
  *    sent to upstream contains base64 data, not remote URLs
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from "vitest";
 
 // Mock DNS so the SSRF guard treats example.com as public.
 vi.mock("node:dns/promises", () => ({ lookup: async () => ({ address: "93.184.216.34" }) }));
+
+// Skip suite if no outbound network (fetches 1MB from example.com).
+// Probe via a different module specifier to bypass the vi.mock above.
+beforeAll(async (ctx) => {
+  try {
+    const { lookup } = await import("dns/promises");
+    await lookup("ollama.com");
+  } catch { ctx.skip(); }
+});
 
 import { CodexExecutor } from "../../open-sse/executors/codex.js";
 import * as proxyFetchModule from "../../open-sse/utils/proxyFetch.js";

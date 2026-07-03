@@ -17,6 +17,17 @@ export function parseSSELine(line, format = null) {
     return null;
   }
 
+  // ponytail: when no format hint, auto-detect raw JSON lines (NDJSON). Some
+  // upstream streams (ollama, llama.cpp) emit `{...}\n` instead of SSE.
+  const trimmed = line.trim();
+  if (trimmed.startsWith("{") && !trimmed.startsWith("data:")) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  }
+
   // Standard SSE format: "data: {...}"
   if (line.charCodeAt(0) !== 100) return null; // 'd' = 100
 

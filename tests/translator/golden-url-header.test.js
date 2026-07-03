@@ -33,6 +33,8 @@ function sanitize(headers) {
           .replace(/kimi-\d{10,}/g, "kimi-<TS>")
       : v;
   }
+  // Normalize OS-specific X-Msh-Device-Model (varies by process.platform/arch).
+  if ("X-Msh-Device-Model" in out) out["X-Msh-Device-Model"] = "<OS>";
   return out;
 }
 

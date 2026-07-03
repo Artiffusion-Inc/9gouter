@@ -274,6 +274,14 @@ function getContentBlocksFromMessage(msg, toolNameMap = new Map()) {
         }
       }
     }
+
+    // OpenAI assistant messages may carry `reasoning_content` (GLM, Qwen, DeepSeek,
+    // Kimi, etc.). Map it to a Claude `thinking` block so the model keeps its
+    // prior reasoning context. Placed BEFORE text/tool blocks so Claude reads
+    // the reasoning first, mirroring the upstream's own thinking→answer order.
+    if (typeof msg.reasoning_content === "string" && msg.reasoning_content) {
+      blocks.unshift({ type: CLAUDE_BLOCK.THINKING, thinking: msg.reasoning_content });
+    }
   }
 
   return blocks;

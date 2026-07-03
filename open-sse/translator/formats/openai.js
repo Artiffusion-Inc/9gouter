@@ -48,12 +48,25 @@ export function filterToOpenAIFormat(body, opts = {}) {
           filteredContent.push(stripBlock(block));
         }
       }
-      
+
       // If all content was filtered, add empty text
       if (filteredContent.length === 0) {
         filteredContent.push({ type: OPENAI_BLOCK.TEXT, text: "" });
       }
-      
+
+      // ponytail: collapse pure-text content arrays to a string. Many providers
+      // (ollama, llama.cpp) reject array content even when it's just text.
+      // Skip when preserveCacheControl is set — the array form carries the
+      // cache_control marker on each block.
+      if (!keepCache) {
+        const allText = filteredContent.every(
+          (b) => b && b.type === OPENAI_BLOCK.TEXT && typeof b.text === "string"
+        );
+        if (allText) {
+          return { ...msg, content: filteredContent.map((b) => b.text).join("\n") };
+        }
+      }
+
       return { ...msg, content: filteredContent };
     }
     

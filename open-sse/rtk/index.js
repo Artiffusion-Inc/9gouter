@@ -4,8 +4,14 @@ import { RAW_CAP, MIN_COMPRESS_SIZE } from "./constants.js";
 import { autoDetectFilter } from "./autodetect.js";
 import { safeApply } from "./applyFilter.js";
 
+// ponytail: global on/off flag. Most callers don't pass `enabled` — they expect
+// a runtime toggle. compressMessages falls back to it when the arg is missing.
+let rtkEnabled = false;
+export const isRtkEnabled = () => rtkEnabled;
+export const setRtkEnabled = (v) => { rtkEnabled = !!v; };
+
 // Compress tool_result content in-place. Returns stats or null if disabled/failed.
-export function compressMessages(body, enabled) {
+export function compressMessages(body, enabled = rtkEnabled) {
   if (!enabled) return null;
   if (!body) return null;
 

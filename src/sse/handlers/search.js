@@ -10,6 +10,7 @@ import { AI_PROVIDERS, resolveProviderId } from "@/shared/constants/providers.js
 import { handleSearchCore } from "open-sse/handlers/search/index.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+import { isOllamaSubscriptionError } from "open-sse/utils/ollamaSubscriptionError.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { handleComboChat, getComboModelsFromData } from "open-sse/services/combo.js";
@@ -190,6 +191,18 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     });
 
     if (result.success) return result.response;
+
+    // Bypass: Ollama Cloud rejects premium models on no-subscription
+    // accounts with 403 "this model requires a subscription". Skip the
+    // global markAccountUnavailable lock — the account may still work
+    // for free-tier models in a parallel request.
+    if (isOllamaSubscriptionError(result.status, result.error)) {
+      log.warn("AUTH", `Account ${credentials.connectionName} lacks subscription — trying next`);
+      excludeConnectionIds.add(credentials.connectionId);
+      lastError = result.error;
+      lastStatus = result.status;
+      continue;
+    }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, providerId);
 

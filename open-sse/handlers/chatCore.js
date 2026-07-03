@@ -334,8 +334,8 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   const stallTimeoutMs = isReasoning ? STREAM_STALL_TIMEOUT_REASONING_MS : undefined;
   if (isReasoning) log?.debug?.("STALL", `reasoning model detected, stall timeout=${STREAM_STALL_TIMEOUT_REASONING_MS}ms`);
 
-  const { onStreamComplete } = buildOnStreamComplete({ ...sharedCtx });
-  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, stallTimeoutMs });
+  const { onStreamComplete, streamDetailId } = buildOnStreamComplete({ ...sharedCtx });
+  return handleStreamingResponse({ ...sharedCtx, providerResponse, sourceFormat, targetFormat, userAgent, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId, stallTimeoutMs });
 }
 
 export function isTokenExpiringSoon(expiresAt, bufferMs = 5 * 60 * 1000) {

@@ -57,6 +57,7 @@ export const MITM_TOOLS = {
     mitmDomain: "q.us-east-1.amazonaws.com",
     defaultModels: [
       { id: "auto", name: "Auto", alias: "auto" },
+      { id: "claude-sonnet-5", name: "Claude Sonnet 5", alias: "claude-sonnet-5" },
       { id: "claude-sonnet-4.5", name: "Claude Sonnet 4.5", alias: "claude-sonnet-4.5" },
       { id: "claude-sonnet-4", name: "Claude Sonnet 4", alias: "claude-sonnet-4" },
       { id: "claude-haiku-4.5", name: "Claude Haiku 4.5", alias: "claude-haiku-4.5" },
@@ -392,4 +393,3 @@ export const getProviderModelsForMapping = (providers) => {
   });
   return result;
 };
-

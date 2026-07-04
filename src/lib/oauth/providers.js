@@ -27,6 +27,7 @@ import {
   GITLAB_CONFIG,
   CODEBUDDY_CONFIG,
   KIMCHI_CONFIG,
+  ZCODE_CONFIG,
   getOAuthClientMetadata,
 } from "./constants/oauth";
 import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "./constants/xai";
@@ -1383,6 +1384,76 @@ const PROVIDERS = {
         },
       };
     },
+  },
+  // ZCode (Z.ai) OAuth — Authorization Code flow via chat.z.ai → zcode.z.ai token exchange.
+  // Browser login at chat.z.ai, callback with authCode, exchange at zcode.z.ai/api/v1/oauth/token.
+  // Returns JWT for start-plan + provider access_token.
+  zcode: {
+    config: ZCODE_CONFIG,
+    flowType: "authorization_code_pkce",
+    buildAuthUrl: (config, redirectUri, state, codeChallenge) => {
+      const params = new URLSearchParams({
+        response_type: "code",
+        client_id: config.clientId,
+        redirect_uri: redirectUri,
+        state,
+        code_challenge: codeChallenge,
+        code_challenge_method: config.codeChallengeMethod,
+      });
+      return `${config.authorizeUrl}?${params.toString()}`;
+    },
+    exchangeToken: async (config, code, redirectUri, codeVerifier, state) => {
+      // ZCode uses a shared token exchange endpoint (zcode.z.ai) that holds the app secret.
+      // POST body: { provider: "zai", code, redirect_uri, state }
+      const response = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          provider: "zai",
+          code,
+          redirect_uri: redirectUri,
+          state,
+        }),
+      });
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`ZCode token exchange failed: ${response.status} ${error}`);
+      }
+      const data = await response.json();
+      if (typeof data.code === "number" && data.code !== 0) {
+        throw new Error(`ZCode token exchange error: ${data.msg || "unknown"}`);
+      }
+      // Response shape: { code: 0, data: { token: <jwt>, zai: { access_token: <...> }, user: { user_id: <...> } } }
+      const providerToken = data.data?.zai?.access_token?.trim() || "";
+      const jwt = data.data?.token?.trim() || "";
+      const userId = data.data?.user?.user_id || "";
+      if (!providerToken) {
+        throw new Error("ZCode token response missing data.zai.access_token");
+      }
+      return {
+        access_token: providerToken,
+        token_type: "Bearer",
+        refresh_token: jwt, // ponytail: store JWT as refresh_token for start-plan auth
+        _zcodeJwt: jwt,
+        _zcodeUserId: userId,
+      };
+    },
+    mapTokens: (tokens) => ({
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token || tokens._zcodeJwt,
+      // JWT has long TTL (ZCode plan session); no reliable expiresIn from exchange
+      expiresIn: 86400,
+      email: tokens._zcodeUserId ? `zcode-${tokens._zcodeUserId}@z.ai` : null,
+      displayName: null,
+      providerSpecificData: {
+        authMethod: "oauth",
+        userId: tokens._zcodeUserId,
+        jwt: tokens._zcodeJwt,
+      },
+    }),
   },
 };
 

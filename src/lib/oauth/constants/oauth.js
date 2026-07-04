@@ -114,6 +114,9 @@ export const CODEBUDDY_CONFIG = { ...PROVIDER_OAUTH["codebuddy-cn"] };
 // Kimchi OAuth Configuration (Browser token callback flow)
 export const KIMCHI_CONFIG = { ...PROVIDER_OAUTH["kimchi"] };
 
+// ZCode OAuth Configuration (Authorization Code Flow via chat.z.ai → zcode.z.ai token exchange)
+export const ZCODE_CONFIG = { ...PROVIDER_OAUTH["zcode"] };
+
 // OAuth timeout (5 minutes)
 export const OAUTH_TIMEOUT = 300000;
 
@@ -137,4 +140,5 @@ export const PROVIDERS = {
   GITLAB: "gitlab",
   CODEBUDDY: "codebuddy-cn",
   KIMCHI: "kimchi",
+  ZCODE: "zcode",
 };

@@ -1029,6 +1029,34 @@ exports[`GOLDEN buildHeaders (default executor providers) > xiaomi-mimo → head
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > zcode → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://zcode.z.ai",
+    "X-Title": "Z Code@cli",
+    "X-ZCode-Agent": "glm",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://zcode.z.ai",
+    "X-Title": "Z Code@cli",
+    "X-ZCode-Agent": "glm",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+    "HTTP-Referer": "https://zcode.z.ai",
+    "X-Title": "Z Code@cli",
+    "X-ZCode-Agent": "glm",
+  },
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > alicode → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://coding.dashscope.aliyuncs.com/v1/chat/completions",
@@ -1341,5 +1369,12 @@ exports[`GOLDEN buildUrl (default executor providers) > xiaomi-mimo → url (str
 {
   "nonStream": "https://api.xiaomimimo.com/v1/chat/completions",
   "stream": "https://api.xiaomimimo.com/v1/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > zcode → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://zcode.z.ai/api/v1/zcode-plan/chat/completions",
+  "stream": "https://zcode.z.ai/api/v1/zcode-plan/chat/completions",
 }
 `;

@@ -1442,7 +1442,9 @@ const PROVIDERS = {
       };
     },
     mapTokens: (tokens) => ({
-      accessToken: tokens.access_token,
+      // JWT is the start-plan auth token for zcode.z.ai endpoints.
+      // Z.AI access_token (tokens.access_token) is for api.z.ai directly — not used here.
+      accessToken: tokens._zcodeJwt || tokens.access_token,
       refreshToken: tokens.refresh_token || tokens._zcodeJwt,
       // JWT has long TTL (ZCode plan session); no reliable expiresIn from exchange
       expiresIn: 86400,
@@ -1451,7 +1453,7 @@ const PROVIDERS = {
       providerSpecificData: {
         authMethod: "oauth",
         userId: tokens._zcodeUserId,
-        jwt: tokens._zcodeJwt,
+        zaiAccessToken: tokens.access_token,
       },
     }),
   },

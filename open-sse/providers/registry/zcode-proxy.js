@@ -1,9 +1,8 @@
-import { CLAUDE_API_HEADERS } from "../shared.js";
-
 // ZCode start-plan (free quota) OAuth provider.
 // Users authorize via browser login at chat.z.ai → zcode.z.ai token exchange → JWT.
-// The JWT is sent as Bearer to zcode.z.ai/api/v1/zcode-plan/... endpoints.
-// Also supports direct API-key mode (coding-plan) for users who have Z.ai/BigModel keys.
+// The JWT is sent as Bearer to zcode.z.ai/api/v1/zcode-plan/... endpoints (OpenAI format only).
+// Claude-format clients are translated by 9router to OpenAI before forwarding.
+// For direct Z.ai API key access (coding-plan), use the glm/glm-cn providers instead.
 // See https://github.com/decolua/9router/issues/1869
 export default {
   id: "zcode",
@@ -18,7 +17,7 @@ export default {
     textIcon: "ZC",
     website: "https://zcode.z.ai",
     notice: {
-      text: "ZCode gives free daily GLM-5.2 quota via browser login (start-plan). OAuth authorizes through Z.ai, then JWT is used for API calls. Coding-plan (API key) also supported — use the glm/glm-cn providers for direct API key access.",
+      text: "ZCode gives free daily GLM-5.2 quota via browser login (start-plan). OAuth authorizes through Z.ai, then JWT is used for API calls. The start-plan endpoint is OpenAI-compatible only — Claude-format clients are translated automatically. For direct Z.ai API key access, use the glm/glm-cn providers.",
       apiKeyUrl: "https://zcode.z.ai",
     },
   },
@@ -33,8 +32,6 @@ export default {
     tokenUrl: "https://zcode.z.ai/api/v1/oauth/token",
     scope: "openid profile email offline_access",
     codeChallengeMethod: "S256",
-    // Custom: zcode uses ?appId= instead of ?client_id= for BigModel,
-    // but Z.AI uses standard OAuth2. We use Z.AI flow here.
     callbackPath: "/oauth/callback/zcode",
     extraParams: {
       response_type: "code",
@@ -44,10 +41,10 @@ export default {
       encoding: "json",
     },
   },
-  // start-plan transport: OpenAI-compatible at zcode.z.ai (JWT Bearer auth)
-  // coding-plan: Anthropic at api.z.ai (x-api-key auth)
+  // Start-plan transport: OpenAI-compatible only.
+  // The ZCode start-plan endpoint only accepts OpenAI format.
+  // Claude-format clients are translated to OpenAI by 9router before forwarding.
   transport: {
-    // Default: start-plan (free quota) — OpenAI format, JWT Bearer auth
     baseUrl: "https://zcode.z.ai/api/v1/zcode-plan/chat/completions",
     format: "openai",
     headers: {
@@ -61,28 +58,6 @@ export default {
       scheme: "bearer",
     },
   },
-  // Multi-endpoint: coding-plan (Anthropic) and start-plan (OpenAI)
-  transports: [
-    {
-      // start-plan: OpenAI format with JWT Bearer
-      format: "openai",
-      baseUrl: "https://zcode.z.ai/api/v1/zcode-plan/chat/completions",
-      headers: {
-        "HTTP-Referer": "https://zcode.z.ai",
-        "X-ZCode-Agent": "glm",
-        "X-Title": "Z Code@cli",
-      },
-      auth: { combined: true, header: "Authorization", scheme: "bearer" },
-    },
-    {
-      // coding-plan: Anthropic format with x-api-key
-      format: "claude",
-      baseUrl: "https://api.z.ai/api/anthropic/v1/messages",
-      urlSuffix: "?beta=true",
-      headers: { ...CLAUDE_API_HEADERS },
-      auth: { combined: true, header: "x-api-key", scheme: "raw" },
-    },
-  ],
   models: [
     { id: "glm-5.2", name: "GLM 5.2" },
     { id: "glm-5.2-high", name: "GLM 5.2 High" },

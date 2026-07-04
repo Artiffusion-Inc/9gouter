@@ -25,22 +25,9 @@ function buildRuntimePlatformHeaders() {
   return headers;
 }
 
-// ZCode start-plan URL (OpenAI-compatible, JWT Bearer auth)
-const STARTPLAN_CHAT_URL = "https://zcode.z.ai/api/v1/zcode-plan/chat/completions";
-
 export class ZcodeProxyExecutor extends DefaultExecutor {
   constructor() {
     super("zcode");
-  }
-
-  buildUrl(model, stream, urlIndex = 0, credentials = null) {
-    // Runtime transport: use resolved baseUrl from multi-endpoint
-    const rt = credentials?.runtimeTransport;
-    if (rt?.baseUrl) {
-      return rt.urlSuffix ? `${rt.baseUrl}${rt.urlSuffix}` : rt.baseUrl;
-    }
-    // Default: start-plan OpenAI endpoint
-    return STARTPLAN_CHAT_URL;
   }
 
   buildHeaders(credentials, stream = true) {

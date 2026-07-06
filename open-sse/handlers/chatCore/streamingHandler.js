@@ -76,7 +76,6 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
     const jsonText = await providerResponse.text().catch(() => '');
     const synthesized = synthesizeOpenAiSseFromJson(jsonText);
     if (synthesized) {
-      log?.debug?.("STREAM", `${provider}/${model} | upstream returned JSON for stream request, synthesized SSE (${jsonText.length}B → ${synthesized.length}B)`);
       streamController?.handleComplete?.();
       saveRequestDetail(buildRequestDetail({
         provider, model, connectionId,
@@ -125,9 +124,6 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // base (STREAM_STALL_TIMEOUT_REASONING_MS) is preserved.
   const readinessPolicy = resolveStreamReadinessTimeout({ baseTimeoutMs: baseStallTimeoutMs, provider, model, body, maxTimeoutMs: STREAM_READINESS_MAX_TIMEOUT_MS });
   const effectiveStallTimeoutMs = readinessPolicy.timeoutMs;
-  if (effectiveStallTimeoutMs !== baseStallTimeoutMs) {
-    log?.debug?.("STALL", `adaptive timeout ${baseStallTimeoutMs}ms → ${effectiveStallTimeoutMs}ms | reasons=${readinessPolicy.reasons.join(",")}`);
-  }
   const transformedBody = pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal, effectiveStallTimeoutMs);
 
   saveRequestDetail(buildRequestDetail({

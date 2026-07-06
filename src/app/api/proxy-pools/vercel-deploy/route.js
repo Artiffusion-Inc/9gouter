@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createProxyPool } from "@/models";
+import { createProxyPool, updateProxyPool, findProxyPoolByNameAndType } from "@/models";
 
 const VERCEL_API = "https://api.vercel.com";
 
@@ -32,9 +32,18 @@ export default async function handler(req) {
     duplex: "half",
   });
 
+  // Edge fetch decompresses the upstream body but leaves content-encoding /
+  // content-length / transfer-encoding on the response headers. Forwarding
+  // those verbatim makes the downstream client try to gunzip already-plain
+  // bytes → ZlibError "incorrect header check". Strip them.
+  const respHeaders = new Headers(response.headers);
+  respHeaders.delete("content-encoding");
+  respHeaders.delete("content-length");
+  respHeaders.delete("transfer-encoding");
+
   return new Response(response.body, {
     status: response.status,
-    headers: response.headers,
+    headers: respHeaders,
   });
 }
 `;
@@ -125,16 +134,28 @@ export async function POST(request) {
     const deployUrl = `https://${ready.url}`;
 
     // Create proxy pool entry with type vercel
-    const proxyPool = await createProxyPool({
-      name: projectName,
-      proxyUrl: deployUrl,
-      type: "vercel",
-      noProxy: "",
-      isActive: true,
-      strictProxy: false,
-    });
+    const existing = await findProxyPoolByNameAndType(projectName, "vercel");
+    let proxyPool;
+    if (existing) {
+      proxyPool = await updateProxyPool(existing.id, {
+        proxyUrl: deployUrl,
+        testStatus: "unknown",
+        lastError: null,
+        lastTestedAt: null,
+        isActive: true,
+      });
+    } else {
+      proxyPool = await createProxyPool({
+        name: projectName,
+        proxyUrl: deployUrl,
+        type: "vercel",
+        noProxy: "",
+        isActive: true,
+        strictProxy: false,
+      });
+    }
 
-    return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
+    return NextResponse.json({ proxyPool, deployUrl, redeployed: !!existing }, { status: existing ? 200 : 201 });
   } catch (error) {
     console.log("Error deploying Vercel relay:", error);
     return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createProxyPool } from "@/models";
+import { createProxyPool, updateProxyPool, findProxyPoolByNameAndType } from "@/models";
 
 const DENO_V2_API = "https://api.deno.com/v2";
 
@@ -32,9 +32,17 @@ const DENO_RELAY_CODE = `Deno.serve(async (request) => {
 
   try {
     const response = await fetch(targetUrl, init);
+    // Deno fetch decompresses the upstream body but leaves content-encoding /
+    // content-length / transfer-encoding on the response headers. Forwarding
+    // them verbatim makes the downstream client gunzip already-plain bytes
+    // → ZlibError "incorrect header check". Strip them.
+    const respHeaders = new Headers(response.headers);
+    respHeaders.delete("content-encoding");
+    respHeaders.delete("content-length");
+    respHeaders.delete("transfer-encoding");
     return new Response(response.body, {
       status: response.status,
-      headers: response.headers,
+      headers: respHeaders,
     });
   } catch (error) {
     return new Response(JSON.stringify({ error: error.message }), {
@@ -80,21 +88,37 @@ export async function POST(request) {
       }),
     });
 
-    if (!createAppRes.ok) {
-      const text = await createAppRes.text().catch(() => "");
-      if (createAppRes.status === 409) {
+    let app;
+    let redeployed = false;
+    if (createAppRes.ok) {
+      app = await createAppRes.json();
+    } else if (createAppRes.status === 409) {
+      // App already exists → resolve its id by slug, then redeploy assets in place.
+      const listRes = await fetch(`${DENO_V2_API}/apps`, { headers });
+      if (!listRes.ok) {
+        const text = await listRes.text().catch(() => "");
         return NextResponse.json(
-          { error: `App "${projectName}" already exists. Choose a different name.` },
+          { error: `App exists but failed to list apps (${listRes.status}): ${text}` },
+          { status: listRes.status }
+        );
+      }
+      const listData = await listRes.json();
+      const found = (listData.apps || []).find((a) => a.slug === projectName);
+      if (!found) {
+        return NextResponse.json(
+          { error: `App "${projectName}" exists but slug not found in org listing` },
           { status: 409 }
         );
       }
+      app = found;
+      redeployed = true;
+    } else {
+      const text = await createAppRes.text().catch(() => "");
       return NextResponse.json(
         { error: `Failed to create app (${createAppRes.status}): ${text}` },
         { status: createAppRes.status }
       );
     }
-
-    const app = await createAppRes.json();
 
     const deployRes = await fetch(`${DENO_V2_API}/apps/${app.id}/deploy`, {
       method: "POST",
@@ -158,16 +182,28 @@ export async function POST(request) {
     const deployUrl = `https://${projectName}.${orgSlug}.deno.net`;
     console.log("Deno deployUrl:", deployUrl);
 
-    const proxyPool = await createProxyPool({
-      name: projectName,
-      proxyUrl: deployUrl,
-      type: "deno",
-      noProxy: "",
-      isActive: true,
-      strictProxy: false,
-    });
+    const existing = await findProxyPoolByNameAndType(projectName, "deno");
+    let proxyPool;
+    if (existing) {
+      proxyPool = await updateProxyPool(existing.id, {
+        proxyUrl: deployUrl,
+        testStatus: "unknown",
+        lastError: null,
+        lastTestedAt: null,
+        isActive: true,
+      });
+    } else {
+      proxyPool = await createProxyPool({
+        name: projectName,
+        proxyUrl: deployUrl,
+        type: "deno",
+        noProxy: "",
+        isActive: true,
+        strictProxy: false,
+      });
+    }
 
-    return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
+    return NextResponse.json({ proxyPool, deployUrl, redeployed: redeployed || !!existing }, { status: existing ? 200 : 201 });
   } catch (error) {
     console.log("Error deploying Deno Deploy relay:", error);
     return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });

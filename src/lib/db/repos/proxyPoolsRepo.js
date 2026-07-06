@@ -56,6 +56,23 @@ export async function getProxyPoolById(id) {
   return rowToPool(db.get(`SELECT * FROM proxyPools WHERE id = ?`, [id]));
 }
 
+/**
+ * Find the most recently updated proxy pool matching a name + type (for relay
+ * redeploy: the worker name is the pool name, type pins the provider). Used to
+ * decide create-vs-update on re-deploy of an existing relay.
+ * @param {string} name
+ * @param {string} type
+ * @returns {Promise<object|null>}
+ */
+export async function findProxyPoolByNameAndType(name, type) {
+  const db = await getAdapter();
+  const rows = db.all(
+    `SELECT * FROM proxyPools WHERE name = ? AND type = ? ORDER BY updatedAt DESC LIMIT 1`,
+    [name, type]
+  );
+  return rows.length ? rowToPool(rows[0]) : null;
+}
+
 export async function createProxyPool(data) {
   const db = await getAdapter();
   const now = new Date().toISOString();

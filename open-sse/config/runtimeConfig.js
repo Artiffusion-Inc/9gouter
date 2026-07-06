@@ -40,15 +40,20 @@ function envMs(name, def) {
 }
 
 // Inter-chunk stall timeout (once tokens are flowing). Generous headroom so
-// slow reasoning models aren't aborted mid-stream. Env: STREAM_STALL_TIMEOUT_MS.
-export const STREAM_STALL_TIMEOUT_MS = envMs("STREAM_STALL_TIMEOUT_MS", 360 * 1000);
+// slow reasoning models aren't aborted mid-stream. glm-5.2 reasoning-by-request
+// (not flagged as a reasoning model in the registry) needs the same huge window
+// whether or not the request asks for reasoning, so base == reasoning base.
+// Env: STREAM_STALL_TIMEOUT_MS.
+export const STREAM_STALL_TIMEOUT_MS = envMs("STREAM_STALL_TIMEOUT_MS", 15 * 60 * 1000);
 
 // Time-to-first-token timeout (prompt prefill). Env: STREAM_FIRST_CHUNK_TIMEOUT_MS.
 export const STREAM_FIRST_CHUNK_TIMEOUT_MS = envMs("STREAM_FIRST_CHUNK_TIMEOUT_MS", 200 * 1000);
 
-// Reasoning/thinking models get an extended stall timeout (they can think 5+ min before
-// emitting tokens). Env: STREAM_STALL_TIMEOUT_REASONING_MS. Artiffusion patch — not upstream.
-export const STREAM_STALL_TIMEOUT_REASONING_MS = envMs("STREAM_STALL_TIMEOUT_REASONING_MS", 10 * 60 * 1000);
+// Reasoning/thinking models get an extended stall timeout. Kept at parity with the
+// base so the detector (isThinkingEnabled) no longer gates the window — glm-5.2 et al.
+// that reason on demand but aren't flagged get the same 15min budget.
+// Env: STREAM_STALL_TIMEOUT_REASONING_MS. Artiffusion patch — not upstream.
+export const STREAM_STALL_TIMEOUT_REASONING_MS = envMs("STREAM_STALL_TIMEOUT_REASONING_MS", 15 * 60 * 1000);
 
 // Hard cap for the adaptive stream-readiness/stall timeout (resolveStreamReadinessTimeout).
 // Bumps for large history / tool-heavy / large payload / Codex GPT-5.x high-reasoning are

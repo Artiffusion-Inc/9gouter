@@ -1445,9 +1445,13 @@ const PROVIDERS = {
       // JWT is the start-plan auth token for zcode.z.ai endpoints.
       // Z.AI access_token (tokens.access_token) is for api.z.ai directly — not used here.
       accessToken: tokens._zcodeJwt || tokens.access_token,
-      refreshToken: tokens.refresh_token || tokens._zcodeJwt,
-      // JWT has long TTL (ZCode plan session); no reliable expiresIn from exchange
-      expiresIn: 86400,
+      // ZCode start-plan JWT is long-lived (no standard refresh endpoint — confirmed
+      // against ookami42/glm5.2proxy, which never refreshes). Store the JWT itself as
+      // refreshToken so the 24h-access-token assumption elsewhere still resolves.
+      refreshToken: tokens._zcodeJwt,
+      // expiresIn null → no expiresAt → shouldRefreshCredentials stays false →
+      // the token-refresh path (which has no ZCode handler) is never triggered.
+      expiresIn: null,
       email: tokens._zcodeUserId ? `zcode-${tokens._zcodeUserId}@z.ai` : null,
       displayName: null,
       providerSpecificData: {

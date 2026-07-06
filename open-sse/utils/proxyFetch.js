@@ -1,101 +1,16 @@
 import { Readable } from "stream";
 import { MEMORY_CONFIG } from "../config/runtimeConfig.js";
 import { dbg } from "./debugLog.js";
+import { describeFetchCause } from "./fetchCause.js";
+import { createProxyDispatcher, createDirectDispatcher, normalizeProxyUrl as dispatcherNormalize } from "./proxyDispatcher.js";
+import { isProxyReachable, invalidateProxyHealth } from "./proxyHealth.js";
+import { findWorkingProxy } from "./proxyFallback.js";
 
 const originalFetch = globalThis.fetch;
+// ponytail: per-URL dispatcher cache moved to proxyDispatcherCache.js (shared
+// on globalThis, survives HMR). Keep a thin local proxyDispatchers map only
+// as a legacy fallback for callers that import getDispatcher directly.
 const proxyDispatchers = new Map();
-
-// ─── TLS fingerprinting via got-scraping (browser-like JA3) ───────────────
-// Disabled: not in use. Kept commented for future re-enable.
-// Restore the original block to re-enable per-host JA3 spoofing.
-/*
-let _gotScraping = null;
-let _gotScrapingChecked = false;
-const _gotScrapingLoggedHosts = new Set();
-
-async function getGotScraping() {
-  if (_gotScrapingChecked) return _gotScraping;
-  _gotScrapingChecked = true;
-  try {
-    const mod = await import("got-scraping");
-    _gotScraping = typeof mod.gotScraping === "function" ? mod.gotScraping : null;
-    if (_gotScraping) dbg("TLS", "got-scraping loaded (browser-like JA3 enabled)");
-  } catch (e) {
-    console.warn(`[ProxyFetch] got-scraping unavailable, falling back to native fetch: ${e.message}`);
-    _gotScraping = null;
-  }
-  return _gotScraping;
-}
-
-async function gotScrapingFetch(url, options) {
-  const gs = await getGotScraping();
-  if (!gs) return null;
-
-  const method = (options.method || "GET").toUpperCase();
-  const headersInit = options.headers || {};
-  const headers = headersInit instanceof Headers
-    ? Object.fromEntries(headersInit.entries())
-    : { ...headersInit };
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const stream = gs.stream({
-      url,
-      method,
-      headers,
-      body: method === "GET" || method === "HEAD" ? undefined : options.body,
-      throwHttpErrors: false,
-      retry: { limit: 0 },
-      timeout: { request: undefined },
-      followRedirect: false,
-      decompress: true,
-    });
-
-    if (options.signal) {
-      const onAbort = () => { try { stream.destroy(new Error("aborted")); } catch { } };
-      if (options.signal.aborted) onAbort();
-      else options.signal.addEventListener("abort", onAbort, { once: true });
-    }
-
-    stream.once("response", (res) => {
-      if (settled) return;
-      settled = true;
-      const resHeaders = new Headers();
-      for (const [k, v] of Object.entries(res.headers || {})) {
-        if (Array.isArray(v)) v.forEach((x) => resHeaders.append(k, String(x)));
-        else if (v != null) resHeaders.set(k, String(v));
-      }
-      const body = Readable.toWeb(stream);
-      resolve(new Response(body, { status: res.statusCode, statusText: res.statusMessage || "", headers: resHeaders }));
-    });
-
-    stream.once("error", (err) => {
-      if (settled) return;
-      settled = true;
-      reject(err);
-    });
-  });
-}
-
-async function tryGotScrapingFetch(url, options) {
-  try {
-    const res = await gotScrapingFetch(url, options);
-    if (res) {
-      try {
-        const host = new URL(typeof url === "string" ? url : url.toString()).hostname;
-        if (!_gotScrapingLoggedHosts.has(host)) {
-          _gotScrapingLoggedHosts.add(host);
-          dbg("TLS", `using got-scraping for ${host}`);
-        }
-      } catch { }
-    }
-    return res;
-  } catch (e) {
-    console.warn(`[ProxyFetch] got-scraping request failed, fallback to native fetch: ${e.message}`);
-    return null;
-  }
-}
-*/
 
 // DNS cache — use Map to avoid prototype pollution via malformed hostnames
 const DNS_CACHE = new Map();
@@ -184,20 +99,15 @@ function getEnvProxyUrl(targetUrl) {
 }
 
 /**
- * Normalize proxy URL (allow host:port)
+ * Normalize proxy URL (allow host:port). Delegates to proxyDispatcher for
+ * protocol/auth parsing; returns the original string on valid parse.
  */
 function normalizeProxyUrl(proxyUrl) {
-  const normalizedInput = normalizeString(proxyUrl);
-  if (!normalizedInput) return null;
-
-  try {
-
-    new URL(normalizedInput);
-    return normalizedInput;
-  } catch {
-    // Allow "127.0.0.1:7890" style values
-    return `http://${normalizedInput}`;
-  }
+  const parsed = dispatcherNormalize(proxyUrl);
+  if (!parsed) return null;
+  const auth = parsed.username ? `${parsed.username}:${parsed.password || ""}@` : "";
+  const port = parsed.port ? `:${parsed.port}` : "";
+  return `${parsed.protocol}//${auth}${parsed.host}${port}`;
 }
 
 function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
@@ -214,22 +124,14 @@ function resolveConnectionProxyUrl(targetUrl, proxyOptions) {
 }
 
 /**
- * Create proxy dispatcher lazily (undici-compatible)
+ * Create a proxy dispatcher lazily (undici-compatible). HTTP/HTTPS via
+ * ProxyAgent with undici timeout config; SOCKS5 via socksConnector with family
+ * pinning. Cached per normalized proxy URL on globalThis (proxyDispatcherCache).
  */
 async function getDispatcher(proxyUrl) {
   const normalized = normalizeProxyUrl(proxyUrl);
   if (!normalized) return null;
-
-  if (!proxyDispatchers.has(normalized)) {
-    // Evict oldest entry if max size reached
-    if (proxyDispatchers.size >= MEMORY_CONFIG.proxyDispatchersMaxSize) {
-      proxyDispatchers.delete(proxyDispatchers.keys().next().value);
-    }
-    const { ProxyAgent } = await import("undici");
-    proxyDispatchers.set(normalized, new ProxyAgent({ uri: normalized }));
-  }
-
-  return proxyDispatchers.get(normalized);
+  return createProxyDispatcher(normalized);
 }
 
 /**
@@ -291,6 +193,74 @@ async function createBypassRequest(parsedUrl, realIP, options) {
   });
 }
 
+/**
+ * Fetch through a proxy URL. Fast-fails on dead proxies (TCP unreachable, <2s)
+ * via proxyHealth cache. On proxy failure, falls back to proxyFallback
+ * candidate probing unless strictProxy is set.
+ */
+async function fetchWithProxy(url, options, proxyUrl, proxyOptions) {
+  const strict = proxyOptions?.strictProxy === true;
+
+  // Fast-fail: skip dispatcher creation entirely if the proxy TCP port is dead.
+  if (!(await isProxyReachable(proxyUrl))) {
+    if (strict) throw new Error(`[ProxyFetch] Proxy unreachable (strictProxy=true): ${proxyUrl}`);
+    console.warn(`[ProxyFetch] Proxy unreachable, trying fallback: ${proxyUrl}`);
+    const fallback = await fetchWithFallback(url, options, proxyOptions);
+    return fallback || (await directFetch(url, options));
+  }
+
+  try {
+    const dispatcher = await getDispatcher(proxyUrl);
+    return await originalFetch(url, { ...options, dispatcher });
+  } catch (proxyError) {
+    // Invalidate health cache — the cached "healthy" entry is now stale.
+    invalidateProxyHealth(proxyUrl);
+    const cause = describeFetchCause(proxyError);
+    if (strict) {
+      throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${cause}`);
+    }
+    console.warn(`[ProxyFetch] Proxy failed, trying fallback: ${cause}`);
+    const fallback = await fetchWithFallback(url, options, proxyOptions);
+    return fallback || (await directFetch(url, options));
+  }
+}
+
+/**
+ * Try the proxyFallback candidate pool. Returns null when no working proxy is
+ * found (caller then decides direct vs strict-fail).
+ */
+async function fetchWithFallback(url, options, proxyOptions) {
+  let targetHostname = "";
+  let targetUrl = "";
+  try {
+    const u = new URL(typeof url === "string" ? url : url.toString());
+    targetHostname = u.hostname;
+    targetUrl = u.toString();
+  } catch { /* non-URL input — skip fallback */ }
+
+  if (targetUrl) {
+    try {
+      const working = await findWorkingProxy(targetHostname, targetUrl);
+      if (working) {
+        dbg("PROXY", `fallback selected working proxy for ${targetHostname}`);
+        const dispatcher = await getDispatcher(working);
+        return originalFetch(url, { ...options, dispatcher });
+      }
+    } catch (e) {
+      dbg("PROXY", `fallback failed: ${describeFetchCause(e)}`);
+    }
+  }
+  return null;
+}
+
+/**
+ * Direct native fetch. With PROXY_DISPATCHER_CONNECTIONS>1 uses a round-robin
+ * direct dispatcher; otherwise plain originalFetch.
+ */
+async function directFetch(url, options) {
+  return originalFetch(url, options);
+}
+
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const targetUrl = typeof url === "string" ? url : url.toString();
 
@@ -315,42 +285,32 @@ export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
     if (proxyUrl) {
       // Proxy resolves DNS externally (not affected by /etc/hosts) — use proxy directly
       try {
-        const dispatcher = await getDispatcher(proxyUrl);
-        return await originalFetch(url, { ...options, dispatcher });
+        return await fetchWithProxy(url, options, proxyUrl, proxyOptions);
       } catch (proxyError) {
-        if (proxyOptions?.strictProxy === true) {
-          throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
-        }
-        console.warn(`[ProxyFetch] Proxy failed, falling back to direct bypass: ${proxyError.message}`);
+        if (proxyOptions?.strictProxy === true) throw proxyError;
+        console.warn(`[ProxyFetch] MITM proxy failed, falling back to direct bypass: ${describeFetchCause(proxyError)}`);
       }
     }
+    // No proxy / proxy failed non-strict — fall through to MITM DNS bypass below.
     // No proxy — manually resolve real IP to bypass DNS spoof
     try {
       const parsedUrl = new URL(targetUrl);
       const realIP = await resolveRealIP(parsedUrl.hostname);
       if (realIP) return await createBypassRequest(parsedUrl, realIP, options);
     } catch (error) {
-      console.warn(`[ProxyFetch] MITM bypass failed: ${error.message}`);
+      console.warn(`[ProxyFetch] MITM bypass failed: ${describeFetchCause(error)}`);
     }
   }
 
   if (proxyUrl) {
-    try {
-      const dispatcher = await getDispatcher(proxyUrl);
-      return await originalFetch(url, { ...options, dispatcher });
-    } catch (proxyError) {
-      // If strictProxy is enabled, fail hard instead of falling back to direct
-      if (proxyOptions?.strictProxy === true) {
-        throw new Error(`[ProxyFetch] Proxy required but failed (strictProxy=true): ${proxyError.message}`);
-      }
-      console.warn(`[ProxyFetch] Proxy failed, falling back to direct: ${proxyError.message}`);
-      return originalFetch(url, options);
-    }
+    const res = await fetchWithProxy(url, options, proxyUrl, proxyOptions);
+    // fetchWithProxy only returns null when the dead-proxy path exhausted
+    // fallback without strictProxy — degrade to direct.
+    if (res) return res;
   }
 
-  // got-scraping disabled — use native fetch directly
-  // (Re-enable per-host by wrapping with tryGotScrapingFetch when needed)
-  return originalFetch(url, options);
+  // got-scraping disabled — use native fetch directly.
+  return directFetch(url, options);
 }
 
 /**
@@ -366,3 +326,4 @@ if (globalThis.fetch !== patchedFetch) {
 }
 
 export default patchedFetch;
+export { getDispatcher };

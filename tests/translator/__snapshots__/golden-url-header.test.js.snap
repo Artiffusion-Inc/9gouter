@@ -229,26 +229,26 @@ exports[`GOLDEN buildHeaders (default executor providers) > cline → headers (a
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "HTTP-Referer": "https://cline.bot",
-    "User-Agent": "9Router/0.5.18",
+    "User-Agent": "9Router/0.5.30",
     "X-CLIENT-TYPE": "9router",
-    "X-CLIENT-VERSION": "0.5.18",
-    "X-CORE-VERSION": "0.5.18",
+    "X-CLIENT-VERSION": "0.5.30",
+    "X-CORE-VERSION": "0.5.30",
     "X-IS-MULTIROOT": "false",
     "X-PLATFORM": "linux",
-    "X-PLATFORM-VERSION": "v26.4.0",
+    "X-PLATFORM-VERSION": "v24.18.0",
     "X-Title": "Cline",
   },
   "nonStream": {
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "HTTP-Referer": "https://cline.bot",
-    "User-Agent": "9Router/0.5.18",
+    "User-Agent": "9Router/0.5.30",
     "X-CLIENT-TYPE": "9router",
-    "X-CLIENT-VERSION": "0.5.18",
-    "X-CORE-VERSION": "0.5.18",
+    "X-CLIENT-VERSION": "0.5.30",
+    "X-CORE-VERSION": "0.5.30",
     "X-IS-MULTIROOT": "false",
     "X-PLATFORM": "linux",
-    "X-PLATFORM-VERSION": "v26.4.0",
+    "X-PLATFORM-VERSION": "v24.18.0",
     "X-Title": "Cline",
   },
   "oauth": {
@@ -256,13 +256,13 @@ exports[`GOLDEN buildHeaders (default executor providers) > cline → headers (a
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "HTTP-Referer": "https://cline.bot",
-    "User-Agent": "9Router/0.5.18",
+    "User-Agent": "9Router/0.5.30",
     "X-CLIENT-TYPE": "9router",
-    "X-CLIENT-VERSION": "0.5.18",
-    "X-CORE-VERSION": "0.5.18",
+    "X-CLIENT-VERSION": "0.5.30",
+    "X-CORE-VERSION": "0.5.30",
     "X-IS-MULTIROOT": "false",
     "X-PLATFORM": "linux",
-    "X-PLATFORM-VERSION": "v26.4.0",
+    "X-PLATFORM-VERSION": "v24.18.0",
     "X-Title": "Cline",
   },
 }
@@ -275,26 +275,26 @@ exports[`GOLDEN buildHeaders (default executor providers) > clinepass → header
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "HTTP-Referer": "https://cline.bot",
-    "User-Agent": "9Router/0.5.18",
+    "User-Agent": "9Router/0.5.30",
     "X-CLIENT-TYPE": "9router",
-    "X-CLIENT-VERSION": "0.5.18",
-    "X-CORE-VERSION": "0.5.18",
+    "X-CLIENT-VERSION": "0.5.30",
+    "X-CORE-VERSION": "0.5.30",
     "X-IS-MULTIROOT": "false",
     "X-PLATFORM": "linux",
-    "X-PLATFORM-VERSION": "v26.4.0",
+    "X-PLATFORM-VERSION": "v24.18.0",
     "X-Title": "Cline",
   },
   "nonStream": {
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "HTTP-Referer": "https://cline.bot",
-    "User-Agent": "9Router/0.5.18",
+    "User-Agent": "9Router/0.5.30",
     "X-CLIENT-TYPE": "9router",
-    "X-CLIENT-VERSION": "0.5.18",
-    "X-CORE-VERSION": "0.5.18",
+    "X-CLIENT-VERSION": "0.5.30",
+    "X-CORE-VERSION": "0.5.30",
     "X-IS-MULTIROOT": "false",
     "X-PLATFORM": "linux",
-    "X-PLATFORM-VERSION": "v26.4.0",
+    "X-PLATFORM-VERSION": "v24.18.0",
     "X-Title": "Cline",
   },
   "oauth": {
@@ -302,13 +302,13 @@ exports[`GOLDEN buildHeaders (default executor providers) > clinepass → header
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
     "HTTP-Referer": "https://cline.bot",
-    "User-Agent": "9Router/0.5.18",
+    "User-Agent": "9Router/0.5.30",
     "X-CLIENT-TYPE": "9router",
-    "X-CLIENT-VERSION": "0.5.18",
-    "X-CORE-VERSION": "0.5.18",
+    "X-CLIENT-VERSION": "0.5.30",
+    "X-CORE-VERSION": "0.5.30",
     "X-IS-MULTIROOT": "false",
     "X-PLATFORM": "linux",
-    "X-PLATFORM-VERSION": "v26.4.0",
+    "X-PLATFORM-VERSION": "v24.18.0",
     "X-Title": "Cline",
   },
 }
@@ -427,6 +427,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > deepseek → headers
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > featherless → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > fireworks → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -524,6 +543,40 @@ exports[`GOLDEN buildHeaders (default executor providers) > glm-cn → headers (
     "Accept": "text/event-stream",
     "Authorization": "Bearer <TOK>",
     "Content-Type": "application/json",
+  },
+}
+`;
+
+exports[`GOLDEN buildHeaders (default executor providers) > grok-cli → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+    "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+    "x-authenticateresponse": "authenticate-response",
+    "x-grok-client-identifier": "grok-pager",
+    "x-grok-client-version": "0.2.93",
+    "x-xai-token-auth": "xai-grok-cli",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+    "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+    "x-authenticateresponse": "authenticate-response",
+    "x-grok-client-identifier": "grok-pager",
+    "x-grok-client-version": "0.2.93",
+    "x-xai-token-auth": "xai-grok-cli",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+    "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+    "x-authenticateresponse": "authenticate-response",
+    "x-grok-client-identifier": "grok-pager",
+    "x-grok-client-version": "0.2.93",
+    "x-xai-token-auth": "xai-grok-cli",
   },
 }
 `;
@@ -896,6 +949,25 @@ exports[`GOLDEN buildHeaders (default executor providers) > perplexity → heade
 }
 `;
 
+exports[`GOLDEN buildHeaders (default executor providers) > perplexity-agent → headers (apiKey / oauth) 1`] = `
+{
+  "apiKey": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "nonStream": {
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+  "oauth": {
+    "Accept": "text/event-stream",
+    "Authorization": "Bearer <TOK>",
+    "Content-Type": "application/json",
+  },
+}
+`;
+
 exports[`GOLDEN buildHeaders (default executor providers) > siliconflow → headers (apiKey / oauth) 1`] = `
 {
   "apiKey": {
@@ -1029,34 +1101,6 @@ exports[`GOLDEN buildHeaders (default executor providers) > xiaomi-mimo → head
 }
 `;
 
-exports[`GOLDEN buildHeaders (default executor providers) > zcode → headers (apiKey / oauth) 1`] = `
-{
-  "apiKey": {
-    "Accept": "text/event-stream",
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-    "HTTP-Referer": "https://zcode.z.ai",
-    "X-Title": "Z Code@cli",
-    "X-ZCode-Agent": "glm",
-  },
-  "nonStream": {
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-    "HTTP-Referer": "https://zcode.z.ai",
-    "X-Title": "Z Code@cli",
-    "X-ZCode-Agent": "glm",
-  },
-  "oauth": {
-    "Accept": "text/event-stream",
-    "Authorization": "Bearer <TOK>",
-    "Content-Type": "application/json",
-    "HTTP-Referer": "https://zcode.z.ai",
-    "X-Title": "Z Code@cli",
-    "X-ZCode-Agent": "glm",
-  },
-}
-`;
-
 exports[`GOLDEN buildUrl (default executor providers) > alicode → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://coding.dashscope.aliyuncs.com/v1/chat/completions",
@@ -1169,6 +1213,13 @@ exports[`GOLDEN buildUrl (default executor providers) > deepseek → url (stream
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > featherless → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.featherless.ai/v1/chat/completions",
+  "stream": "https://api.featherless.ai/v1/chat/completions",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > fireworks → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.fireworks.ai/inference/v1/chat/completions",
@@ -1201,6 +1252,13 @@ exports[`GOLDEN buildUrl (default executor providers) > glm-cn → url (stream +
 {
   "nonStream": "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
   "stream": "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions",
+}
+`;
+
+exports[`GOLDEN buildUrl (default executor providers) > grok-cli → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://cli-chat-proxy.grok.com/v1/responses",
+  "stream": "https://cli-chat-proxy.grok.com/v1/responses",
 }
 `;
 
@@ -1323,6 +1381,13 @@ exports[`GOLDEN buildUrl (default executor providers) > perplexity → url (stre
 }
 `;
 
+exports[`GOLDEN buildUrl (default executor providers) > perplexity-agent → url (stream + non-stream) 1`] = `
+{
+  "nonStream": "https://api.perplexity.ai/v1/responses",
+  "stream": "https://api.perplexity.ai/v1/responses",
+}
+`;
+
 exports[`GOLDEN buildUrl (default executor providers) > siliconflow → url (stream + non-stream) 1`] = `
 {
   "nonStream": "https://api.siliconflow.com/v1/chat/completions",
@@ -1369,12 +1434,5 @@ exports[`GOLDEN buildUrl (default executor providers) > xiaomi-mimo → url (str
 {
   "nonStream": "https://api.xiaomimimo.com/v1/chat/completions",
   "stream": "https://api.xiaomimimo.com/v1/chat/completions",
-}
-`;
-
-exports[`GOLDEN buildUrl (default executor providers) > zcode → url (stream + non-stream) 1`] = `
-{
-  "nonStream": "https://zcode.z.ai/api/v1/zcode-plan/chat/completions",
-  "stream": "https://zcode.z.ai/api/v1/zcode-plan/chat/completions",
 }
 `;

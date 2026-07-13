@@ -46,16 +46,18 @@ export function backupDbLite(adapter, destDir, destName = "data.sqlite") {
     const excluded = new Set(BACKUP_EXCLUDE_TABLES);
     const tables = adapter
       .all(`SELECT name, sql FROM main.sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`)
-      .filter((t) => !excluded.has(t.name));
+      .filter((t) => t.sql && !excluded.has(t.name));
 
-    adapter.transaction(() => {
-      for (const t of tables) {
-        // Recreate table structure in backup DB, then copy rows.
-        const createSql = t.sql.replace(/CREATE TABLE\s+/i, "CREATE TABLE bak.");
-        adapter.exec(createSql);
-        adapter.exec(`INSERT INTO bak.${t.name} SELECT * FROM main.${t.name}`);
-      }
-    });
+    // Note: ATTACH + cross-DB INSERTs are intentionally run outside a
+    // transaction — better-sqlite3 (and friends) do not allow ATTACH/DETACH
+    // to participate in user transactions, and SAVEPOINTs do not span
+    // attached databases either. Row count for the typical ~10 tables is
+    // tiny, so the lack of atomicity is acceptable.
+    for (const t of tables) {
+      const createSql = t.sql.replace(/CREATE TABLE\s+/i, "CREATE TABLE bak.");
+      adapter.exec(createSql);
+      adapter.exec(`INSERT INTO bak.${t.name} SELECT * FROM main.${t.name}`);
+    }
   } finally {
     try { adapter.exec("DETACH DATABASE bak"); } catch {}
   }

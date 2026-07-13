@@ -208,6 +208,12 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     const delta = headroomStats.tokens_saved || 0;
     const pct = before > 0 ? ((delta / before) * 100).toFixed(1) : "0";
     xf.push(`HEADROOM −${delta}tok(${pct}%)`);
+    // Keep the structured success log alongside the unified `xf` summary line so
+    // tests/dashboards that look for the detailed "HEADROOM" tag with delta/body/
+    // messages breakdown still work (refactor fb543a1 contract).
+    log?.info?.("HEADROOM", `reported token delta=${delta} before=${before} after=${before - delta}`);
+    log?.info?.("HEADROOM", `body=${formatHeadroomSizeLog(headroomDiagnostics)}`);
+    log?.info?.("HEADROOM", `messages=${JSON.stringify(headroomDiagnostics.messageSizes || [])}`);
     if (isHeadroomPhantomSavings(headroomStats, headroomDiagnostics)) {
       log?.warn?.("HEADROOM", `reported token delta, but outbound JSON shrank <5%; provider may bill near-original payload | ${formatHeadroomSizeLog(headroomDiagnostics)}`);
     }

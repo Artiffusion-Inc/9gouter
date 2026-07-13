@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+# CLAUDE.md
+
 > **Fork of [decolua/9router](https://github.com/decolua/9router)** with custom patches. Sync upstream periodically.
 
 ## Our Patches

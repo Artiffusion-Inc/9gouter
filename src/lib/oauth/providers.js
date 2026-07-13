@@ -27,7 +27,7 @@ import {
   GITLAB_CONFIG,
   CODEBUDDY_CONFIG,
   KIMCHI_CONFIG,
-  ZCODE_CONFIG,
+  GROK_CLI_CONFIG,
   getOAuthClientMetadata,
 } from "./constants/oauth";
 import { XAI_CONFIG, XAI_PKCE_VERIFIER_BYTES } from "./constants/xai";
@@ -253,6 +253,122 @@ const PROVIDERS = {
         mapped.providerSpecificData = { idToken: tokens.id_token };
       }
       return mapped;
+    },
+  },
+
+  // Grok CLI / Grok Build — device code flow to auth.x.ai, inference on cli-chat-proxy.grok.com
+  "grok-cli": {
+    config: GROK_CLI_CONFIG,
+    flowType: "device_code",
+    requestDeviceCode: async (config) => {
+      const body = new URLSearchParams({
+        client_id: config.clientId,
+        scope: config.scope,
+      });
+      // Official CLI sends referrer=grok-build
+      if (config.referrer) body.set("referrer", config.referrer);
+
+      const response = await fetch(config.deviceCodeUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+        },
+        body,
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Grok CLI device code request failed: ${error}`);
+      }
+
+      return await response.json();
+    },
+    pollToken: async (config, deviceCode) => {
+      const response = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+          "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+        },
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          device_code: deviceCode,
+          client_id: config.clientId,
+        }),
+      });
+
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        const text = await response.text();
+        data = { error: "invalid_response", error_description: text };
+      }
+
+      // Device flow: 400 + authorization_pending is expected while user authorizes
+      const pending =
+        data?.error === "authorization_pending" ||
+        data?.error === "slow_down";
+      return {
+        ok: response.ok || pending,
+        data,
+      };
+    },
+    postExchange: async (tokens) => {
+      // Best-effort user profile from cli-chat-proxy (non-fatal)
+      try {
+        const res = await fetch("https://cli-chat-proxy.grok.com/v1/user", {
+          headers: {
+            Authorization: `Bearer ${tokens.access_token}`,
+            Accept: "application/json",
+            "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
+            "x-xai-token-auth": "xai-grok-cli",
+            "x-grok-client-version": "0.2.93",
+          },
+        });
+        if (res.ok) return { user: await res.json() };
+      } catch {
+        /* ignore */
+      }
+      return { user: null };
+    },
+    mapTokens: (tokens, extra) => {
+      const email =
+        decodeXaiIdTokenEmail(tokens.id_token) ||
+        extractEmailFromAccessToken(tokens.access_token) ||
+        extra?.user?.email ||
+        null;
+      const userId =
+        extra?.user?.userId ||
+        extra?.user?.principalId ||
+        null;
+      const displayName = [extra?.user?.firstName, extra?.user?.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim() || null;
+
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || null,
+        expiresIn: tokens.expires_in,
+        scope: tokens.scope,
+        // Top-level for dashboard connection cards
+        email: email || undefined,
+        displayName: displayName || undefined,
+        // Mirror identity into providerSpecificData so GrokCliExecutor can set
+        // x-email / x-userid without depending on top-level credential shape.
+        providerSpecificData: {
+          authMethod: "device_code",
+          idToken: tokens.id_token || null,
+          email: email || null,
+          userId,
+          hasGrokCodeAccess: extra?.user?.hasGrokCodeAccess ?? null,
+          subscriptionTier: extra?.user?.subscriptionTier ?? null,
+        },
+      };
     },
   },
 
@@ -778,6 +894,9 @@ const PROVIDERS = {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresIn: tokens.expires_in,
+      name: extra?.userInfo?.login || extra?.userInfo?.name,
+      displayName: extra?.userInfo?.name || extra?.userInfo?.login,
+      email: extra?.userInfo?.email || null,
       providerSpecificData: {
         copilotToken: extra?.copilotToken?.token,
         copilotTokenExpiresAt: extra?.copilotToken?.expires_at,
@@ -1384,82 +1503,6 @@ const PROVIDERS = {
         },
       };
     },
-  },
-  // ZCode (Z.ai) OAuth — Authorization Code flow via chat.z.ai → zcode.z.ai token exchange.
-  // Browser login at chat.z.ai, callback with authCode, exchange at zcode.z.ai/api/v1/oauth/token.
-  // Returns JWT for start-plan + provider access_token.
-  zcode: {
-    config: ZCODE_CONFIG,
-    flowType: "authorization_code_pkce",
-    buildAuthUrl: (config, redirectUri, state, codeChallenge) => {
-      const params = new URLSearchParams({
-        response_type: "code",
-        client_id: config.clientId,
-        redirect_uri: redirectUri,
-        state,
-        code_challenge: codeChallenge,
-        code_challenge_method: config.codeChallengeMethod,
-      });
-      return `${config.authorizeUrl}?${params.toString()}`;
-    },
-    exchangeToken: async (config, code, redirectUri, codeVerifier, state) => {
-      // ZCode uses a shared token exchange endpoint (zcode.z.ai) that holds the app secret.
-      // POST body: { provider: "zai", code, redirect_uri, state }
-      const response = await fetch(config.tokenUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          provider: "zai",
-          code,
-          redirect_uri: redirectUri,
-          state,
-        }),
-      });
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`ZCode token exchange failed: ${response.status} ${error}`);
-      }
-      const data = await response.json();
-      if (typeof data.code === "number" && data.code !== 0) {
-        throw new Error(`ZCode token exchange error: ${data.msg || "unknown"}`);
-      }
-      // Response shape: { code: 0, data: { token: <jwt>, zai: { access_token: <...> }, user: { user_id: <...> } } }
-      const providerToken = data.data?.zai?.access_token?.trim() || "";
-      const jwt = data.data?.token?.trim() || "";
-      const userId = data.data?.user?.user_id || "";
-      if (!providerToken) {
-        throw new Error("ZCode token response missing data.zai.access_token");
-      }
-      return {
-        access_token: providerToken,
-        token_type: "Bearer",
-        refresh_token: jwt, // ponytail: store JWT as refresh_token for start-plan auth
-        _zcodeJwt: jwt,
-        _zcodeUserId: userId,
-      };
-    },
-    mapTokens: (tokens) => ({
-      // JWT is the start-plan auth token for zcode.z.ai endpoints.
-      // Z.AI access_token (tokens.access_token) is for api.z.ai directly — not used here.
-      accessToken: tokens._zcodeJwt || tokens.access_token,
-      // ZCode start-plan JWT is long-lived (no standard refresh endpoint — confirmed
-      // against ookami42/glm5.2proxy, which never refreshes). Store the JWT itself as
-      // refreshToken so the 24h-access-token assumption elsewhere still resolves.
-      refreshToken: tokens._zcodeJwt,
-      // expiresIn null → no expiresAt → shouldRefreshCredentials stays false →
-      // the token-refresh path (which has no ZCode handler) is never triggered.
-      expiresIn: null,
-      email: tokens._zcodeUserId ? `zcode-${tokens._zcodeUserId}@z.ai` : null,
-      displayName: null,
-      providerSpecificData: {
-        authMethod: "oauth",
-        userId: tokens._zcodeUserId,
-        zaiAccessToken: tokens.access_token,
-      },
-    }),
   },
 };
 

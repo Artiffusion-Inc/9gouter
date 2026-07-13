@@ -13,13 +13,13 @@ import { QwenExecutor } from "./qwen.js";
 import { OpenCodeExecutor } from "./opencode.js";
 import { OpenCodeGoExecutor } from "./opencode-go.js";
 import { GrokWebExecutor } from "./grok-web.js";
+import { GrokCliExecutor } from "./grok-cli.js";
 import { PerplexityWebExecutor } from "./perplexity-web.js";
 import { OllamaLocalExecutor } from "./ollama-local.js";
 import { CommandCodeExecutor } from "./commandcode.js";
 import { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 import { MimoFreeExecutor } from "./mimo-free.js";
 import { CodeBuddyExecutor } from "./codebuddy-cn.js";
-import { ZcodeProxyExecutor } from "./zcode-proxy.js";
 import { DefaultExecutor } from "./default.js";
 
 const executors = {
@@ -40,6 +40,9 @@ const executors = {
   opencode: new OpenCodeExecutor(),
   "opencode-go": new OpenCodeGoExecutor(),
   "grok-web": new GrokWebExecutor(),
+  "grok-cli": new GrokCliExecutor(),
+  gcli: new GrokCliExecutor(), // Alias
+  gb: new GrokCliExecutor(), // Alias (Grok Build)
   "perplexity-web": new PerplexityWebExecutor(),
   "ollama-local": new OllamaLocalExecutor(),
   commandcode: new CommandCodeExecutor(),
@@ -47,8 +50,6 @@ const executors = {
   "mimo-free": new MimoFreeExecutor(),
   mmf: new MimoFreeExecutor(), // Alias for mimo-free
   "codebuddy-cn": new CodeBuddyExecutor(),
-  "zcode": new ZcodeProxyExecutor(),
-  "zcode-proxy": new ZcodeProxyExecutor(), // alias
 };
 
 const defaultCache = new Map();
@@ -80,10 +81,10 @@ export { QwenExecutor } from "./qwen.js";
 export { OpenCodeExecutor } from "./opencode.js";
 export { OpenCodeGoExecutor } from "./opencode-go.js";
 export { GrokWebExecutor } from "./grok-web.js";
+export { GrokCliExecutor } from "./grok-cli.js";
 export { PerplexityWebExecutor } from "./perplexity-web.js";
 export { OllamaLocalExecutor } from "./ollama-local.js";
 export { CommandCodeExecutor } from "./commandcode.js";
 export { XiaomiTokenplanExecutor } from "./xiaomi-tokenplan.js";
 export { MimoFreeExecutor } from "./mimo-free.js";
 export { CodeBuddyExecutor } from "./codebuddy-cn.js";
-export { ZcodeProxyExecutor } from "./zcode-proxy.js";

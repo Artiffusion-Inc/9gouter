@@ -3,11 +3,32 @@
 package provider
 
 import (
-	"context"
 	"fmt"
 
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/antigravity"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/azure"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/base"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/codebuddy"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/codex"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/commandcode"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/cursor"
 	defexec "github.com/Artiffusion-Inc/9router/internal/adapter/provider/default"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/gemini-cli"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/github"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/grok-cli"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/grok-web"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/iflow"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/kimchi"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/kiro"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/mimo-free"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/ollama-local"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/opencode"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/opencode-go"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/perplexity-web"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/qoder"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/qwen"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/vertex"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/xiaomi-tokenplan"
 	domain "github.com/Artiffusion-Inc/9router/internal/domain/provider"
 )
 
@@ -56,8 +77,24 @@ var configs = map[string]base.Config{
 			"Anthropic-Beta":    "claude-code-20250219,interleaved-thinking-2025-05-14",
 		},
 	},
+	"antigravity": {
+		BaseURLs: []string{"https://cloudcode-pa.googleapis.com"},
+		Format:   "antigravity",
+		Headers: map[string]string{
+			"User-Agent": "google-api-nodejs-client/9.15.1",
+		},
+		Retry: map[int]base.RetryEntry{
+			429: {Attempts: 6, DelayMs: 2000},
+			500: {Attempts: 3, DelayMs: 3000},
+			503: {Attempts: 3, DelayMs: 2000},
+		},
+	},
 	"assemblyai": {
 		BaseURL: "https://api.assemblyai.com/v1/audio/transcriptions",
+	},
+	"azure": {
+		BaseURL: "",
+		Headers: map[string]string{},
 	},
 	"blackbox": {
 		BaseURL: "https://api.blackbox.ai/v1/chat/completions",
@@ -124,8 +161,38 @@ var configs = map[string]base.Config{
 		},
 		Auth: base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
 	},
+	"codex": {
+		BaseURL: "https://chatgpt.com/backend-api/codex/responses",
+		Format:  "openai-responses",
+		Headers: map[string]string{
+			"originator":  "codex_cli_rs",
+			"User-Agent":  "codex_cli_rs/0.136.0",
+		},
+		Auth: base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+	},
 	"cohere": {
 		BaseURL: "https://api.cohere.ai/v1/chat/completions",
+	},
+	"commandcode": {
+		BaseURL: "https://api.commandcode.ai/alpha/generate",
+		Format:  "commandcode",
+		Headers: map[string]string{
+			"x-command-code-version": "0.25.7",
+			"x-cli-environment":      "cli",
+		},
+		Auth: base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+	},
+	"cursor": {
+		BaseURL:   "https://api2.cursor.sh",
+		URLSuffix: "/aiserver.v1.ChatService/StreamUnifiedChatWithTools",
+		Format:    "cursor",
+		Headers: map[string]string{
+			"connect-accept-encoding": "gzip",
+			"connect-protocol-version":  "1",
+			"Content-Type":              "application/connect+proto",
+			"User-Agent":                "connect-es/1.6.1",
+		},
+		Auth: base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
 	},
 	"deepgram": {
 		BaseURL: "https://api.deepgram.com/v1/listen",
@@ -147,8 +214,32 @@ var configs = map[string]base.Config{
 			OAuth:  &base.AuthSpec{Header: "Authorization", Scheme: "bearer"},
 		},
 	},
+	"gemini-cli": {
+		BaseURL: "https://cloudcode-pa.googleapis.com/v1internal",
+		Format:  "gemini-cli",
+		Headers: map[string]string{
+			"X-Goog-Api-Client": "google-genai-sdk/1.41.0 gl-node/v22.19.0",
+		},
+		Auth: base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+	},
 	"gitlab": {
 		BaseURL: "https://gitlab.com/api/v4/chat/completions",
+	},
+	"github": {
+		BaseURL:      "https://api.githubcopilot.com/chat/completions",
+		BaseURLs:     []string{"https://api.githubcopilot.com/chat/completions", "https://api.githubcopilot.com/responses", "https://api.githubcopilot.com/v1/messages"},
+		Format:       "openai",
+		Headers: map[string]string{
+			"copilot-integration-id":              "vscode-chat",
+			"editor-version":                      "vscode/1.110.0",
+			"editor-plugin-version":               "copilot-chat/0.38.0",
+			"user-agent":                          "GitHubCopilotChat/0.38.0",
+			"openai-intent":                     "conversation-panel",
+			"x-github-api-version":                "2025-04-01",
+			"x-vscode-user-agent-library-version": "electron-fetch",
+			"X-Initiator":                         "user",
+		},
+		Auth: base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
 	},
 	"glm": {
 		BaseURL:   "https://api.z.ai/api/anthropic/v1/messages",
@@ -156,9 +247,9 @@ var configs = map[string]base.Config{
 		URLSuffix: "?beta=true",
 		Headers:   claudeAPIHeaders,
 		Auth: base.AuthDescriptor{
-			Combined: true,
-			Header:   "x-api-key",
-			Scheme:   "raw",
+			Combined:         true,
+			Header:           "x-api-key",
+			Scheme:           "raw",
 			AnthropicVersion: true,
 		},
 	},
@@ -180,11 +271,23 @@ var configs = map[string]base.Config{
 			503: {Attempts: 2, DelayMs: 1500},
 		},
 	},
+	"grok-web": {
+		BaseURL: "https://grok.com/rest/app-chat/conversations/new",
+		Format:  "grok-web",
+		NoAuth:  true,
+	},
 	"groq": {
 		BaseURL: "https://api.groq.com/openai/v1/chat/completions",
 	},
 	"hyperbolic": {
 		BaseURL: "https://api.hyperbolic.xyz/v1/chat/completions",
+	},
+	"iflow": {
+		BaseURL: "https://apis.iflow.cn/v1/chat/completions",
+		Headers: map[string]string{
+			"User-Agent": "iFlow-Cli",
+		},
+		Auth: base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
 	},
 	"kilocode": {
 		BaseURL: "https://api.kilo.ai/api/openrouter/chat/completions",
@@ -202,9 +305,9 @@ var configs = map[string]base.Config{
 		URLSuffix: "?beta=true",
 		Headers:   claudeAPIHeaders,
 		Auth: base.AuthDescriptor{
-			Combined: true,
-			Header:   "x-api-key",
-			Scheme:   "raw",
+			Combined:         true,
+			Header:           "x-api-key",
+			Scheme:           "raw",
 			AnthropicVersion: true,
 		},
 	},
@@ -214,11 +317,28 @@ var configs = map[string]base.Config{
 		URLSuffix: "?beta=true",
 		Headers:   claudeAPIHeaders,
 		Auth: base.AuthDescriptor{
-			Combined: true,
-			Header:   "x-api-key",
-			Scheme:   "raw",
-			Hooks:    []string{"kimiHeaders"},
+			Combined:         true,
+			Header:           "x-api-key",
+			Scheme:           "raw",
+			Hooks:            []string{"kimiHeaders"},
 			AnthropicVersion: true,
+		},
+	},
+	"kiro": {
+		BaseURLs: []string{
+			"https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
+			"https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse",
+			"https://q.us-east-1.amazonaws.com/generateAssistantResponse",
+		},
+		Format: "kiro",
+		Headers: map[string]string{
+			"Accept":          "application/vnd.amazon.eventstream",
+			"X-Amz-Target":    "AmazonCodeWhispererStreamingService.GenerateAssistantResponse",
+			"User-Agent":      "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0",
+			"X-Amz-User-Agent": "aws-sdk-js/3.0.0 kiro-ide/1.0.0",
+		},
+		Retry: map[int]base.RetryEntry{
+			429: {Attempts: 0, DelayMs: 2000},
 		},
 	},
 	"minimax": {
@@ -227,9 +347,9 @@ var configs = map[string]base.Config{
 		URLSuffix: "?beta=true",
 		Headers:   claudeAPIHeaders,
 		Auth: base.AuthDescriptor{
-			Combined: true,
-			Header:   "x-api-key",
-			Scheme:   "raw",
+			Combined:         true,
+			Header:           "x-api-key",
+			Scheme:           "raw",
 			AnthropicVersion: true,
 		},
 		ReasoningInject: &base.ReasoningInject{Scope: "all"},
@@ -241,14 +361,18 @@ var configs = map[string]base.Config{
 		URLSuffix: "?beta=true",
 		Headers:   claudeAPIHeaders,
 		Auth: base.AuthDescriptor{
-			Combined: true,
-			Header:   "x-api-key",
-			Scheme:   "raw",
+			Combined:         true,
+			Header:           "x-api-key",
+			Scheme:           "raw",
 			AnthropicVersion: true,
 		},
 	},
 	"mistral": {
 		BaseURL: "https://api.mistral.ai/v1/chat/completions",
+	},
+	"mimo-free": {
+		BaseURL: "https://api.xiaomimimo.com/api/free-ai/openai/chat",
+		NoAuth:  true,
 	},
 	"mmf": {
 		BaseURL: "https://api.xiaomimimo.com/api/free-ai/openai/chat",
@@ -267,8 +391,22 @@ var configs = map[string]base.Config{
 		BaseURL: "https://ollama.com/api/chat",
 		Format:  "ollama",
 	},
+	"ollama-local": {
+		BaseURL: "http://localhost:11434/api/chat",
+		Format:  "ollama",
+	},
 	"openai": {
 		BaseURL: "https://api.openai.com/v1/chat/completions",
+	},
+	"opencode": {
+		BaseURL: "https://opencode.ai",
+		Headers: map[string]string{
+			"x-opencode-client": "desktop",
+		},
+		NoAuth: true,
+	},
+	"opencode-go": {
+		BaseURL: "https://opencode.ai/zen/go/v1/chat/completions",
 	},
 	"openrouter": {
 		BaseURL: "https://openrouter.ai/api/v1/chat/completions",
@@ -284,6 +422,18 @@ var configs = map[string]base.Config{
 		BaseURL: "https://api.perplexity.ai/v1/responses",
 		Format:  "openai-responses",
 	},
+	"perplexity-web": {
+		BaseURL: "https://www.perplexity.ai/rest/sse/perplexity_ask",
+		Format:  "perplexity-web",
+		NoAuth:  true,
+	},
+	"qoder": {
+		BaseURL:  "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
+		TimeoutMs: 120000,
+	},
+	"qwen": {
+		BaseURL: "https://portal.qwen.ai/v1/chat/completions",
+	},
 	"siliconflow": {
 		BaseURL: "https://api.siliconflow.com/v1/chat/completions",
 	},
@@ -296,6 +446,14 @@ var configs = map[string]base.Config{
 	"vercel-ai-gateway": {
 		BaseURL: "https://ai-gateway.vercel.sh/v1/chat/completions",
 	},
+	"vertex": {
+		BaseURL: "https://aiplatform.googleapis.com",
+		Format:  "vertex",
+	},
+	"vertex-partner": {
+		BaseURL: "https://aiplatform.googleapis.com",
+		Format:  "openai",
+	},
 	"volcengine-ark": {
 		BaseURL: "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions",
 	},
@@ -304,6 +462,14 @@ var configs = map[string]base.Config{
 	},
 	"xiaomi-mimo": {
 		BaseURL: "https://api.xiaomimimo.com/v1/chat/completions",
+	},
+	"xiaomi-tokenplan": {
+		BaseURL: "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions",
+		BaseURLs: []string{
+			"https://token-plan-sgp.xiaomimimo.com/v1",
+			"https://token-plan-cn.xiaomimimo.com/v1",
+			"https://token-plan-ams.xiaomimimo.com/v1",
+		},
 	},
 }
 
@@ -412,18 +578,23 @@ func providerAlias(id string) string {
 
 // p is a provider implementation that wires a static id/alias to an executor.
 type p struct {
-	id      string
-	alias   string
-	exec    domain.Executor
+	id    string
+	alias string
+	exec  domain.Executor
 }
 
 func (p p) ID() string             { return p.id }
 func (p p) Alias() string          { return p.alias }
 func (p p) Executor() domain.Executor { return p.exec }
 
+// newDefault returns a DefaultExecutor for providers without custom logic.
+func newDefault(id string, cfg base.Config) domain.Executor {
+	cfg.ID = id
+	return defexec.New(id, cfg)
+}
+
 // Lookup resolves a provider id or alias to a Provider. It returns an error
-// for unknown ids. Specialized executors not yet ported are registered as
-// stubs so the registry stays intact.
+// for unknown ids.
 func Lookup(providerID string) (domain.Provider, error) {
 	id, ok := aliases[providerID]
 	if !ok {
@@ -437,13 +608,55 @@ func Lookup(providerID string) (domain.Provider, error) {
 	cfg.ID = id
 
 	var exec domain.Executor
-	// Stubs: providers whose specialized executor is not yet ported return a
-	// not-yet-implemented error on Execute while still exposing BuildURL and
-	// BuildHeaders so the registry stays intact.
-	if cfg.BaseURL == "" && len(cfg.BaseURLs) == 0 {
-		exec = &notImplementedExecutor{DefaultExecutor: defexec.New(id, cfg)}
-	} else {
-		exec = defexec.New(id, cfg)
+	switch id {
+	case "antigravity":
+		exec = antigravityexec.New(cfg)
+	case "azure":
+		exec = azureexec.New(cfg)
+	case "codebuddy-cn":
+		exec = codebuddyexec.New(cfg)
+	case "codex":
+		exec = codexec.New(cfg)
+	case "commandcode":
+		exec = commandcodeexec.New(cfg)
+	case "cursor":
+		exec = cursorexec.New(cfg)
+	case "gemini-cli":
+		exec = geminicliexec.New(cfg)
+	case "github":
+		exec = githubexec.New(cfg)
+	case "grok-cli":
+		exec = grokcliexec.New(cfg)
+	case "grok-web":
+		exec = grokwebexec.New(cfg)
+	case "iflow":
+		exec = iflowexec.New(cfg)
+	case "kimchi":
+		exec = kimchiexec.New(cfg)
+	case "kiro":
+		exec = kiroexec.New(cfg)
+	case "mimo-free":
+		exec = mimofreeexec.New(cfg)
+	case "ollama-local":
+		exec = ollamalocalexec.New(cfg)
+	case "opencode":
+		exec = opencodeexec.New(cfg)
+	case "opencode-go":
+		exec = opencodegoexec.New(cfg)
+	case "perplexity-web":
+		exec = perplexitywebexec.New(cfg)
+	case "qoder":
+		exec = qoderexec.New(cfg)
+	case "qwen":
+		exec = qwenexec.New(cfg)
+	case "vertex":
+		exec = vertexexec.New(id, cfg)
+	case "vertex-partner":
+		exec = vertexexec.New(id, cfg)
+	case "xiaomi-tokenplan":
+		exec = xiaomitokenplanexec.New(cfg)
+	default:
+		exec = newDefault(id, cfg)
 	}
 	return p{id: id, alias: alias, exec: exec}, nil
 }
@@ -451,32 +664,4 @@ func Lookup(providerID string) (domain.Provider, error) {
 // Alias returns the canonical alias for a provider id.
 func Alias(providerID string) string {
 	return providerAlias(providerID)
-}
-
-// notImplementedExecutor is used to keep the registry intact for providers
-// whose full executor is not yet ported. BuildURL/BuildHeaders still work
-// via default behavior; Execute returns a clear error.
-type notImplementedExecutor struct {
-	*defexec.DefaultExecutor
-}
-
-func (n *notImplementedExecutor) Execute(ctx context.Context, req domain.ExecRequest) (domain.Resp, error) {
-	return domain.Resp{}, fmt.Errorf("provider %q executor not yet implemented", n.Provider)
-}
-
-func init() {
-	// Register stub entries for providers not in the url-header golden subset
-	// but required by the 25-provider plan registry so Lookup does not fail.
-	stubs := []string{
-		"antigravity", "azure", "gemini-cli", "github", "iflow", "qoder", "kiro",
-		"codex", "cursor", "vertex", "vertex-partner", "qwen", "opencode",
-		"opencode-go", "grok-web", "perplexity-web", "ollama-local", "commandcode",
-		"xiaomi-tokenplan", "mimo-free",
-	}
-	for _, id := range stubs {
-		if _, ok := configs[id]; ok {
-			continue
-		}
-		configs[id] = base.Config{ID: id, BaseURL: ""}
-	}
 }

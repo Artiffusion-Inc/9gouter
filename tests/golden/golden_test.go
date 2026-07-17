@@ -623,3 +623,425 @@ func keys(m map[string]string) []string {
 	}
 	return out
 }
+
+// TestGoldenURLHeaderAll25Providers covers the providers not present in the
+// Vitest url/header snapshot. It asserts exact URL and sanitized headers for
+// each ported executor.
+func TestGoldenURLHeaderAll25Providers(t *testing.T) {
+	tests := []struct {
+		pid           string
+		creds         domain.Credentials
+		wantURLStream string
+		wantURLNon    string
+		wantHeaders   map[string]any // apiKey path only; oauth path inferred by replacing key header if needed
+		oauthHeaders  map[string]any // optional overrides for oauth path
+	}{
+		{
+			pid:           "antigravity",
+			creds:         oauthCred,
+			wantURLStream: "https://cloudcode-pa.googleapis.com/v1internal:streamGenerateContent?alt=sse",
+			wantURLNon:    "https://cloudcode-pa.googleapis.com/v1internal:generateContent",
+			wantHeaders: map[string]any{
+				"Accept":        "text/event-stream",
+				"Authorization": "Bearer <TOK>",
+				"Content-Type":  "application/json",
+				"User-Agent":    "google-api-nodejs-client/9.15.1",
+			},
+		},
+		{
+			pid:           "azure",
+			creds:         specialCred,
+			wantURLStream: "https://api.openai.com/openai/deployments/test-model/chat/completions?api-version=2024-10-01-preview",
+			wantURLNon:    "https://api.openai.com/openai/deployments/test-model/chat/completions?api-version=2024-10-01-preview",
+			wantHeaders: map[string]any{
+				"Accept":        "text/event-stream",
+				"api-key":       "<CRED>",
+				"Content-Type":  "application/json",
+			},
+		},
+		{
+			pid:           "codex",
+			creds:         apiKeyCred,
+			wantURLStream: "https://chatgpt.com/backend-api/codex/responses",
+			wantURLNon:    "https://chatgpt.com/backend-api/codex/responses",
+			wantHeaders: map[string]any{
+				"Accept":        "text/event-stream",
+				"Authorization": "Bearer <TOK>",
+				"Content-Type":  "application/json",
+				"originator":    "codex_cli_rs",
+				"session_id":    "<SESSION>",
+				"User-Agent":    "codex_cli_rs/0.136.0",
+			},
+		},
+		{
+			pid:           "commandcode",
+			creds:         apiKeyCred,
+			wantURLStream: "https://api.commandcode.ai/alpha/generate",
+			wantURLNon:    "https://api.commandcode.ai/alpha/generate",
+			wantHeaders: map[string]any{
+				"Accept":                 "text/event-stream",
+				"Authorization":          "Bearer <TOK>",
+				"Content-Type":           "application/json",
+				"x-cli-environment":      "cli",
+				"x-command-code-version": "0.25.7",
+				"x-session-id":           "<UUID>",
+			},
+		},
+		{
+			pid: "cursor",
+			creds: domain.Credentials{
+				APIKey:               "sk-test-APIKEY",
+				AccessToken:          "tok-test-ACCESS",
+				ProviderSpecificData: map[string]any{"machineId": "MACHINE123"},
+			},
+			wantURLStream: "https://api2.cursor.sh/aiserver.v1.ChatService/StreamUnifiedChatWithTools",
+			wantURLNon:    "https://api2.cursor.sh/aiserver.v1.ChatService/StreamUnifiedChatWithTools",
+			wantHeaders: map[string]any{
+				"Accept":                    "text/event-stream",
+				"Authorization":             "Bearer <TOK>",
+				"connect-accept-encoding":   "gzip",
+				"connect-protocol-version":  "1",
+				"Content-Type":              "application/connect+proto",
+				"User-Agent":                "connect-es/1.6.1",
+				"x-cursor-client-type":      "ide",
+				"x-cursor-client-version":   "3.1.0",
+				"x-machine-id":              "<MACHINE>",
+			},
+		},
+		{
+			pid:           "gemini-cli",
+			creds:         oauthCred,
+			wantURLStream: "https://cloudcode-pa.googleapis.com/v1internal/models/test-model:streamGenerateContent?alt=sse",
+			wantURLNon:    "https://cloudcode-pa.googleapis.com/v1internal/models/test-model:generateContent",
+			wantHeaders: map[string]any{
+				"Accept":            "text/event-stream",
+				"Authorization":     "Bearer <TOK>",
+				"Content-Type":      "application/json",
+				"X-Goog-Api-Client": "google-genai-sdk/1.41.0 gl-node/v22.19.0",
+			},
+		},
+		{
+			pid:           "github",
+			creds:         oauthCred,
+			wantURLStream: "https://api.githubcopilot.com/chat/completions",
+			wantURLNon:    "https://api.githubcopilot.com/chat/completions",
+			wantHeaders: map[string]any{
+				"Accept":                              "text/event-stream",
+				"anthropic-version":                   "2023-06-01",
+				"Authorization":                       "Bearer <TOK>",
+				"Content-Type":                        "application/json",
+				"copilot-integration-id":              "vscode-chat",
+				"editor-plugin-version":               "copilot-chat/0.38.0",
+				"editor-version":                      "vscode/1.110.0",
+				"openai-intent":                     "conversation-panel",
+				"user-agent":                          "GitHubCopilotChat/0.38.0",
+				"x-github-api-version":                "2025-04-01",
+				"x-request-id":                        "<UUID>",
+				"x-vscode-user-agent-library-version": "electron-fetch",
+				"X-Initiator":                         "user",
+			},
+		},
+		{
+			pid:           "grok-cli",
+			creds:         oauthCred,
+			wantURLStream: "https://cli-chat-proxy.grok.com/v1/responses",
+			wantURLNon:    "https://cli-chat-proxy.grok.com/v1/responses",
+			wantHeaders: map[string]any{
+				"Accept":                   "text/event-stream",
+				"Authorization":            "Bearer <TOK>",
+				"Content-Type":             "application/json",
+				"User-Agent":               "grok-shell/0.2.99 (linux; x86_64)",
+				"x-grok-client-identifier": "grok-shell",
+				"x-grok-client-version":    "0.2.99",
+			},
+		},
+		{
+			pid:           "grok-web",
+			creds:         domain.Credentials{},
+			wantURLStream: "https://grok.com/rest/app-chat/conversations/new",
+			wantURLNon:    "https://grok.com/rest/app-chat/conversations/new",
+			wantHeaders: map[string]any{
+				"Accept":             "*/*",
+				"Accept-Encoding":    "gzip, deflate, br, zstd",
+				"Accept-Language":    "en-US,en;q=0.9",
+				"Cache-Control":      "no-cache",
+				"Content-Type":       "application/json",
+				"Origin":             "https://grok.com",
+				"Pragma":             "no-cache",
+				"Referer":            "https://grok.com/",
+				"Sec-Ch-Ua":          `"Google Chrome";v="136", "Chromium";v="136", "Not(A:Brand";v="24"`,
+				"Sec-Ch-Ua-Mobile":   "?0",
+				"Sec-Ch-Ua-Platform": `"macOS"`,
+				"Sec-Fetch-Dest":     "empty",
+				"Sec-Fetch-Mode":     "cors",
+				"Sec-Fetch-Site":     "same-origin",
+				"traceparent":        "00-<TRACE>-00",
+				"User-Agent":         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+				"x-statsig-id":       "<SIG>",
+				"x-xai-request-id":   "<REQ>",
+			},
+		},
+		{
+			pid:           "iflow",
+			creds:         apiKeyCred,
+			wantURLStream: "https://apis.iflow.cn/v1/chat/completions",
+			wantURLNon:    "https://apis.iflow.cn/v1/chat/completions",
+			wantHeaders: map[string]any{
+				"Accept":            "text/event-stream",
+				"Authorization":     "Bearer <TOK>",
+				"Content-Type":      "application/json",
+				"session-id":        "<SESSION>",
+				"User-Agent":        "iFlow-Cli",
+				"x-iflow-signature": "<SIG>",
+				"x-iflow-timestamp": "<TS>",
+			},
+		},
+		{
+			pid:           "kiro",
+			creds:         oauthCred,
+			wantURLStream: "https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
+			wantURLNon:    "https://runtime.us-east-1.kiro.dev/generateAssistantResponse",
+			wantHeaders: map[string]any{
+				"Accept":                "application/vnd.amazon.eventstream",
+				"Amz-Sdk-Invocation-Id": "<UUID>",
+				"Amz-Sdk-Request":       "attempt=1; max=3",
+				"Authorization":         "Bearer <TOK>",
+				"Content-Type":          "application/json",
+				"User-Agent":            "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0",
+				"X-Amz-Target":          "AmazonCodeWhispererStreamingService.GenerateAssistantResponse",
+				"X-Amz-User-Agent":      "aws-sdk-js/3.0.0 kiro-ide/1.0.0",
+			},
+		},
+		{
+			pid:           "mimo-free",
+			creds:         domain.Credentials{},
+			wantURLStream: "https://api.xiaomimimo.com/api/free-ai/openai/chat",
+			wantURLNon:    "https://api.xiaomimimo.com/api/free-ai/openai/chat",
+			wantHeaders: map[string]any{
+				"Accept":           "text/event-stream",
+				"Content-Type":     "application/json",
+				"User-Agent":       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+				"X-Mimo-Source":    "mimocode-cli-free",
+				"x-session-affinity": "<SESSION>",
+			},
+		},
+		{
+			pid:           "ollama-local",
+			creds:         domain.Credentials{},
+			wantURLStream: "http://localhost:11434/api/chat",
+			wantURLNon:    "http://localhost:11434/api/chat",
+			wantHeaders: map[string]any{
+				"Accept":        "text/event-stream",
+				"Authorization": "Bearer <TOK>",
+				"Content-Type":  "application/json",
+			},
+		},
+		{
+			pid:           "opencode",
+			creds:         domain.Credentials{},
+			wantURLStream: "https://opencode.ai/zen/v1/chat/completions",
+			wantURLNon:    "https://opencode.ai/zen/v1/chat/completions",
+			wantHeaders: map[string]any{
+				"Accept":            "text/event-stream",
+				"Authorization":     "Bearer <TOK>",
+				"Content-Type":      "application/json",
+				"x-opencode-client": "desktop",
+			},
+		},
+		{
+			pid:           "opencode-go",
+			creds:         apiKeyCred,
+			wantURLStream: "https://opencode.ai/zen/go/v1/chat/completions",
+			wantURLNon:    "https://opencode.ai/zen/go/v1/chat/completions",
+			wantHeaders: map[string]any{
+				"Accept":          "text/event-stream",
+				"Authorization":   "Bearer <TOK>",
+				"Content-Type":    "application/json",
+			},
+		},
+		{
+			pid:           "perplexity-web",
+			creds:         apiKeyCred,
+			wantURLStream: "https://www.perplexity.ai/rest/sse/perplexity_ask",
+			wantURLNon:    "https://www.perplexity.ai/rest/sse/perplexity_ask",
+			wantHeaders: map[string]any{
+				"Accept":             "text/event-stream",
+				"Content-Type":       "application/json",
+				"Cookie":             "__Secure-next-auth.session-token=<CRED>",
+				"Origin":             "https://www.perplexity.ai",
+				"Referer":            "https://www.perplexity.ai/",
+				"User-Agent":         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+				"X-App-ApiClient":    "default",
+				"X-App-ApiVersion":   "2.18",
+			},
+			oauthHeaders: map[string]any{
+				"Accept":           "text/event-stream",
+				"Authorization":    "Bearer <TOK>",
+				"Content-Type":     "application/json",
+				"Origin":           "https://www.perplexity.ai",
+				"Referer":          "https://www.perplexity.ai/",
+				"User-Agent":       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+				"X-App-ApiClient":  "default",
+				"X-App-ApiVersion": "2.18",
+			},
+		},
+		{
+			pid:           "qoder",
+			creds:         apiKeyCred,
+			wantURLStream: "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
+			wantURLNon:    "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
+			wantHeaders: map[string]any{
+				"Accept":            "text/event-stream",
+				"Authorization":     "Bearer <TOK>",
+				"Content-Type":      "application/json",
+				"X-Cosy-Signature":  "<SIG>",
+				"X-Qoder-Client":    "qodercli",
+				"X-Qoder-Version":   "3",
+			},
+		},
+		{
+			pid:           "qwen",
+			creds:         apiKeyCred,
+			wantURLStream: "https://portal.qwen.ai/v1/chat/completions",
+			wantURLNon:    "https://portal.qwen.ai/v1/chat/completions",
+			wantHeaders: map[string]any{
+				"Accept":                    "text/event-stream",
+				"Accept-Language":           "*",
+				"Authorization":             "Bearer <TOK>",
+				"Connection":                "keep-alive",
+				"Content-Type":              "application/json",
+				"Sec-Fetch-Mode":            "cors",
+				"User-Agent":                "QwenCode/0.12.3 (linux; x64)",
+				"X-DashScope-AuthType":      "qwen-oauth",
+				"X-DashScope-CacheControl":  "enable",
+				"X-DashScope-UserAgent":     "QwenCode/0.12.3 (linux; x64)",
+				"X-Stainless-Arch":          "x64",
+				"X-Stainless-Lang":          "js",
+				"X-Stainless-Os":            "Linux",
+				"X-Stainless-Package-Version": "5.11.0",
+				"X-Stainless-Retry-Count":   "1",
+				"X-Stainless-Runtime":       "node",
+				"X-Stainless-Runtime-Version": "v18.19.1",
+			},
+		},
+		{
+			pid:           "vertex",
+			creds:         apiKeyCred,
+			wantURLStream: "https://aiplatform.googleapis.com/v1/publishers/google/models/test-model:streamGenerateContent?alt=sse&key=sk-test-APIKEY",
+			wantURLNon:    "https://aiplatform.googleapis.com/v1/publishers/google/models/test-model:generateContent?key=sk-test-APIKEY",
+			wantHeaders: map[string]any{
+				"Accept":       "text/event-stream",
+				"Content-Type": "application/json",
+			},
+		},
+		{
+			pid:           "xiaomi-tokenplan",
+			creds:         apiKeyCred,
+			wantURLStream: "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions",
+			wantURLNon:    "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions",
+			wantHeaders: map[string]any{
+				"Accept":        "text/event-stream",
+				"Authorization": "Bearer <TOK>",
+				"Content-Type":  "application/json",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.pid, func(t *testing.T) {
+			p, err := provider.Lookup(tc.pid)
+			if err != nil {
+				t.Fatalf("lookup %s: %v", tc.pid, err)
+			}
+			exec := p.Executor()
+			gotURLStream := safeString(func() string { return exec.BuildURL("test-model", true, 0, tc.creds) })
+			gotURLNon := safeString(func() string { return exec.BuildURL("test-model", false, 0, tc.creds) })
+			if gotURLStream != tc.wantURLStream {
+				t.Errorf("stream url mismatch\n got: %s\nwant: %s", gotURLStream, tc.wantURLStream)
+			}
+			if gotURLNon != tc.wantURLNon {
+				t.Errorf("non-stream url mismatch\n got: %s\nwant: %s", gotURLNon, tc.wantURLNon)
+			}
+
+			apiHdr := sanitizeHeaders(exec.BuildHeaders(tc.creds, true))
+			apiHdr = sanitizeDynamicHeaders(apiHdr)
+			if diff := cmpHeaders(tc.wantHeaders, apiHdr); diff != "" {
+				t.Errorf("apiKey headers mismatch (-want +got):\n%s", diff)
+			}
+
+			oauthC := oauthCred
+			if tc.oauthHeaders != nil {
+				oauthHdr := sanitizeHeaders(exec.BuildHeaders(oauthC, true))
+				oauthHdr = sanitizeDynamicHeaders(oauthHdr)
+				if diff := cmpHeaders(tc.oauthHeaders, oauthHdr); diff != "" {
+					t.Errorf("oauth headers mismatch (-want +got):\n%s", diff)
+				}
+			}
+		})
+	}
+}
+
+func sanitizeDynamicHeaders(h map[string]any) map[string]any {
+	uuidRe := regexp.MustCompile(`^[0-9a-fA-F-]{36}$`)
+	hexRe := regexp.MustCompile(`^[0-9a-fA-F]{16,}$`)
+	sigRe := regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+	out := make(map[string]any, len(h))
+	for k, v := range h {
+		s, ok := v.(string)
+		if !ok {
+			out[k] = v
+			continue
+		}
+		switch k {
+		case "x-session-id", "session-id", "x-session-affinity":
+			if strings.HasPrefix(s, "session-") {
+				out[k] = "<SESSION>"
+			} else {
+				out[k] = "<UUID>"
+			}
+		case "x-grok-req-id", "x-xai-request-id":
+			out[k] = "<REQ>"
+		case "Amz-Sdk-Invocation-Id":
+			out[k] = "<UUID>"
+		case "x-request-id":
+			out[k] = "<UUID>"
+		case "x-grok-session-id", "x-grok-conv-id", "session_id":
+			out[k] = "<SESSION>"
+		case "x-iflow-timestamp":
+			out[k] = "<TS>"
+		case "x-iflow-signature", "X-Cosy-Signature":
+			out[k] = "<SIG>"
+		case "x-statsig-id":
+			out[k] = "<SIG>"
+		case "traceparent":
+			out[k] = "00-<TRACE>-00"
+		case "x-machine-id":
+			out[k] = "<MACHINE>"
+		default:
+			if uuidRe.MatchString(s) {
+				out[k] = "<UUID>"
+			} else if sigRe.MatchString(s) {
+				out[k] = "<SIG>"
+			} else if hexRe.MatchString(s) {
+				out[k] = "<HEX>"
+			} else {
+				out[k] = v
+			}
+		}
+	}
+	return out
+}
+
+func cmpHeaders(want, got map[string]any) string {
+	for k, v := range want {
+		if got[k] != v {
+			return fmt.Sprintf("%s: got %q want %q", k, got[k], v)
+		}
+	}
+	for k := range got {
+		if _, ok := want[k]; !ok {
+			return fmt.Sprintf("extra key %s: %q", k, got[k])
+		}
+	}
+	return ""
+}

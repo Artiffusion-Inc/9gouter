@@ -158,6 +158,12 @@ type Quirks struct {
 	DropOutputConfig   bool
 }
 
+// SetHeaderExact assigns a header preserving exact key casing, bypassing net/http
+// canonicalization. Required to match JS golden snapshots.
+func SetHeaderExact(h http.Header, k, v string) {
+	h[k] = []string{v}
+}
+
 // Fetcher performs the upstream HTTP request.
 type Fetcher func(ctx context.Context, client *http.Client, req *http.Request, opts proxy.Options, proxyOpts proxy.ProxyFetchOptions, fallback *proxy.Fallback) (*http.Response, error)
 
@@ -312,14 +318,14 @@ func mapAuthDescriptor(a map[string]any) AuthDescriptor {
 	return d
 }
 
-// BuildHeaders builds upstream headers.
+// BuildHeaders builds upstream headers preserving exact key casing.
 func (e *BaseExecutor) BuildHeaders(creds provider.Credentials, stream bool) http.Header {
 	h := http.Header{}
-	h.Set("Content-Type", "application/json")
+	SetHeaderExact(h, "Content-Type", "application/json")
 
-	// Config headers first (lowercased keys are canonicalized by http.Header).
+	// Config headers first, preserving original casing.
 	for k, v := range e.Config.Headers {
-		h.Set(k, v)
+		SetHeaderExact(h, k, v)
 	}
 
 	desc := e.Config.Auth
@@ -336,7 +342,7 @@ func (e *BaseExecutor) BuildHeaders(creds provider.Credentials, stream bool) htt
 	e.applyAuth(h, desc, creds)
 
 	if stream {
-		h.Set("Accept", "text/event-stream")
+		SetHeaderExact(h, "Accept", "text/event-stream")
 	}
 	return h
 }
@@ -375,7 +381,7 @@ func (e *BaseExecutor) applyAuth(h http.Header, desc AuthDescriptor, creds provi
 		}
 		e.setAuthHeader(h, header, scheme, token)
 		if desc.AnthropicVersion && h.Get("anthropic-version") == "" && h.Get("Anthropic-Version") == "" {
-			h.Set("anthropic-version", AnthropicAPIVersion)
+			SetHeaderExact(h, "anthropic-version", AnthropicAPIVersion)
 		}
 		return
 	}
@@ -385,15 +391,15 @@ func (e *BaseExecutor) applyAuth(h http.Header, desc AuthDescriptor, creds provi
 		e.setAuthHeader(h, desc.OAuth.Header, desc.OAuth.Scheme, creds.AccessToken)
 	}
 	if desc.AnthropicVersion && h.Get("anthropic-version") == "" && h.Get("Anthropic-Version") == "" {
-		h.Set("anthropic-version", AnthropicAPIVersion)
+		SetHeaderExact(h, "anthropic-version", AnthropicAPIVersion)
 	}
 }
 
 func (e *BaseExecutor) setAuthHeader(h http.Header, header, scheme, token string) {
 	if scheme == "bearer" {
-		h.Set(header, "Bearer "+token)
+		SetHeaderExact(h, header, "Bearer "+token)
 	} else {
-		h.Set(header, token)
+		SetHeaderExact(h, header, token)
 	}
 }
 

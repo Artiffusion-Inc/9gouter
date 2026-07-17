@@ -64,6 +64,10 @@ Some OpenAI-compatible "reasoning" upstreams ignore `stream:true` and reply with
 
 When a stream stalls or aborts, regular chat/completions clients now receive a structured error SSE event + `[DONE]` instead of an empty HTTP 200. Previously only Responses API got terminal events.
 
+### Go rewrite and legacy JS backend
+
+The JS backend (Node.js 22 / Next.js / `open-sse`) lives on branch `legacy/js-backend` while the `main` branch is rewritten in Go. The rewrite branch holds only the Go code plus the dashboard build step. Rollback to the legacy backend is served from `legacy/js-backend`.
+
 ## Architecture
 
 ```

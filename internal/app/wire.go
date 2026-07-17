@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Artiffusion-Inc/9router/internal/adapter/auth"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
 	dbschema "github.com/Artiffusion-Inc/9router/internal/adapter/db"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/migrations"
@@ -20,6 +21,7 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/sqlite"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
 	httptransport "github.com/Artiffusion-Inc/9router/internal/adapter/transport/http"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
 	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
@@ -69,10 +71,46 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Chat:           chatHandler,
 	})
 
+	sessionStore, err := auth.NewCookieStore(cfg.DashboardSessionSecret)
+	if err != nil {
+		return nil, fmt.Errorf("session store: %w", err)
+	}
+	apiDeps := api.Deps{
+		APIKeys:        repos.APIKeys,
+		Alias:          repos.Aliases,
+		Combos:         repos.Combos,
+		Connections:    repos.Connections,
+		DisabledModels: repos.DisabledModels,
+		Nodes:          repos.Nodes,
+		Pricing:        repos.Pricing,
+		ProxyPools:     repos.ProxyPools,
+		RequestDetails: repos.RequestDetails,
+		Settings:       repos.Settings,
+		Usage:          repos.Usage,
+		SessionStore:   sessionStore,
+		Logger:         logger,
+		Version:        cfg.Version,
+	}
+	api.RegisterHealth(mux)
+	api.RegisterVersion(mux, cfg.Version)
+	api.RegisterAuth(mux, apiDeps, cfg)
+	api.RegisterKeys(mux, apiDeps)
+	api.RegisterCombos(mux, apiDeps)
+	api.RegisterModels(mux, apiDeps)
+	api.RegisterProxyPools(mux, apiDeps)
+	api.RegisterProviders(mux, apiDeps)
+	api.RegisterSettings(mux, apiDeps)
+	api.RegisterPricing(mux, apiDeps)
+	api.RegisterUsage(mux, apiDeps)
+	api.RegisterProviderNodes(mux, apiDeps)
+	api.RegisterLocale(mux)
+	api.RegisterTags(mux)
+	api.RegisterShutdown(mux, apiDeps)
+
 	server := httptransport.NewServer(httptransport.Deps{
-		Config: cfg,
-		Logger: logger,
-		Auth:   nil, // Auth wiring is out of scope for this slice (Task T016).
+		Config:  cfg,
+		Logger:  logger,
+		Auth:    httptransport.NewAuthFunc(sessionStore),
 		Handler: mux,
 	})
 
@@ -122,26 +160,32 @@ func openDB(dbPath string, logger *slog.Logger) (*sql.DB, error) {
 
 // repos is a container for all SQLite-backed repositories.
 type repos struct {
-	APIKeys     *repo.APIKeyRepo
-	Settings    *repo.SettingsRepo
-	Connections *repo.ConnectionRepo
-	Combos      *repo.ComboRepo
-	Aliases     *repo.AliasRepo
-	Nodes       *repo.NodeRepo
-	ProxyPools  *repo.ProxyPoolRepo
-	Usage       *repo.UsageRepo
+	APIKeys        *repo.APIKeyRepo
+	Settings       *repo.SettingsRepo
+	Connections    *repo.ConnectionRepo
+	Combos         *repo.ComboRepo
+	Aliases        *repo.AliasRepo
+	Nodes          *repo.NodeRepo
+	ProxyPools     *repo.ProxyPoolRepo
+	Usage          *repo.UsageRepo
+	RequestDetails *repo.RequestDetailRepo
+	DisabledModels *repo.DisabledModelsRepo
+	Pricing        *repo.PricingRepo
 }
 
 func buildRepos(db *sql.DB) repos {
 	return repos{
-		APIKeys:     repo.NewAPIKeyRepo(db),
-		Settings:    repo.NewSettingsRepo(db),
-		Connections: repo.NewConnectionRepo(db),
-		Combos:      repo.NewComboRepo(db),
-		Aliases:     repo.NewAliasRepo(db),
-		Nodes:       repo.NewNodeRepo(db),
-		ProxyPools:  repo.NewProxyPoolRepo(db),
-		Usage:       repo.NewUsageRepo(db),
+		APIKeys:        repo.NewAPIKeyRepo(db),
+		Settings:       repo.NewSettingsRepo(db),
+		Connections:    repo.NewConnectionRepo(db),
+		Combos:         repo.NewComboRepo(db),
+		Aliases:        repo.NewAliasRepo(db),
+		Nodes:          repo.NewNodeRepo(db),
+		ProxyPools:     repo.NewProxyPoolRepo(db),
+		Usage:          repo.NewUsageRepo(db),
+		RequestDetails: repo.NewRequestDetailRepo(db),
+		DisabledModels: repo.NewDisabledModelsRepo(db),
+		Pricing:        repo.NewPricingRepo(db),
 	}
 }
 

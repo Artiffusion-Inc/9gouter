@@ -11,6 +11,7 @@ import (
 	"time"
 
 	domainauth "github.com/Artiffusion-Inc/9router/internal/domain/auth"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
 )
 
 // Middleware is an HTTP middleware function.
@@ -126,10 +127,12 @@ func NewAuthFunc(store domainauth.Store) AuthFunc {
 }
 
 // APIMiddleware enforces authentication on /api/* paths when auth is provided.
+// Public /api sub-routes (auth/*, health, init, version, locale, tags, etc.)
+// are exempt via the api.IsPublicRoute helper.
 func APIMiddleware(auth AuthFunc) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if auth != nil && strings.HasPrefix(r.URL.Path, "/api/") {
+			if auth != nil && strings.HasPrefix(r.URL.Path, "/api/") && !api.IsPublicRoute(r.URL.Path) {
 				if !auth(r) {
 					w.Header().Set("WWW-Authenticate", `Bearer`)
 					http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)

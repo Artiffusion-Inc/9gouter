@@ -39,8 +39,10 @@ type Config struct {
 	TokenSaverHeader string `envconfig:"TOKEN_SAVER_HEADER" default:"x-9router-token-saver"`
 
 	// Auth
-	DashboardPasswordHash string `envconfig:"DASHBOARD_PASSWORD_HASH"`
+	DashboardPasswordHash   string `envconfig:"DASHBOARD_PASSWORD_HASH"`
+	DashboardSessionSecret string `envconfig:"DASHBOARD_SESSION_SECRET" default:"change-me"`
 	SessionSecret         string `envconfig:"SESSION_SECRET" default:"change-me"`
+	Version               string `envconfig:"VERSION" default:"dev"`
 
 	// Add remaining ~40 env vars as the ports that need them are implemented.
 }

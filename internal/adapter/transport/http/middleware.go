@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	domainauth "github.com/Artiffusion-Inc/9router/internal/domain/auth"
 )
 
 // Middleware is an HTTP middleware function.
@@ -110,8 +112,18 @@ func BodySizeMiddleware(limit int64) Middleware {
 }
 
 // AuthFunc is an injectable authentication check for /api/* routes. It should
-// return true if the request is authenticated. Real implementation is T016.
+// return true if the request is authenticated.
 type AuthFunc func(r *http.Request) bool
+
+// NewAuthFunc returns an AuthFunc backed by a session store. It validates the
+// auth_token HMAC cookie (T016) and reports true for any /api/ request that
+// carries a valid, non-expired session.
+func NewAuthFunc(store domainauth.Store) AuthFunc {
+	return func(r *http.Request) bool {
+		_, err := store.Get(r)
+		return err == nil
+	}
+}
 
 // APIMiddleware enforces authentication on /api/* paths when auth is provided.
 func APIMiddleware(auth AuthFunc) Middleware {

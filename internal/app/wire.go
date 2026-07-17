@@ -106,6 +106,20 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	api.RegisterLocale(mux)
 	api.RegisterTags(mux)
 	api.RegisterShutdown(mux, apiDeps)
+	api.RegisterCliTools(mux, apiDeps)
+	api.RegisterHeadroom(mux, apiDeps)
+	api.RegisterMcp(mux, apiDeps)
+	api.RegisterMediaProviders(mux, apiDeps)
+	api.RegisterOAuth(mux, apiDeps)
+	api.RegisterPxPipe(mux, apiDeps)
+	api.RegisterTunnel(mux, apiDeps)
+	api.RegisterTranslator(mux, apiDeps)
+	api.RegisterV1Beta(mux, apiDeps)
+	api.RegisterV1Dashboard(mux, apiDeps)
+	api.RegisterProvidersExtra(mux, apiDeps)
+	api.RegisterUsageExtra(mux, apiDeps)
+	api.RegisterSettingsExtra(mux, apiDeps)
+	api.RegisterProxyPoolsExtra(mux, apiDeps)
 
 	server := httptransport.NewServer(httptransport.Deps{
 		Config:  cfg,

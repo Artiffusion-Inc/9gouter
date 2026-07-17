@@ -18,6 +18,9 @@ func RegisterAuth(mux *http.ServeMux, deps Deps, cfg config.Config) {
 	mux.HandleFunc("POST /api/auth/logout", h.logout)
 	mux.HandleFunc("GET /api/auth/status", h.status)
 	mux.HandleFunc("POST /api/auth/reset-password", h.resetPassword)
+	mux.HandleFunc("POST /api/auth/oidc/start", h.oidcStart)
+	mux.HandleFunc("POST /api/auth/oidc/callback", h.oidcCallback)
+	mux.HandleFunc("POST /api/auth/oidc/test", h.oidcTest)
 }
 
 type authHandler struct {
@@ -115,6 +118,18 @@ func (h *authHandler) resetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (h *authHandler) oidcStart(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "authUrl": "https://example.com/oidc/authorize"})
+}
+
+func (h *authHandler) oidcCallback(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "OIDC callback stubbed in Go build"})
+}
+
+func (h *authHandler) oidcTest(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "OIDC test stubbed in Go build"})
 }
 
 func displayName(sess any) string {

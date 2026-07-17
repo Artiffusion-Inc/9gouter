@@ -27,6 +27,10 @@ func RegisterModels(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("GET /api/models/disabled", h.listDisabled)
 	mux.HandleFunc("POST /api/models/disabled", h.disable)
 	mux.HandleFunc("DELETE /api/models/disabled", h.enable)
+
+	mux.HandleFunc("GET /api/models/availability", h.availability)
+	mux.HandleFunc("POST /api/models/availability", h.clearCooldown)
+	mux.HandleFunc("POST /api/models/test", h.test)
 }
 
 type modelsHandler struct {
@@ -204,6 +208,38 @@ func (h *modelsHandler) enable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+func (h *modelsHandler) availability(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"models":           []any{},
+		"unavailableCount": 0,
+	})
+}
+
+func (h *modelsHandler) clearCooldown(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Action   string `json:"action"`
+		Provider string `json:"provider"`
+		Model    string `json:"model"`
+	}
+	if err := parseJSON(r, &body); err != nil || body.Action != "clearCooldown" || body.Provider == "" || body.Model == "" {
+		writeError(w, http.StatusBadRequest, "Invalid request")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (h *modelsHandler) test(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Model string `json:"model"`
+		Kind  string `json:"kind"`
+	}
+	if err := parseJSON(r, &body); err != nil || body.Model == "" {
+		writeError(w, http.StatusBadRequest, "Model required")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "model": body.Model, "kind": body.Kind})
 }
 
 var _ = json.Marshal

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -98,6 +97,20 @@ func buildMux(t *testing.T, db *sql.DB) http.Handler {
 	RegisterLocale(mux)
 	RegisterTags(mux)
 	RegisterShutdown(mux, deps)
+	RegisterCliTools(mux, deps)
+	RegisterHeadroom(mux, deps)
+	RegisterMcp(mux, deps)
+	RegisterMediaProviders(mux, deps)
+	RegisterOAuth(mux, deps)
+	RegisterPxPipe(mux, deps)
+	RegisterTunnel(mux, deps)
+	RegisterTranslator(mux, deps)
+	RegisterV1Beta(mux, deps)
+	RegisterV1Dashboard(mux, deps)
+	RegisterProvidersExtra(mux, deps)
+	RegisterUsageExtra(mux, deps)
+	RegisterSettingsExtra(mux, deps)
+	RegisterProxyPoolsExtra(mux, deps)
 	return authMiddleware(deps)(mux)
 }
 
@@ -809,4 +822,3 @@ func TestShutdown_AuthRequired(t *testing.T) {
 	}
 }
 
-var _ = context.Background

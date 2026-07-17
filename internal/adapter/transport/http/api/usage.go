@@ -19,7 +19,6 @@ func RegisterUsage(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("GET /api/usage/stats", h.stats)
 	mux.HandleFunc("GET /api/usage/chart", h.chart)
 	mux.HandleFunc("GET /api/usage/logs", h.logs)
-	mux.HandleFunc("GET /api/usage/request-logs", h.requestLogs)
 	mux.HandleFunc("GET /api/usage/request-details", h.requestDetails)
 	mux.HandleFunc("GET /api/usage/providers", h.providers)
 }

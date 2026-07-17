@@ -36,6 +36,8 @@ var publicRoutes = []string{
 	"/api/settings/require-login",
 	"/api/tags",
 	"/api/version",
+	"/api/version/shutdown",
+	"/api/version/update",
 }
 
 // IsPublicRoute reports whether path is a public /api route. The comparison is

@@ -35,12 +35,19 @@ type Config struct {
 	ProxyClientMaxBodySize       string     `envconfig:"NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE" default:"128mb"`
 	SocksHandshakeTimeout        DurationMs `envconfig:"SOCKS_HANDSHAKE_TIMEOUT_MS" default:"10000"`
 
+	// Token-saver header name. Default matches open-sse/config/runtimeConfig.js.
+	TokenSaverHeader string `envconfig:"TOKEN_SAVER_HEADER" default:"x-9router-token-saver"`
+
 	// Auth
 	DashboardPasswordHash string `envconfig:"DASHBOARD_PASSWORD_HASH"`
 	SessionSecret         string `envconfig:"SESSION_SECRET" default:"change-me"`
 
 	// Add remaining ~40 env vars as the ports that need them are implemented.
 }
+
+// TOKEN_SAVER_HEADER is the canonical lower-case request header name used by
+// proxychat to gate the token-saver pipeline.
+const TOKEN_SAVER_HEADER = "x-9router-token-saver"
 
 // DurationMs is an envconfig.Setter that accepts either a bare integer
 // (milliseconds, matching the JS *_MS env names) or a Go duration string

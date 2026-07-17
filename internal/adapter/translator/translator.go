@@ -60,12 +60,38 @@ func (r *Registry) Register(from, to format.Format, t any) {
 	}
 }
 
+// RegisterRequest adds a request translator for a format pair.
+func (r *Registry) RegisterRequest(from, to format.Format, t Translator) {
+	if r == nil || t == nil {
+		return
+	}
+	r.request[pair{from, to}] = t
+}
+
+// RegisterResponse adds a response translator for a format pair.
+func (r *Registry) RegisterResponse(from, to format.Format, t ResponseTranslator) {
+	if r == nil || t == nil {
+		return
+	}
+	r.response[pair{from, to}] = t
+}
+
 // packageRegistry is the package-level registry used by the package functions.
 var packageRegistry = NewRegistry()
 
 // Register registers a translator on the package-level registry.
 func Register(from, to format.Format, t any) {
 	packageRegistry.Register(from, to, t)
+}
+
+// RegisterRequest registers a request translator on the package-level registry.
+func RegisterRequest(from, to format.Format, t Translator) {
+	packageRegistry.RegisterRequest(from, to, t)
+}
+
+// RegisterResponse registers a response translator on the package-level registry.
+func RegisterResponse(from, to format.Format, t ResponseTranslator) {
+	packageRegistry.RegisterResponse(from, to, t)
 }
 
 // TranslateRequest translates body from sourceFormat toward targetFormat. It

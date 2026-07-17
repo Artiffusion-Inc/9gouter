@@ -87,9 +87,22 @@ func sortedKeys(m map[string]any) []string {
 }
 
 func jsonString(s string) string {
-	// Use encoding/json for proper escaping, then strip the surrounding quotes.
-	raw, _ := json.Marshal(s)
-	return string(raw)
+	// Vitest snapshots are template literals: string values are written with
+	// real newlines and unescaped double quotes (only backticks, backslashes and
+	// ${} are escaped by Vitest). Keep actual newlines and quotes; escape
+	// backslashes so the parser can reverse them safely.
+	var b bytes.Buffer
+	b.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '\\':
+			b.WriteString("\\\\")
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 func formatFloat(f float64) string {

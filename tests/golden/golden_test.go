@@ -9,8 +9,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
+	"strings"
 	"testing"
 
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
 	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/claude"
 	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/commandcode"
@@ -20,6 +23,7 @@ import (
 	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/openai"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/translator/shared"
 	"github.com/Artiffusion-Inc/9router/internal/domain/format"
+	domain "github.com/Artiffusion-Inc/9router/internal/domain/provider"
 )
 
 //go:embed fixtures/*.snap
@@ -258,6 +262,141 @@ func TestGoldenResponseStreamOpenAIResponsesCodexError(t *testing.T) {
 	runResponseStreamTest(t, "fixtures/golden-response-stream.test.js.snap",
 		"GOLDEN response stream: OpenAI-Responses (codex) → OpenAI > error event → error chunk (fallback id/created)",
 		format.OpenaiResponses, format.Openai, events)
+}
+
+func TestGoldenURLHeaderDefaultProviders(t *testing.T) {
+	snaps, err := parseSnapFile(fixtures, "fixtures/golden-url-header.test.js.snap")
+	if err != nil {
+		t.Fatalf("parse url-header snapshot: %v", err)
+	}
+
+	urlRe := regexp.MustCompile(`GOLDEN buildUrl \(default executor providers\) > ([^ ]+) → url \(stream \+ non-stream\)`)
+	hdrRe := regexp.MustCompile(`GOLDEN buildHeaders \(default executor providers\) > ([^ ]+) → headers \(apiKey / oauth\)`)
+
+	urlPids := map[string]bool{}
+	hdrPids := map[string]bool{}
+	for key := range snaps {
+		if m := urlRe.FindStringSubmatch(key); m != nil {
+			urlPids[m[1]] = true
+		}
+		if m := hdrRe.FindStringSubmatch(key); m != nil {
+			hdrPids[m[1]] = true
+		}
+	}
+
+	for pid := range urlPids {
+		hdrPids[pid] = true
+	}
+	pids := make([]string, 0, len(hdrPids))
+	for pid := range hdrPids {
+		pids = append(pids, pid)
+	}
+	sort.Strings(pids)
+
+	for _, pid := range pids {
+		t.Run(pid, func(t *testing.T) {
+			p, err := provider.Lookup(pid)
+			if err != nil {
+				t.Fatalf("lookup %s: %v", pid, err)
+			}
+			exec := p.Executor()
+			cred := specialCred
+			noAuth := false
+			if _, ok := noAuthProviders[pid]; ok {
+				cred = domain.Credentials{}
+				noAuth = true
+			}
+
+			// URL snapshot.
+			urlKey := fmt.Sprintf("GOLDEN buildUrl (default executor providers) > %s → url (stream + non-stream)", pid)
+			wantURL, ok := snaps[urlKey+" 1"]
+			if !ok {
+				t.Fatalf("url snapshot not found for %s", pid)
+			}
+			gotURL := map[string]any{
+				"stream":    safeString(func() string { return exec.BuildURL("test-model", true, 0, cred) }),
+				"nonStream": safeString(func() string { return exec.BuildURL("test-model", false, 0, cred) }),
+			}
+			compareSnapshot(t, wantURL, snapshotString(gotURL))
+
+			// Header snapshot.
+			hdrKey := fmt.Sprintf("GOLDEN buildHeaders (default executor providers) > %s → headers (apiKey / oauth)", pid)
+			wantHdr, ok := snaps[hdrKey+" 1"]
+			if !ok {
+				t.Fatalf("header snapshot not found for %s", pid)
+			}
+			apiKeyC := cred
+			oauthC := oauthCred
+			if noAuth {
+				apiKeyC = domain.Credentials{}
+				oauthC = domain.Credentials{}
+			}
+			gotHdr := map[string]any{
+				"apiKey":    sanitizeHeaders(exec.BuildHeaders(apiKeyC, true)),
+				"oauth":     sanitizeHeaders(exec.BuildHeaders(oauthC, true)),
+				"nonStream": sanitizeHeaders(exec.BuildHeaders(apiKeyC, false)),
+			}
+			compareSnapshot(t, wantHdr, snapshotString(gotHdr))
+		})
+	}
+}
+
+var apiKeyCred = domain.Credentials{
+	APIKey:               "sk-test-APIKEY",
+	ProviderSpecificData: map[string]any{},
+}
+
+var oauthCred = domain.Credentials{
+	AccessToken:          "tok-test-ACCESS",
+	ProviderSpecificData: map[string]any{},
+}
+
+var specialCred = domain.Credentials{
+	APIKey:      "sk-test-APIKEY",
+	AccessToken: "tok-test-ACCESS",
+	ProviderSpecificData: map[string]any{
+		"accountId": "ACC123",
+		"region":    "sgp",
+		"baseUrl":   "https://custom.example.com/v1",
+		"orgId":     "ORG9",
+	},
+}
+
+var noAuthProviders = map[string]struct{}{
+	"mmf": {},
+}
+
+func safeString(fn func() string) string {
+	defer func() {
+		if r := recover(); r != nil {
+			// keep THROW string below
+		}
+	}()
+	return fn()
+}
+
+var (
+	bearerRe  = regexp.MustCompile(`Bearer .+`)
+	kimiTsRe  = regexp.MustCompile(`kimi-\d{10,}`)
+)
+
+func sanitizeHeaders(h map[string][]string) map[string]any {
+	out := make(map[string]any, len(h))
+	for k, vv := range h {
+		if len(vv) == 0 {
+			continue
+		}
+		v := vv[0]
+		v = bearerRe.ReplaceAllString(v, "Bearer <TOK>")
+		v = strings.ReplaceAll(v, "sk-test-APIKEY", "<CRED>")
+		v = strings.ReplaceAll(v, "tok-test-ACCESS", "<CRED>")
+		v = kimiTsRe.ReplaceAllString(v, "kimi-<TS>")
+		if k == "X-Msh-Device-Model" {
+			v = "<OS>"
+		}
+		out[k] = v
+	}
+	return out
 }
 
 func TestGoldenUsageMathClaudePromptCache(t *testing.T) {

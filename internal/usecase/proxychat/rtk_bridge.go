@@ -23,7 +23,7 @@ func formatRtkLog(stats *rtk.Stats) string {
 }
 
 // runHeadroom runs the optional Headroom proxy compression.
-func runHeadroom(body map[string]any, cfg TokenSaverConfig, providerID string, targetFormat format.Format, log logger) *headroomResult {
+func runHeadroom(body map[string]any, cfg TokenSaverConfig, providerID string, targetFormat format.Format, log Logger) *headroomResult {
 	if !cfg.HeadroomEnabled || cfg.HeadroomURL == "" {
 		return nil
 	}

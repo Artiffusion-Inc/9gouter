@@ -11,9 +11,10 @@ import (
 
 // Deps holds dependencies required to build the HTTP server.
 type Deps struct {
-	Config config.Config
-	Logger *slog.Logger
-	Auth   AuthFunc
+	Config  config.Config
+	Logger  *slog.Logger
+	Auth    AuthFunc
+	Handler http.Handler
 }
 
 // NewServer builds a *http.Server with a method-pattern *http.ServeMux,
@@ -41,12 +42,6 @@ func NewServer(deps Deps) *http.Server {
 		log = slog.Default()
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
-
 	chain := Chain(
 		RecoverMiddleware(log),
 		LogMiddleware(log),
@@ -55,9 +50,19 @@ func NewServer(deps Deps) *http.Server {
 		APIMiddleware(deps.Auth),
 	)
 
+	handler := deps.Handler
+	if handler == nil {
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+		})
+		handler = mux
+	}
+
 	return &http.Server{
 		Addr:              fmt.Sprintf(":%d", cfg.Port),
-		Handler:           chain(mux),
+		Handler:           chain(handler),
 		ReadHeaderTimeout: 30 * time.Second,
 	}
 }

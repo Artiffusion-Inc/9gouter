@@ -67,32 +67,32 @@ type Result struct {
 
 // Dependencies collects the collaborators consumed by the usecase.
 type Dependencies struct {
-	Registry       func(id string) (domainProvider, error)
+	Registry       func(id string) (DomainProvider, error)
 	UsageRepo      usage.Repo
-	StreamPipe     streamPiper
-	JSONToSSE      jsonToSSETranslator
-	Logger         logger
+	StreamPipe     StreamPiper
+	JSONToSSE      JSONToSSETranslator
+	Logger         Logger
 	Config         config.Config
 }
 
-// domainProvider narrows provider.Provider to the fields we need.
-type domainProvider interface {
+// DomainProvider narrows provider.Provider to the fields we need.
+type DomainProvider interface {
 	ID() string
 	Executor() domainProv.Executor
 }
 
-// streamPiper abstracts httpstream.Pipe.
-type streamPiper interface {
+// StreamPiper abstracts httpstream.Pipe.
+type StreamPiper interface {
 	Pipe(ctx context.Context, upstream io.Reader, w *httpstream.Writer, opts httpstream.PipeOpts) error
 }
 
-// jsonToSSETranslator abstracts translator.Synthesize.
-type jsonToSSETranslator interface {
+// JSONToSSETranslator abstracts translator.Synthesize.
+type JSONToSSETranslator interface {
 	Synthesize(body []byte) (string, error)
 }
 
-// logger is a minimal log sink.
-type logger interface {
+// Logger is a minimal log sink.
+type Logger interface {
 	Infof(format string, args ...any)
 	Warnf(format string, args ...any)
 	Debugf(format string, args ...any)
@@ -108,7 +108,7 @@ type Handler struct {
 // logger. This keeps tests lightweight while still exercising the pipeline.
 func New(deps Dependencies) *Handler {
 	if deps.Registry == nil {
-		deps.Registry = func(id string) (domainProvider, error) { return reg.Lookup(id) }
+		deps.Registry = func(id string) (DomainProvider, error) { return reg.Lookup(id) }
 	}
 	if deps.StreamPipe == nil {
 		deps.StreamPipe = pipeAdapter{}
@@ -123,7 +123,7 @@ func New(deps Dependencies) *Handler {
 }
 
 // synthesizerFunc adapts the package-level translator.Synthesize function to the
-// jsonToSSETranslator interface.
+// JSONToSSETranslator interface.
 type synthesizerFunc func([]byte) (string, error)
 
 func (f synthesizerFunc) Synthesize(body []byte) (string, error) { return f(body) }
@@ -475,7 +475,7 @@ func translateNonStreamingResponse(body map[string]any, sourceFormat, targetForm
 	return body
 }
 
-// pipeAdapter adapts httpstream.Pipe to the streamPiper interface.
+// pipeAdapter adapts httpstream.Pipe to the StreamPiper interface.
 type pipeAdapter struct{}
 
 func (pipeAdapter) Pipe(ctx context.Context, upstream io.Reader, w *httpstream.Writer, opts httpstream.PipeOpts) error {

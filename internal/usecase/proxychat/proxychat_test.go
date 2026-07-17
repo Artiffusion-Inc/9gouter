@@ -105,7 +105,7 @@ func TestHandle_StreamingSSE(t *testing.T) {
 	exec := &stubExecutor{resp: makeSSEUpstream(upstreamBody)}
 
 	h := New(Dependencies{
-		Registry:  func(id string) (domainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
+		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
 		UsageRepo: repo,
 		StreamPipe: fakeStreamPiper{},
 		JSONToSSE: fakeJSONToSSE{},
@@ -160,7 +160,7 @@ func TestHandle_UpstreamStall_ErrorSSEAndDoneAndUsage(t *testing.T) {
 	exec := &stubExecutor{resp: resp}
 
 	h := New(Dependencies{
-		Registry:  func(id string) (domainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
+		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
 		UsageRepo: repo,
 		StreamPipe: pipeAdapter{}, // use real pipe for stall detection
 		JSONToSSE: fakeJSONToSSE{},
@@ -219,7 +219,7 @@ func TestHandle_JsonToSseSynthesis(t *testing.T) {
 	exec := &stubExecutor{resp: resp}
 
 	h := New(Dependencies{
-		Registry:  func(id string) (domainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
+		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
 		UsageRepo: repo,
 		StreamPipe: fakeStreamPiper{},
 		JSONToSSE: synthesizerFunc(func(body []byte) (string, error) {
@@ -258,7 +258,7 @@ func TestHandle_TokenSaverHeaderOff(t *testing.T) {
 	exec := &stubExecutor{resp: makeSSEUpstream(upstreamBody)}
 
 	h := New(Dependencies{
-		Registry:  func(id string) (domainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
+		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
 		UsageRepo: repo,
 		StreamPipe: fakeStreamPiper{},
 		JSONToSSE: fakeJSONToSSE{},
@@ -300,7 +300,7 @@ func TestHandle_NonStreaming(t *testing.T) {
 	exec := &stubExecutor{resp: resp}
 
 	h := New(Dependencies{
-		Registry:  func(id string) (domainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
+		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
 		UsageRepo: repo,
 		StreamPipe: fakeStreamPiper{},
 		JSONToSSE: fakeJSONToSSE{},

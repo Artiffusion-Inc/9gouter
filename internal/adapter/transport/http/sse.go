@@ -61,3 +61,19 @@ func (s *Writer) Flush() {
 		s.f.Flush()
 	}
 }
+
+// WriteRaw writes a raw SSE frame (including its own "data: " lines and
+// trailing "\n\n") directly to the response without re-prefixing data lines.
+// It is used by Pipe to passthrough upstream SSE frames byte-for-byte.
+func (s *Writer) WriteRaw(frame []byte) error {
+	if err := s.ctx.Err(); err != nil {
+		return err
+	}
+	if _, err := s.w.Write(frame); err != nil {
+		return err
+	}
+	if s.f != nil {
+		s.f.Flush()
+	}
+	return nil
+}

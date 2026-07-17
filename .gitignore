@@ -63,6 +63,10 @@ PR/*
 package-lock.json
 
 
+# Go build artifacts
+/9router
+*.test
+
 #Ignore vscode AI rules
 .github/instructions/codacy.instructions.md
 README1.md

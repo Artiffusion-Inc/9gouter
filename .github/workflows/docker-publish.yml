@@ -7,12 +7,31 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-push:
+  go-test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Run Go tests with race detector
+        run: go test -race ./...
+
+      - name: Build Go binary
+        run: go build -o 9router ./cmd/9router
+
+      - name: Cross-compile for linux/arm64
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o 9router-linux-arm64 ./cmd/9router
+
+  docker-build-and-push:
+    needs: go-test-build
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-
     steps:
       - uses: actions/checkout@v4
 
@@ -29,11 +48,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ steps.ghcr.outputs.owner }}/9router
+          images: |
+            ghcr.io/${{ steps.ghcr.outputs.owner }}/9router
+            artiffusion/9router
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest
@@ -46,7 +73,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=ghcr.io/${{ steps.ghcr.outputs.owner }}/9router:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ steps.ghcr.outputs.owner }}/9router:buildcache,mode=max
-          platforms: linux/amd64
+          cache-to: type=registry,ref=ghcr.io/${{ steps.ghcr.outputs.owner }}:buildcache,mode=max
+          platforms: linux/amd64,linux/arm64
           provenance: false
           sbom: false

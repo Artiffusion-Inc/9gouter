@@ -1,0 +1,2 @@
+# Placeholder so `go:embed all:dashboard_assets` compiles in a clean clone.
+# Run scripts/build-dashboard.sh to populate the real Next.js static export.

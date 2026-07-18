@@ -90,3 +90,9 @@ graphify-out/*
 .codegraph/
 .PR/
 .next-analyze/*
+
+# Go-embedded dashboard static export (built by scripts/build-dashboard.sh).
+# Keep only the placeholder index.html for clean-clone `go build` embed compilation;
+# the real export is regenerated on build and not tracked.
+internal/adapter/transport/http/dashboard_assets/*
+!internal/adapter/transport/http/dashboard_assets/.gitkeep

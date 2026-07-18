@@ -12,7 +12,7 @@ const proxyClientMaxBodySize = process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
-  output: "standalone",
+  output: "export",
   serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite"],
   turbopack: {
     root: tracingRoot
@@ -49,42 +49,6 @@ const nextConfig = {
       ignored: /[\\/](node_modules|\.git|logs|\.next|\.next-cli-build|gitbook|cli|open-sse\.old|tests|docs)[\\/]/,
     };
     return config;
-  },
-  async rewrites() {
-    return [
-      {
-        source: "/v1/v1/:path*",
-        destination: "/api/v1/:path*"
-      },
-      {
-        source: "/v1/v1",
-        destination: "/api/v1"
-      },
-      {
-        source: "/codex/:path*",
-        destination: "/api/v1/responses"
-      },
-      {
-        source: "/responses",
-        destination: "/api/v1/responses"
-      },
-      {
-        source: "/v1beta/:path*",
-        destination: "/api/v1beta/:path*"
-      },
-      {
-        source: "/v1beta",
-        destination: "/api/v1beta"
-      },
-      {
-        source: "/v1/:path*",
-        destination: "/api/v1/:path*"
-      },
-      {
-        source: "/v1",
-        destination: "/api/v1"
-      }
-    ];
   }
 };
 

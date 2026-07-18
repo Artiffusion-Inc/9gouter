@@ -106,17 +106,6 @@ async function runHeavyStartup() {
   }
 
   configureTunnelMonitoring(settings);
-
-  if (hasQuotaAutoPingEnabled(settings)) {
-    import("@/shared/services/quotaAutoPing")
-      .then(({ startQuotaAutoPing }) => startQuotaAutoPing())
-      .catch((e) => console.log("[AutoPing] scheduler start failed:", e.message));
-  }
-}
-
-function hasQuotaAutoPingEnabled(settings) {
-  return [settings?.claudeAutoPing, settings?.codexAutoPing]
-    .some((config) => Object.values(config?.connections || {}).some(Boolean));
 }
 
 async function autoStartMitm(settings) {

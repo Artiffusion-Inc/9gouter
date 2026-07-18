@@ -68,25 +68,40 @@ func ollamaToOpenAIResponse(chunk map[string]any, state map[string]any) []map[st
 	created, _ := meta["created"].(int)
 	model, _ := meta["model"].(string)
 
+	// Parse the message fields before the done check: some upstreams deliver the
+	// final content/thinking in the SAME chunk as "done": true (e.g.
+	// {"message":{"content":"!"},"done":true}). Returning an empty delta on
+	// done would drop that final token. This mirrors the upstream fix for
+	// decolua/9router issue #2694 (final-chunk content cutoff).
+	message, _ := chunk["message"].(map[string]any)
+	content, _ := message["content"].(string)
+	thinking, _ := message["thinking"].(string)
+	rawToolCalls, _ := message["tool_calls"].([]any)
+
 	// Final chunk.
 	if done, _ := chunk["done"].(bool); done {
 		finishReason := shared.ToOpenAIFinish(fmt.Sprintf("%v", chunk["done_reason"]), "ollama")
-		if state["hadToolCalls"] == true {
+		if state["hadToolCalls"] == true || len(rawToolCalls) > 0 {
 			finishReason = "tool_calls"
 		}
-		final := shared.BuildChunk(id, created, model, map[string]any{}, finishReason)
+		delta := map[string]any{}
+		if content != "" {
+			delta["content"] = content
+		}
+		if thinking != "" {
+			delta["reasoning_content"] = thinking
+		}
+		if len(rawToolCalls) > 0 {
+			delta["tool_calls"] = convertOllamaToolCalls(rawToolCalls)
+		}
+		final := shared.BuildChunk(id, created, model, delta, finishReason)
 		final["usage"] = shared.ToOpenAIUsage(chunk, "ollama")
 		return []map[string]any{final}
 	}
 
-	message, _ := chunk["message"].(map[string]any)
 	if message == nil {
 		return nil
 	}
-
-	content, _ := message["content"].(string)
-	thinking, _ := message["thinking"].(string)
-	rawToolCalls, _ := message["tool_calls"].([]any)
 
 	if content == "" && thinking == "" && len(rawToolCalls) == 0 {
 		return nil

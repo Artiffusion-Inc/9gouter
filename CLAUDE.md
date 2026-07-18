@@ -1,10 +1,106 @@
 # CLAUDE.md
 
-# CLAUDE.md
-
 > **Fork of [decolua/9router](https://github.com/decolua/9router)** with custom patches. Sync upstream periodically.
 
-## Our Patches
+## Current State: Go Rewrite (branch `main`)
+
+The `main` branch is the **Go rewrite** — a single static binary serving the OpenAI-compatible `/v1/*` API, the dashboard `/api/*` management surface, and the embedded Next.js static-export UI. The legacy Node.js / Next.js / `open-sse` backend lives on branch `legacy/js-backend` and is kept only for rollback; do not edit it on `main`.
+
+- **Single binary**: `cmd/9router` → listens on `:20127`
+- **Storage**: SQLite via `modernc.org/sqlite` (pure Go, CGO_ENABLED=0), default `./data/9router.db` (`DB_PATH`)
+- **Dashboard**: Next.js `output:export` static build, embedded into the binary via `//go:embed all:dashboard_assets` and served by `internal/adapter/transport/http/static.go` with SPA fallback
+- **Clean architecture**: `internal/{domain, usecase, adapter}` + composition root `internal/app/wire.go`
+
+### Architecture
+
+```
+cmd/9router/                      ← entrypoint: config.Load → app.Wire → http.Server
+internal/
+  adapter/
+    config/                      ← envconfig Config + DurationMs setter (timeouts)
+    auth/                        ← session cookie store (HMAC), OIDC
+    db/                          ← sqlite.Open, migrations.Run, SyncSchema, repo/*
+    provider/                    ← per-provider adapters (ollama, codex, gemini, qwen, grok-web, cursor, kiro, ...)
+    translator/                  ← request/response format translation (openai, claude, gemini, codex, ollama, ...)
+    transport/
+      http/                      ← /v1 routes, static dashboard serving, api/* handlers
+        api/                      ← dashboard /api handlers (auth, keys, combos, models, settings, backup, ...)
+      proxy/                     ← proxy stack (SOCKS5, fast-fail, fallback, round-robin)
+    rtk/                         ← runtime kit helpers
+  domain/                        ← domain types (auth, chat, format, provider, settings, usage)
+  usecase/                       ← proxychat, auth, managedashboard
+  app/                           ← composition root (Wire, repos, handler adapters)
+```
+
+### Key Files to Edit
+
+| What | Where |
+|------|-------|
+| Config / env vars / timeouts | `internal/adapter/config/config.go` |
+| Composition root / wiring | `internal/app/wire.go` |
+| Entrypoint | `cmd/9router/main.go` |
+| DB schema / migrations | `internal/adapter/db/migrations/`, `internal/adapter/db/schema.go` |
+| Repositories | `internal/adapter/db/repo/*.go` |
+| Provider adapters | `internal/adapter/provider/<name>/` |
+| Translators | `internal/adapter/translator/<name>/` |
+| /v1 chat routing | `internal/adapter/transport/http/` + `internal/usecase/proxychat/` |
+| Dashboard /api handlers | `internal/adapter/transport/http/api/*.go` |
+| Static dashboard serving | `internal/adapter/transport/http/static.go` (`//go:embed all:dashboard_assets`) |
+| Proxy stack | `internal/adapter/transport/proxy/*.go` |
+| Backup import/export | `internal/adapter/transport/http/api/settings_backup.go`, `settings_extra.go` |
+| Dashboard UI source | `src/app/**` (Next.js, `output:export`) |
+| Dashboard build script | `scripts/build-dashboard.sh` |
+
+### Configuration (env vars)
+
+Defined in `internal/adapter/config/config.go` via `envconfig`. Timeout fields use the `DurationMs` setter, which accepts either a bare integer (milliseconds, matching the JS `*_MS` env names) or a Go duration string (`"60s"`). Defaults match the legacy compose values.
+
+```
+PORT=20127
+DB_PATH=./data/9router.db
+DASHBOARD_PASSWORD_HASH=         # bcrypt hash; backup settings.password is one
+DASHBOARD_SESSION_SECRET=change-me
+SESSION_SECRET=change-me
+
+# Timeouts (ms or Go duration). Defaults shown.
+FETCH_CONNECT_TIMEOUT_MS=60000
+STREAM_STALL_TIMEOUT_MS=180000
+STREAM_STALL_TIMEOUT_REASONING_MS=600000
+STREAM_READINESS_MAX_TIMEOUT_MS=900000
+FETCH_HEADERS_TIMEOUT_MS=60000
+FETCH_BODY_TIMEOUT_MS=600000
+FETCH_KEEPALIVE_TIMEOUT_MS=4000
+SOCKS_HANDSHAKE_TIMEOUT_MS=10000
+PROXY_DISPATCHER_CONNECTIONS=1          # >1 = round-robin fan-out
+PROXY_FAST_FAIL_TIMEOUT_MS=2000
+PROXY_HEALTH_CACHE_TTL_MS=30000
+PROXY_HEALTH_UNHEALTHY_CACHE_TTL_MS=2000
+PROXY_FALLBACK_PROBE_TIMEOUT_MS=3000
+PROXY_AUTO_SELECT_ENABLED=false
+```
+
+Reasoning/thinking models get `STREAM_STALL_TIMEOUT_REASONING_MS` instead of `STREAM_STALL_TIMEOUT_MS` (detection mirrors the JS `isThinkingEnabled()`).
+
+### Backup / Restore (Go API)
+
+Backup import/export is implemented in the Go API, mirroring the legacy JS `exportDb()`/`importDb()` 1:1:
+
+- `GET /api/settings/database` → `ExportDb` (full config payload)
+- `POST /api/settings/database` → `ImportDb` (wipes + inserts; session-auth protected)
+
+Payload shape (`api.BackupPayload`): `settings, providerConnections, providerNodes, proxyPools, apiKeys, combos, modelAliases, customModels, mitmAlias, pricing` — identical to the JS dashboard "Download backup" / "Restore" buttons, so a JS-era backup JSON imports directly.
+
+### Cutover Tooling
+
+- `tools/shadowdiff/` — reverse-proxy shadow-diff harness (fans out to the Go backend, diffs status/headers/normalized SSE/usage). Mismatches logged to `tools/shadowdiff/mismatches.jsonl`.
+- `docs/cutover-runbook.md` — pre-flight, go-live, rollback, monitoring, deletion criteria.
+- `Dockerfile` — multi-stage: Bun static export → Go `CGO_ENABLED=0` static build → distroless.
+
+## Legacy JS Backend (branch `legacy/js-backend`)
+
+The Node.js 22 / Next.js / `open-sse` backend is preserved on `legacy/js-backend` for rollback reference. The custom patches below were ported into the Go rewrite where noted; the rest remain JS-side only. When syncing upstream, conflicts land here.
+
+### Our Patches (JS)
 
 | Patch | File | Upstream Status |
 |-------|------|-----------------|
@@ -14,84 +110,44 @@
 | Adaptive stream-readiness timeout (body-size/reasoning-aware) | `open-sse/utils/streamReadinessPolicy.js`, `handlers/chatCore/streamingHandler.js` | Ported from OmniRoute (#3825) |
 | JSON→SSE synthesis for non-streaming upstreams | `open-sse/utils/jsonToSse.js`, `finishReason.js`, `reasoningFields.js`, `handlers/chatCore/streamingHandler.js` | Ported from OmniRoute (#3089) |
 | Upstream response header strip helper (future-use guard) | `open-sse/utils/upstreamResponseHeaders.js` | Ported from OmniRoute — unmounted |
-| Proxy stack: SOCKS5, timeout config, fast-fail, fallback, round-robin | `open-sse/utils/proxy*.js`, `socksConnector.js`, `fetchCause.js`, `proxyFetch.js` | Ported from OmniRoute |
+| Proxy stack: SOCKS5, timeout config, fast-fail, fallback, round-robin | `open-sse/utils/proxy*.js`, `socksConnector.js`, `fetchCause.js`, `proxyFetch.js` | Ported from OmniRoute → Go `internal/adapter/transport/proxy/` |
 
-### Timeout Configuration (env vars)
+### Proxy Stack (JS, ported to Go)
 
-```
-FETCH_CONNECT_TIMEOUT_MS=120000                     # default 120s (upstream: 60s)
-STREAM_STALL_TIMEOUT_MS=180000                     # default 120s (upstream: 60s), set 180s in compose
-STREAM_STALL_TIMEOUT_REASONING_MS=600000            # default 300s (5min), set 600s (10min) in compose
-STREAM_READINESS_MAX_TIMEOUT_MS=900000              # default 900s (15min), cap for adaptive readiness bump
-FETCH_HEADERS_TIMEOUT_MS=60000                      # default 60s, undici headersTimeout (proxy + direct)
-FETCH_BODY_TIMEOUT_MS=600000                         # default 600s, undici bodyTimeout
-FETCH_KEEPALIVE_TIMEOUT_MS=4000                      # default 4s, clamps upstream Keep-Alive: header (zombie-socket fix)
-SOCKS_HANDSHAKE_TIMEOUT_MS=10000                     # default 10s, ceiling 120s, SOCKS5 connect handshake
-PROXY_DISPATCHER_CONNECTIONS=1                       # 0/1 = single Agent; >1 = round-robin fan-out (Node 24 SSE-serialization mitigation), ceiling 256
-PROXY_FAST_FAIL_TIMEOUT_MS=2000                      # TCP reachability check timeout for dead-proxy fast-fail
-PROXY_HEALTH_CACHE_TTL_MS=30000                      # cache TTL for healthy proxy probe results
-PROXY_HEALTH_UNHEALTHY_CACHE_TTL_MS=2000            # cache TTL for unhealthy (dead) probe results (shorter)
-PROXY_FALLBACK_PROBE_TIMEOUT_MS=3000                  # HEAD-probe timeout for proxyFallback candidate testing
-PROXY_AUTO_SELECT_ENABLED=false                      # opt-in: auto-select a working proxy from the pool as global fallback
-```
+`open-sse/utils/proxyFetch.js` orchestrated a layered proxy pipeline; the Go rewrite reproduces the same layers in `internal/adapter/transport/proxy/`:
 
-Reasoning/thinking models (detected via `isThinkingEnabled()`) get `STREAM_STALL_TIMEOUT_REASONING_MS` instead of `STREAM_STALL_TIMEOUT_MS`. Detection: `Anthropic-Beta` header, `thinking.type=enabled`, `reasoning_effort`, model name contains `thinking` or `-reason`.
-
-Adaptive readiness bump (`resolveStreamReadinessTimeout`): adds +20s/+45s for large/very-large history, +15s for tool-heavy (≥15 tools), +20s/+45s for large/very-large payload, +30s for Codex GPT-5.x high-reasoning cold-start. Bumps stack on the reasoning base and are clamped to `STREAM_READINESS_MAX_TIMEOUT_MS`. Only increases, never decreases.
-
-Per-provider `config.timeoutMs` override also available via dashboard.
-
-### Proxy Stack (ported from OmniRoute)
-
-`open-sse/utils/proxyFetch.js` now orchestrates a layered proxy pipeline:
-
-1. **Vercel relay** — `proxyOptions.vercelRelayUrl` forwards via `x-relay-target`/`x-relay-path` headers (unchanged).
-2. **Connection proxy** — `proxyOptions.connectionProxyUrl` / `connectionProxyEnabled` (per-connection, dashboard), else env proxy (`HTTP(S)_PROXY`/`ALL_PROXY`, honouring `NO_PROXY`).
-3. **Dispatcher** — `proxyDispatcher.js` builds HTTP/HTTPS (`ProxyAgent`) or SOCKS5 (`socksConnector.js` with family pinning) dispatchers, all with undici timeout config (`headersTimeout`/`bodyTimeout`/`connectTimeout`/`keepAliveTimeout`/`keepAliveMaxTimeout`) so upstream `Keep-Alive:` header cannot clamp keepAlive UP to 600s and leak zombie sockets.
-4. **Fast-fail** — `proxyHealth.js` TCP check (<2s) skips dispatcher creation for dead proxies; result cached (healthy 30s, unhealthy 2s), inflight dedup.
-5. **Fallback** — on proxy failure (non-strict), `proxyFallback.js` collects candidates from active proxy pools (`src/lib/db/repos/proxyPoolsRepo.js`) + env, tests in parallel (fast-fail then HEAD probe), returns first working; cached per target URL 5 min. `strictProxy=true` fails hard instead.
-6. **MITM DNS bypass** — for `MITM_BYPASS_HOSTS`, resolves real IP via Google DNS (bypass `/etc/hosts` spoof); proxy path preferred (resolves DNS externally).
-7. **Round-robin direct** — `PROXY_DISPATCHER_CONNECTIONS>1` fans out across N one-connection Agents (mitigates Node 24 undici same-origin SSE serialization where one stream blocks the next).
-8. **Diagnostics** — `fetchCause.js` flattens undici `TypeError: fetch failed` `.cause` chain into `code/syscall/errno/address:port` for proxy-failure logs.
-
-New files: `fetchCause.js`, `proxyFamily.js`, `proxyHealth.js`, `proxyDispatcherCache.js`, `socksConnector.js`, `proxyDispatcher.js`, `proxyFallback.js`. All self-contained (deps: `undici`, `socks`, `node:net`/`node:dns` — already installed).
+1. **Vercel relay** — `x-relay-target`/`x-relay-path` headers.
+2. **Connection proxy** — per-connection `connectionProxyUrl` / `connectionProxyEnabled`, else env `HTTP(S)_PROXY`/`ALL_PROXY` (honouring `NO_PROXY`).
+3. **Dispatcher** — HTTP/HTTPS (`ProxyAgent`) or SOCKS5 (family pinning) with undici timeout config so upstream `Keep-Alive:` cannot clamp keepAlive up to 600s.
+4. **Fast-fail** — TCP check (<2s) skips dispatcher creation for dead proxies; cached (healthy 30s, unhealthy 2s), inflight dedup.
+5. **Fallback** — on proxy failure (non-strict), collect candidates from active proxy pools + env, test in parallel, return first working; cached per target 5 min. `strictProxy=true` fails hard.
+6. **MITM DNS bypass** — for `MITM_BYPASS_HOSTS`, resolve real IP via Google DNS.
+7. **Round-robin direct** — `PROXY_DISPATCHER_CONNECTIONS>1` fans out across N one-connection agents.
+8. **Diagnostics** — flatten `TypeError: fetch failed` `.cause` chain into `code/syscall/errno/address:port`.
 
 ### JSON→SSE Synthesis
 
-Some OpenAI-compatible "reasoning" upstreams ignore `stream:true` and reply with a single `application/json` chat-completion body. `synthesizeOpenAiSseFromJson()` (in `open-sse/utils/jsonToSse.js`) converts that body into an OpenAI SSE stream, preserving `content` + `reasoning_content` + `tool_calls` + `usage`. Applied in `streamingHandler.js` only when `targetFormat` is `openai`/`openai-responses`. Returns "" for non-parseable bodies → callers fall back to existing non-SSE handling.
+OpenAI-compatible "reasoning" upstreams that ignore `stream:true` and reply with a single `application/json` body are converted into an OpenAI SSE stream, preserving `content` + `reasoning_content` + `tool_calls` + `usage`. In Go this lives in `internal/adapter/translator/`; in JS it was `open-sse/utils/jsonToSse.js`.
 
 ### Stream Error SSE
 
-When a stream stalls or aborts, regular chat/completions clients now receive a structured error SSE event + `[DONE]` instead of an empty HTTP 200. Previously only Responses API got terminal events.
+On stream stall/abort, chat/completions clients receive a structured error SSE event + `[DONE]` instead of an empty HTTP 200. Ported to the Go proxychat usecase.
 
-### Go rewrite and legacy JS backend
+## Build & Run
 
-The JS backend (Node.js 22 / Next.js / `open-sse`) lives on branch `legacy/js-backend` while the `main` branch is rewritten in Go. The rewrite branch holds only the Go code plus the dashboard build step. Rollback to the legacy backend is served from `legacy/js-backend`.
+```bash
+# Go binary (dashboard assets must be present for embed — see .gitkeep fallback)
+CGO_ENABLED=0 go build -o /tmp/9router ./cmd/9router
+DB_PATH=./data/9router.db /tmp/9router
 
-## Architecture
+# Dashboard static export → internal/adapter/transport/http/dashboard_assets/
+scripts/build-dashboard.sh      # bun build → cp out/ into dashboard_assets
 
-```
-Next.js app (dashboard + API)
-  └── open-sse/              ← Core LLM proxy logic
-      ├── config/             ← runtimeConfig.js (timeouts, retry, error config)
-      ├── executors/          ← Provider-specific executors (base, groq, gemini, codex, etc.)
-      ├── handlers/           ← Request routing (chat, embeddings, search, TTS, image)
-      ├── translator/         ← Request/response format translation (OpenAI ↔ provider formats)
-      └── utils/              ← streamHandler.js (stall detection, disconnect awareness)
-  └── src/                    ← Next.js app (dashboard UI, API routes, auth)
-  └── cli/                    ← CLI tools
+# Tests
+go test -race ./...
 ```
 
-## Key Files to Edit
-
-| What | Where |
-|------|-------|
-| Timeouts | `open-sse/config/runtimeConfig.js` |
-| Stream stall/abort handling | `open-sse/utils/streamHandler.js` |
-| Connect timeout (fetch) | `open-sse/executors/base.js` (line ~126) |
-| Provider-specific logic | `open-sse/executors/*.js` |
-| Chat streaming handler | `open-sse/handlers/chatCore/streamingHandler.js` |
-| Error formatting | `open-sse/utils/error.js` |
+`internal/adapter/transport/http/dashboard_assets/.gitkeep` is committed so a clean clone compiles; the real export is gitignored and produced by `scripts/build-dashboard.sh` (or the Dockerfile's first stage).
 
 ## Upstream Sync
 
@@ -105,7 +161,7 @@ git tag v0.4.XX-artiffusion.N
 git push --tags
 ```
 
-Conflicts likely in `runtimeConfig.js` (our env-var patch) and `streamHandler.js` (our error SSE patch).
+Legacy JS conflicts land on `legacy/js-backend` in `runtimeConfig.js` (env-var patch) and `streamHandler.js` (error SSE patch).
 
 ## Docker Build
 
@@ -113,10 +169,11 @@ Conflicts likely in `runtimeConfig.js` (our env-var patch) and `streamHandler.js
 - **Images**: `ghcr.io/artiffusion/9router:latest` + `artiffusion/9router:latest`
 - **Platforms**: linux/amd64, linux/arm64
 - **Secrets needed**: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses `GITHUB_TOKEN`)
+- **Compose**: `docker-compose.yml` → port 20127, volume `9router-data`, `.env` file
 
 ## Tech Stack
 
-- **Runtime**: Node.js 22 (Alpine)
-- **Framework**: Next.js (standalone build)
-- **Build**: `npm run build` → `.next/standalone`
-- **MITM**: Optional proxy for CLI tools (separate process)
+- **Backend**: Go 1.26, `net/http` + SSE, `modernc.org/sqlite` (pure Go, CGO=0)
+- **Dashboard**: Next.js (`output:export`), built with `bun`, embedded via `//go:embed`
+- **Auth**: session cookie (HMAC `auth_token`), bcrypt password hash, OIDC
+- **Config**: `kelseyhightower/envconfig` with `DurationMs` ms-or-duration setter

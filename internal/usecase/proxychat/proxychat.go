@@ -158,6 +158,14 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 		return h.errorResult(http.StatusBadRequest, "invalid request body", start)
 	}
 
+	// Mirror open-sse/handlers/chatCore.js:151 — after request translation the
+	// upstream body's "model" field is forced to the bare upstream model name
+	// (req.Model is the part after the "provider/" routing prefix; it never
+	// carries the namespace). Without this, a passthrough/no-op translation
+	// (e.g. OpenAI→Ollama has no request translator) leaves the client's
+	// "ollama/gemma3:4b" in the body and the upstream 404s with "model not found".
+	bodyMap["model"] = req.Model
+
 	// Token-saver pipeline, gated by X-9Router-Token-Saver header.
 	tokenSaverEnabled := isTokenSaverEnabled(req.Headers, h.deps.Config)
 	var headroomStats *headroomResult

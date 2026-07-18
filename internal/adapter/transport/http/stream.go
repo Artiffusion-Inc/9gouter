@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"time"
 )
@@ -29,6 +30,22 @@ type PipeOpts struct {
 	// Provider and Model are logged with debug diagnostics.
 	Provider string
 	Model    string
+
+	// FrameMode selects how upstream frames are split. "sse" (default, the
+	// historical behaviour) splits on "\n\n" — the OpenAI/Claude standard.
+	// "ndjson" splits on "\n" — raw JSON lines without a "data:" prefix, as
+	// emitted by Ollama/llama.cpp /api/chat. "auto" detects per upstream: if
+	// the first non-empty frame has no "\n\n" but is a JSON line, it switches
+	// to ndjson. Empty/unset keeps "sse" for backwards compatibility.
+	FrameMode string
+
+	// TranslateResponse, when non-nil, converts a raw upstream frame (already
+	// de-framed) into one or more OpenAI-SSE client frames. It mirrors the JS
+	// streamHelpers parseSSELine + response-translator pipeline: ollama NDJSON
+	// lines are translated to OpenAI chat.completion.chunk SSE events. When
+	// nil the pipe does byte-for-byte raw passthrough (the historical
+	// behaviour and what TestPipePassthrough asserts).
+	TranslateResponse func(frame []byte, state map[string]any) ([][]byte, error)
 }
 
 // DefaultReason is the reason string used in the terminal error SSE.
@@ -76,7 +93,7 @@ func Pipe(ctx context.Context, upstream io.Reader, w *Writer, opts PipeOpts) err
 		reason = DefaultReason
 	}
 
-	framer := newFrameReader(upstream, 1<<20)
+	framer := newFramer(upstream, 1<<20, opts.FrameMode)
 
 	stall := time.NewTimer(stallTimeout)
 	defer stall.Stop()
@@ -118,14 +135,22 @@ func Pipe(ctx context.Context, upstream io.Reader, w *Writer, opts PipeOpts) err
 	writerDone := make(chan struct{})
 	go func() {
 		defer close(writerDone)
+		// Per-stream translation state (mirrors translator.InitState on the
+		// JS side). Initialized lazily on the first translated frame.
+		var state map[string]any
 		for frame := range frameCh {
-			// Ensure each frame is terminated by the SSE blank line. The
-			// frameReader strips the trailing "\n\n"; add it back here.
-			frame = append(frame, '\n', '\n')
-			if err := w.WriteRaw(frame); err != nil {
+			out, err := translateOrPassthrough(w, opts.TranslateResponse, &state, frame)
+			if err != nil {
 				errCh <- err
 				closeFrameCh()
 				return
+			}
+			for _, ev := range out {
+				if err := w.WriteRaw(ev); err != nil {
+					errCh <- err
+					closeFrameCh()
+					return
+				}
 			}
 			select {
 			case resetCh <- struct{}{}:
@@ -272,4 +297,160 @@ func findDoubleNewline(b []byte) int {
 		}
 	}
 	return -1
+}
+
+// framer is the de-framing strategy used by Pipe. The SSE framer splits on
+// "\n\n"; the NDJSON framer splits on "\n" (raw JSON lines, Ollama/llama.cpp).
+type framer interface {
+	NextFrame() ([]byte, error)
+}
+
+// newFramer selects a de-framer by mode. "ndjson" forces line splitting;
+// "sse" or empty keeps the historical double-newline behaviour; "auto"
+// starts as SSE and, if a frame looks like a bare JSON line (no "\n\n"
+// boundary found but a complete "{...}\n" is present), re-reads it as
+// NDJSON.
+func newFramer(r io.Reader, maxSize int, mode string) framer {
+	switch strings.ToLower(mode) {
+	case "ndjson":
+		return &ndjsonFramer{r: r, maxSize: maxSize}
+	case "auto":
+		return &autoFramer{sse: &frameReader{r: r, buf: make([]byte, 0, 64*1024), maxSize: maxSize}, nd: newNDJSONFramer(r, maxSize)}
+	default:
+		return &frameReader{r: r, buf: make([]byte, 0, 64*1024), maxSize: maxSize}
+	}
+}
+
+// ndjsonFramer reads raw JSON lines separated by single "\n". Blank lines
+// are skipped. A trailing line without "\n" is flushed on EOF.
+type ndjsonFramer struct {
+	r       io.Reader
+	buf     []byte
+	maxSize int
+	err     error
+}
+
+func newNDJSONFramer(r io.Reader, maxSize int) *ndjsonFramer {
+	return &ndjsonFramer{r: r, maxSize: maxSize}
+}
+
+func (fr *ndjsonFramer) NextFrame() ([]byte, error) {
+	for {
+		if fr.err != nil {
+			return nil, fr.err
+		}
+		if idx := bytes.IndexByte(fr.buf, '\n'); idx >= 0 {
+			line := make([]byte, idx)
+			copy(line, fr.buf[:idx])
+			fr.buf = fr.buf[idx+1:]
+			if trimmed := bytes.TrimSpace(line); len(trimmed) == 0 {
+				continue
+			}
+			return line, nil
+		}
+		if len(fr.buf) > fr.maxSize {
+			fr.err = errors.New("frame exceeds maximum size")
+			return nil, fr.err
+		}
+		tmp := make([]byte, 64*1024)
+		n, err := fr.r.Read(tmp)
+		if n > 0 {
+			fr.buf = append(fr.buf, tmp[:n]...)
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				if len(bytes.TrimSpace(fr.buf)) == 0 {
+					fr.err = io.EOF
+					return nil, io.EOF
+				}
+				line := make([]byte, len(fr.buf))
+				copy(line, fr.buf)
+				fr.buf = fr.buf[:0]
+				fr.err = io.EOF
+				return line, nil
+			}
+			fr.err = err
+			return nil, err
+		}
+	}
+}
+
+// autoFramer starts as SSE; the first frame that yields via the SSE path but
+// contains no "data:" prefix (i.e. a bare JSON line) switches the stream to
+// NDJSON for all subsequent reads. This mirrors streamHelpers.js auto-detect
+// of raw JSON lines from ollama/llama.cpp.
+type autoFramer struct {
+	sse *frameReader
+	nd  *ndjsonFramer
+}
+
+func (a *autoFramer) NextFrame() ([]byte, error) {
+	frame, err := a.sse.NextFrame()
+	if err == nil {
+		// SSE split on "\n\n". If it is a bare JSON object (no "data:" prefix),
+		// the upstream is NDJSON: feed the remainder through the ndjson framer
+		// and return this line as-is.
+		trimmed := bytes.TrimSpace(frame)
+		if len(trimmed) > 0 && trimmed[0] == '{' && !bytes.HasPrefix(trimmed, []byte("data:")) {
+			a.nd.buf = append(a.nd.buf, a.sse.buf...)
+			a.sse.buf = a.sse.buf[:0]
+			a.nd.err = nil
+			return frame, nil
+		}
+		return frame, nil
+	}
+	// EOF on SSE with leftover bytes that never saw "\n\n": treat as the last
+	// NDJSON line(s).
+	if errors.Is(err, io.EOF) && len(bytes.TrimSpace(a.sse.buf)) > 0 {
+		leftover := make([]byte, len(a.sse.buf))
+		copy(leftover, a.sse.buf)
+		a.sse.buf = a.sse.buf[:0]
+		return leftover, nil
+	}
+	return nil, err
+}
+
+// translateOrPassthrough maps one de-framed upstream frame into client SSE
+// frames. With no translator (raw passthrough) the frame is re-terminated
+// with "\n\n" exactly as the historical Pipe did. With a translator each
+// produced chunk is wrapped as an OpenAI "data: <json>\n\n" event.
+func translateOrPassthrough(
+	w *Writer,
+	translate func([]byte, map[string]any) ([][]byte, error),
+	state *map[string]any,
+	frame []byte,
+) ([][]byte, error) {
+	if translate == nil {
+		out := make([]byte, len(frame))
+		copy(out, frame)
+		out = append(out, '\n', '\n')
+		return [][]byte{out}, nil
+	}
+	if *state == nil {
+		*state = map[string]any{}
+	}
+	chunks, err := translate(frame, *state)
+	if err != nil {
+		return nil, err
+	}
+	out := make([][]byte, 0, len(chunks))
+	for _, c := range chunks {
+		if len(bytes.TrimSpace(c)) == 0 {
+			continue
+		}
+		// NDJSON/delta "done:true" markers translate to a final chunk; the
+		// caller's translator is responsible for emitting a finish chunk. We
+		// always wrap as "data: <chunk>\n\n".
+		ev := make([]byte, 0, len(c)+8)
+		ev = append(ev, []byte("data: ")...)
+		ev = append(ev, c...)
+		ev = append(ev, '\n', '\n')
+		out = append(out, ev)
+	}
+	if len(out) == 0 {
+		// Translator dropped the chunk (e.g. empty content delta). Emit nothing
+		// but keep the writer alive.
+		return nil, nil
+	}
+	return out, nil
 }

@@ -265,13 +265,26 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 
 	// For streaming requests, pipe to the client (with JSON→SSE synthesis if needed).
 	if req.Stream {
-		contentType := strings.ToLower(resp.Response.Header.Get("content-type"))
-		if strings.Contains(contentType, "application/json") && isOpenAIFormatted(sourceFormat) {
-			bodyText, _ := io.ReadAll(resp.Response.Body)
-			 synthesized, _ := h.deps.JSONToSSE.Synthesize(bodyText)
-			if synthesized != "" {
-				h.saveUsage(ctx, req, providerID, start, 0, 0, "success", nil, nil)
-				return h.serveSynthesizedSSE(ctx, req, synthesized)
+		// JSON→SSE synthesis is for non-streaming upstreams that ignore
+		// stream:true and reply with a single application/json chat-completion
+		// body (ported from OmniRoute #3089). It must NOT fire for upstreams
+		// that genuinely stream a non-SSE format — notably Ollama/llama.cpp,
+		// whose /api/chat streams NDJSON but labels it "application/json".
+		// Reading such a body with io.ReadAll blocks forever waiting for an
+		// EOF that arrives only when the stream finishes. De-framing +
+		// translation for those formats is handled by the Pipe (FrameMode +
+		// TranslateResponse), so skip synthesis whenever the target format
+		// has its own framing strategy.
+		ndjsonUpstream := frameModeFor(targetFormat) == "ndjson"
+		if !ndjsonUpstream {
+			contentType := strings.ToLower(resp.Response.Header.Get("content-type"))
+			if strings.Contains(contentType, "application/json") && isOpenAIFormatted(sourceFormat) {
+				bodyText, _ := io.ReadAll(resp.Response.Body)
+				synthesized, _ := h.deps.JSONToSSE.Synthesize(bodyText)
+				if synthesized != "" {
+					h.saveUsage(ctx, req, providerID, start, 0, 0, "success", nil, nil)
+					return h.serveSynthesizedSSE(ctx, req, synthesized)
+				}
 			}
 		}
 
@@ -290,6 +303,8 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 			Reason:              "stream_stall_timeout",
 			Provider:            providerID,
 			Model:               req.Model,
+			FrameMode:           frameModeFor(targetFormat),
+			TranslateResponse:   translateStreamChunk(sourceFormat, targetFormat),
 		}
 		err = h.deps.StreamPipe.Pipe(ctx, resp.Response.Body, w, opts)
 
@@ -399,6 +414,40 @@ func resolveTargetFormat(providerID string, sourceFormat format.Format) format.F
 		return format.Kiro
 	}
 	return sourceFormat
+}
+
+// frameModeFor maps the upstream target format to a de-framing strategy.
+// Ollama/llama.cpp emit raw JSON lines (NDJSON); everything else is SSE.
+func frameModeFor(targetFormat format.Format) string {
+	if targetFormat == format.Ollama {
+		return "ndjson"
+	}
+	return "sse"
+}
+
+// translateStreamChunk returns a Pipe TranslateResponse callback that
+// converts a de-framed upstream chunk into source-format SSE events. When
+// source and target match (native OpenAI providers, raw passthrough) it
+// returns nil so the pipe re-terminates the frame byte-for-byte — the
+// historical behaviour and what the streaming-passthrough tests assert.
+func translateStreamChunk(sourceFormat, targetFormat format.Format) func([]byte, map[string]any) ([][]byte, error) {
+	if !translator.NeedsTranslation(sourceFormat, targetFormat) {
+		return nil
+	}
+	return func(frame []byte, state map[string]any) ([][]byte, error) {
+		chunks, err := translator.TranslateResponse(targetFormat, sourceFormat, frame, state)
+		if err != nil {
+			return nil, err
+		}
+		out := make([][]byte, 0, len(chunks))
+		for _, c := range chunks {
+			if len(bytes.TrimSpace(c)) == 0 {
+				continue
+			}
+			out = append(out, c)
+		}
+		return out, nil
+	}
 }
 
 func isOpenAIFormatted(f format.Format) bool {

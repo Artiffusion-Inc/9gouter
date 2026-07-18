@@ -74,6 +74,24 @@ func (lr *loggingResponseWriter) WriteHeader(code int) {
 	}
 }
 
+// Flush proxies http.Flusher so SSE/streaming handlers embedded behind the
+// logging middleware can flush chunks to the wire immediately. Without this,
+// sse.Writer's `w.(http.Flusher)` assertion fails, f is nil, and the whole
+// streamed response is buffered in the ResponseWriter until EOF — the client
+// receives nothing until the stream ends (curl times out at 0 bytes).
+func (lr *loggingResponseWriter) Flush() {
+	if f, ok := lr.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap allows http.ResponseController to find the underlying ResponseWriter
+// (and its Flush/Hijack/etc.) when handlers use ResponseController instead of
+// a direct type assertion.
+func (lr *loggingResponseWriter) Unwrap() http.ResponseWriter {
+	return lr.ResponseWriter
+}
+
 // ClientIPMiddleware sets X-9r-Real-Ip and X-9r-Via-Proxy headers so downstream
 // handlers see the trusted client IP (mirroring custom-server.js).
 func ClientIPMiddleware() Middleware {

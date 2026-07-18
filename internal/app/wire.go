@@ -24,6 +24,9 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
+	// Side-effect import: triggers RegisterRequest/RegisterResponse in every
+	// translator subpackage so the registry is populated in the final binary.
+	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/register"
 	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxychat"
 )

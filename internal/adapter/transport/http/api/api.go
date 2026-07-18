@@ -8,6 +8,7 @@ package api
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -67,6 +68,10 @@ type Deps struct {
 	Usage          *repo.UsageRepo
 	SessionStore   domainauth.Store
 	Logger         *slog.Logger
+
+	// DB is the raw *sql.DB used by the backup import/export handler for bulk
+	// writes that mirror the legacy importDb() transaction (settings/database).
+	DB *sql.DB
 
 	// Version is injected by the composition root; defaults to "dev" if empty.
 	Version string

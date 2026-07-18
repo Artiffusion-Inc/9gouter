@@ -89,6 +89,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Usage:          repos.Usage,
 		SessionStore:   sessionStore,
 		Logger:         logger,
+		DB:             db,
 		Version:        cfg.Version,
 	}
 	api.RegisterHealth(mux)

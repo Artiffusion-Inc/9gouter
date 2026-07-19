@@ -710,6 +710,23 @@ func Alias(providerID string) string {
 	return providerAlias(providerID)
 }
 
+// ChatBaseURL returns the raw chat BaseURL from the static provider config, or
+// "" if the provider is unknown. It is the embeddings adapter's fallback path:
+// for providers without an explicit embeddings URL it derives the embeddings
+// endpoint by swapping the chat suffix (/chat/completions, /messages, ...) for
+// /embeddings under the same versioned API root.
+func ChatBaseURL(providerID string) string {
+	id, ok := aliases[providerID]
+	if !ok {
+		return ""
+	}
+	cfg, ok := configs[id]
+	if !ok {
+		return ""
+	}
+	return cfg.BaseURL
+}
+
 // Catalog returns the static provider catalog (alias, models, serviceKinds)
 // for a provider id, or false if the provider is unknown or has no catalog.
 // Models may be empty for providers whose catalog is populated at runtime by

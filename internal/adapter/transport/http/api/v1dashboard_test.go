@@ -80,8 +80,9 @@ func TestV1Dashboard_NotAvailable_ForUnimplemented(t *testing.T) {
 	rec := &dispatchRecorder{}
 	mux := newDashboardMux(t, rec.ServeHTTP)
 
-	// /v1/embeddings is not implemented — must NOT dispatch, must return stub.
-	req := httptest.NewRequest("POST", "/api/v1/embeddings", nil)
+	// /api/v1/images/generations is still unimplemented — must NOT dispatch,
+	// must return the not-available stub.
+	req := httptest.NewRequest("POST", "/api/v1/images/generations", nil)
 	rw := httptest.NewRecorder()
 	mux.ServeHTTP(rw, req)
 
@@ -90,6 +91,25 @@ func TestV1Dashboard_NotAvailable_ForUnimplemented(t *testing.T) {
 	}
 	if !containsSubstr(rw.Body.String(), "not yet available") {
 		t.Fatalf("expected not-available stub, got: %s", rw.Body.String())
+	}
+}
+
+// TestV1Dashboard_Passthrough_Embeddings verifies /api/v1/embeddings now
+// rewrites to /v1/embeddings and dispatches (it was a notAvailable stub before
+// the T031b embeddings pipeline landed).
+func TestV1Dashboard_Passthrough_Embeddings(t *testing.T) {
+	rec := &dispatchRecorder{}
+	mux := newDashboardMux(t, rec.ServeHTTP)
+
+	req := httptest.NewRequest("POST", "/api/v1/embeddings", nil)
+	rw := httptest.NewRecorder()
+	mux.ServeHTTP(rw, req)
+
+	if rec.gotPath != "/v1/embeddings" {
+		t.Fatalf("dispatch path = %q, want /v1/embeddings", rec.gotPath)
+	}
+	if rw.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rw.Code)
 	}
 }
 

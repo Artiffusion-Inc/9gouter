@@ -558,6 +558,14 @@ func (e *BaseExecutor) Execute(ctx context.Context, req provider.ExecRequest) (p
 // Anything absent falls back to the executor default (env/global proxy),
 // preserving backwards compatibility for connections without an assigned pool.
 func proxyFetchOptsFromCreds(creds provider.Credentials, def proxy.ProxyFetchOptions) proxy.ProxyFetchOptions {
+	return ProxyFetchOptsFromCreds(creds, def)
+}
+
+// ProxyFetchOptsFromCreds resolves per-connection proxy options from the
+// credentials' ProviderSpecificData, merging onto a default. Exported so the
+// embeddings usecase can reuse the same resolution as the chat executor
+// without re-implementing the PSD-keyed extraction.
+func ProxyFetchOptsFromCreds(creds provider.Credentials, def proxy.ProxyFetchOptions) proxy.ProxyFetchOptions {
 	opts := def
 	if creds.ProviderSpecificData == nil {
 		return opts

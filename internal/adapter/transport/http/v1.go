@@ -33,6 +33,35 @@ type ChatHandler interface {
 	Handle(ctx context.Context, req ChatRequest, w http.ResponseWriter, sse *Writer) (ChatResult, error)
 }
 
+// EmbeddingsHandler is the boundary between the HTTP transport layer and the
+// embeddings usecase. Implementations are provided by wire.go (proxyembeddings
+// adapter). Unlike chat, embeddings is non-streaming JSON in/out, so the handler
+// owns writing the response body directly.
+type EmbeddingsHandler interface {
+	Handle(ctx context.Context, req EmbeddingsRequest) (EmbeddingsResult, error)
+}
+
+// EmbeddingsRequest carries the parsed HTTP request into the embeddings usecase.
+type EmbeddingsRequest struct {
+	Ctx          context.Context
+	Body         json.RawMessage
+	Endpoint     string
+	Headers      http.Header
+	ProviderID   string
+	Model        string
+	Credentials  domainProv.Credentials
+	APIKey       string
+	ConnectionID string
+	UserAgent    string
+}
+
+// EmbeddingsResult carries the outcome back to the HTTP layer.
+type EmbeddingsResult struct {
+	StatusCode int
+	Err        error
+	Body       []byte
+}
+
 // ChatRequest carries the parsed HTTP request into the usecase.
 type ChatRequest struct {
 	Ctx         context.Context
@@ -78,6 +107,9 @@ type V1Deps struct {
 
 	// Chat is the injected chat usecase boundary.
 	Chat ChatHandler
+
+	// Embeddings is the injected embeddings usecase boundary (POST /v1/embeddings).
+	Embeddings EmbeddingsHandler
 }
 
 // RegisterV1 mounts POST handlers for /v1/chat/completions, /v1/messages,
@@ -91,6 +123,12 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	// estimate. Local (chars/4) only, no upstream — mirrors legacy JS
 	// src/app/api/v1/messages/count_tokens/route.js.
 	mux.HandleFunc("POST /v1/messages/count_tokens", handler.handleCountTokens)
+	// POST /v1/embeddings — OpenAI-compatible embeddings pipeline. Ports
+	// open-sse/handlers/embeddings.js + embeddingsCore.js: per-provider adapter
+	// builds the upstream URL/headers/body, fetch via the proxy stack,
+	// normalize to OpenAI shape, record usage. Account fallback and on-401
+	// token refresh are separate slices.
+	mux.HandleFunc("POST /v1/embeddings", handler.handleEmbeddings)
 	// GET /v1/models — OpenAI-compatible model catalog. Static MVP (issue
 	// decolua/9router #2702): combos + per-provider static catalogs (only for
 	// providers with an active connection) + custom models + aliases, minus
@@ -590,5 +628,118 @@ func wroteResponse(w http.ResponseWriter) bool {
 		return rec.Code != 0
 	}
 	return false
+}
+
+// handleEmbeddings serves POST /v1/embeddings. It reuses the chat handler's
+// auth gate, model resolution, and credential resolution, then delegates to
+// the injected EmbeddingsHandler. Unlike chat, the response is a single JSON
+// body the usecase has already normalized; the transport layer only writes it.
+func (h *v1Handler) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	var reqMap map[string]json.RawMessage
+	if err := json.Unmarshal(body, &reqMap); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+
+	apiKey := extractAPIKey(r)
+
+	requireKey, err := h.requireAPIKey(ctx)
+	if err != nil {
+		h.logger.Warn("api-key check failed", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "Auth check failed")
+		return
+	}
+	if requireKey || !isLocalRequest(r) {
+		if apiKey == "" {
+			h.writeError(w, http.StatusUnauthorized, "Missing API key")
+			return
+		}
+		valid, err := h.deps.APIKeysRepo.Validate(ctx, apiKey)
+		if err != nil {
+			h.logger.Warn("api-key validate failed", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "Auth check failed")
+			return
+		}
+		if !valid {
+			h.writeError(w, http.StatusUnauthorized, "Invalid API key")
+			return
+		}
+	}
+
+	modelStr := ""
+	if m, ok := reqMap["model"]; ok && len(m) > 0 {
+		var s string
+		if err := json.Unmarshal(m, &s); err == nil {
+			modelStr = s
+		}
+	}
+	if modelStr == "" {
+		h.writeError(w, http.StatusBadRequest, "Missing model")
+		return
+	}
+
+	modelInfo, err := h.resolveModel(ctx, modelStr)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if modelInfo.Provider == "" {
+		h.writeError(w, http.StatusBadRequest, "Invalid model format")
+		return
+	}
+
+	creds, err := h.resolveCredentials(ctx, modelInfo.Provider, modelInfo.Model)
+	if err != nil {
+		h.writeError(w, http.StatusNotFound, fmt.Sprintf("No active credentials for provider: %s", modelInfo.Provider))
+		return
+	}
+
+	if h.deps.Embeddings == nil {
+		h.writeError(w, http.StatusNotImplemented, "Embeddings pipeline not wired")
+		return
+	}
+
+	connectionID := ""
+	if m := creds.ProviderSpecificData; m != nil {
+		if v, ok := m["_connectionId"].(string); ok {
+			connectionID = v
+		}
+	}
+
+	res, err := h.deps.Embeddings.Handle(ctx, EmbeddingsRequest{
+		Ctx:          ctx,
+		Body:         body,
+		Endpoint:     r.URL.Path,
+		Headers:      r.Header.Clone(),
+		ProviderID:   modelInfo.Provider,
+		Model:        modelInfo.Model,
+		Credentials:  creds,
+		APIKey:       apiKey,
+		ConnectionID: connectionID,
+		UserAgent:    r.UserAgent(),
+	})
+	if err != nil && res.Err == nil {
+		res.Err = err
+	}
+	if res.Err != nil {
+		status := res.StatusCode
+		if status == 0 {
+			status = http.StatusBadGateway
+		}
+		h.writeError(w, status, res.Err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(res.StatusCode)
+	_, _ = w.Write(res.Body)
 }
 

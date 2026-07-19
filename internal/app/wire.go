@@ -36,6 +36,7 @@ import (
 	_ "github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
 	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxychat"
+	"github.com/Artiffusion-Inc/9router/internal/usecase/proxyembeddings"
 )
 
 // App is the wired application. It exposes the HTTP server and the underlying
@@ -71,6 +72,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	proxyOpts := proxy.OptionsFromConfig(cfg)
 
 	chatHandler := newProxyChatHandler(repos, proxyOpts, cfg, logger)
+	embeddingsHandler := newProxyEmbeddingsHandler(repos, proxyOpts, cfg, logger)
 
 	mux := http.NewServeMux()
 	httptransport.RegisterV1(mux, httptransport.V1Deps{
@@ -86,6 +88,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Logger:         logger,
 		Config:         cfg,
 		Chat:           chatHandler,
+		Embeddings:     embeddingsHandler,
 	})
 
 	sessionStore, err := auth.NewCookieStore(cfg.DashboardSessionSecret)
@@ -299,6 +302,44 @@ type slogLogger struct {
 func (l slogLogger) Infof(format string, args ...any)  { l.log.Info(fmt.Sprintf(format, args...)) }
 func (l slogLogger) Warnf(format string, args ...any)  { l.log.Warn(fmt.Sprintf(format, args...)) }
 func (l slogLogger) Debugf(format string, args ...any) { l.log.Debug(fmt.Sprintf(format, args...)) }
+
+// proxyEmbeddingsHandler adapts proxyembeddings.Handler to the
+// httptransport.EmbeddingsHandler interface. Lives in the composition root
+// (the only place allowed to know both packages).
+type proxyEmbeddingsHandler struct {
+	handler *proxyembeddings.Handler
+}
+
+func newProxyEmbeddingsHandler(r repos, opts proxy.Options, cfg config.Config, logger *slog.Logger) *proxyEmbeddingsHandler {
+	return &proxyEmbeddingsHandler{
+		handler: proxyembeddings.New(proxyembeddings.Dependencies{
+			UsageRepo: r.Usage,
+			ProxyOpts: opts,
+			Logger:    &slogLogger{logger},
+			Config:    cfg,
+		}),
+	}
+}
+
+func (h *proxyEmbeddingsHandler) Handle(ctx context.Context, req httptransport.EmbeddingsRequest) (httptransport.EmbeddingsResult, error) {
+	res := h.handler.Handle(ctx, proxyembeddings.Request{
+		Ctx:          ctx,
+		Body:         req.Body,
+		Endpoint:     req.Endpoint,
+		Headers:      req.Headers,
+		ProviderID:   req.ProviderID,
+		Model:        req.Model,
+		Credentials:  req.Credentials,
+		APIKey:       req.APIKey,
+		ConnectionID: req.ConnectionID,
+		UserAgent:    req.UserAgent,
+	})
+	return httptransport.EmbeddingsResult{
+		StatusCode: res.StatusCode,
+		Err:        res.Err,
+		Body:       res.Body,
+	}, nil
+}
 
 // domainProvRegistry wraps the provider adapter registry for proxychat.
 func domainProvRegistry(id string) (proxychat.DomainProvider, error) { return provider.Lookup(id) }

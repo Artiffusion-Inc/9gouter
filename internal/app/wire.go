@@ -40,6 +40,7 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxyembeddings"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxyfetch"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/sttproxy"
+	"github.com/Artiffusion-Inc/9router/internal/usecase/ttsproxy"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/videoproxy"
 )
 
@@ -86,6 +87,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	webFetchHandler := newProxyWebFetchHandler(cfg, logger)
 	videoHandler := newVideoProxyHandler(cfg, logger)
 	sttHandler := newSttHandler(cfg, logger)
+	ttsHandler := newTtsHandler(cfg, logger)
 
 	mux := http.NewServeMux()
 	httptransport.RegisterV1(mux, httptransport.V1Deps{
@@ -105,6 +107,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		WebFetch:       webFetchHandler,
 		Video:          videoHandler,
 		Stt:            sttHandler,
+		Tts:            ttsHandler,
 	})
 
 	sessionStore, err := auth.NewCookieStore(cfg.DashboardSessionSecret)
@@ -464,6 +467,42 @@ func (h *sttHandler) Handle(ctx context.Context, req httptransport.SttRequest) (
 		UserAgent:   req.UserAgent,
 	})
 	return httptransport.SttResult{
+		StatusCode:  res.StatusCode,
+		Err:        res.Err,
+		Body:        res.Body,
+		ContentType: res.ContentType,
+	}, nil
+}
+
+// ttsHandler adapts ttsproxy.Handler to the httptransport.TtsHandler interface.
+// Lives in the composition root (the only place allowed to know both packages).
+// Like STT, TTS does not persist usage rows (the legacy JS TTS path never
+// called saveRequestUsage), so it only needs config + logger.
+type ttsHandler struct {
+	handler *ttsproxy.Handler
+}
+
+func newTtsHandler(cfg config.Config, logger *slog.Logger) *ttsHandler {
+	return &ttsHandler{
+		handler: ttsproxy.New(ttsproxy.Dependencies{
+			Logger: &slogLogger{logger},
+			Config: cfg,
+		}),
+	}
+}
+
+func (h *ttsHandler) Handle(ctx context.Context, req httptransport.TtsRequest) (httptransport.TtsResult, error) {
+	res := h.handler.Handle(ctx, ttsproxy.Request{
+		Ctx:            ctx,
+		ProviderID:     req.ProviderID,
+		Model:          req.Model,
+		Input:          req.Input,
+		Language:       req.Language,
+		ResponseFormat: req.ResponseFormat,
+		Credentials:    req.Credentials,
+		UserAgent:      req.UserAgent,
+	})
+	return httptransport.TtsResult{
 		StatusCode:  res.StatusCode,
 		Err:         res.Err,
 		Body:        res.Body,

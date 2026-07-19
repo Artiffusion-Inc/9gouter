@@ -159,6 +159,36 @@ type SttResult struct {
 	ContentType string
 }
 
+// TtsHandler is the boundary between the HTTP transport layer and the
+// tts-proxy usecase (POST /v1/audio/speech). Implementations are provided by
+// wire.go (ttsproxy adapter).
+type TtsHandler interface {
+	Handle(ctx context.Context, req TtsRequest) (TtsResult, error)
+}
+
+// TtsRequest carries a parsed TTS call into the usecase.
+type TtsRequest struct {
+	Ctx             context.Context
+	ProviderID      string
+	Model           string
+	Input           string
+	Language        string
+	ResponseFormat  string
+	Credentials     domainProv.Credentials
+	UserAgent       string
+}
+
+// TtsResult carries the synthesized audio response back to the HTTP layer.
+// For response_format=mp3/wav (default) Body is the raw audio bytes and
+// ContentType is audio/<format>; for response_format=json Body is the
+// {"audio":base64,"format"} envelope and ContentType is application/json.
+type TtsResult struct {
+	StatusCode  int
+	Err         error
+	Body        []byte
+	ContentType string
+}
+
 // ChatRequest carries the parsed HTTP request into the usecase.
 type ChatRequest struct {
 	Ctx          context.Context
@@ -218,6 +248,10 @@ type V1Deps struct {
 	// Stt is the injected speech-to-text usecase boundary
 	// (POST /v1/audio/transcriptions).
 	Stt SttHandler
+
+	// Tts is the injected text-to-speech usecase boundary
+	// (POST /v1/audio/speech).
+	Tts TtsHandler
 }
 
 // RegisterV1 mounts POST handlers for /v1/chat/completions, /v1/messages,
@@ -301,6 +335,14 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	// src/app/api/v1/audio/transcriptions/route.js + src/sse/handlers/stt.js +
 	// open-sse/handlers/sttCore.js.
 	mux.HandleFunc("POST /v1/audio/transcriptions", handler.handleAudioTranscriptions)
+
+	// POST /v1/audio/speech — OpenAI TTS-compatible. Parses the JSON body, resolves
+	// the provider from body.model (provider/model prefix or bare → falls back to
+	// openai), dispatches to the ttsproxy usecase by the provider's static TTS
+	// format (openai/gemini/elevenlabs/minimax/inworld/cartesia/playht/nvidia/
+	// deepgram). Ports legacy JS src/app/api/v1/audio/speech/route.js +
+	// open-sse/handlers/ttsCore.js + per-provider TTS adapters.
+	mux.HandleFunc("POST /v1/audio/speech", handler.handleAudioSpeech)
 }
 
 type v1Handler struct {

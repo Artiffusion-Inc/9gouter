@@ -38,8 +38,8 @@ the cheap win in this audit.
 |------------------------|------------------|------------|-------|
 | `POST /api/v1/api/chat` | `src/app/api/v1/api/chat/route.js` | ✅ passthrough | internal chat variant (T033b-8: SSE→NDJSON) |
 | `GET /api/v1/models/info` | `src/app/api/v1/models/info/route.js` | ✅ `/v1/models/info` (T033b) | per-model capability metadata (static catalog subset) |
-| `POST /api/v1/audio/speech` | TTS handlers | ❌ absent | Gemini/OpenAI TTS pipeline |
-| `POST /api/v1/audio/transcriptions` | STT handlers | ❌ absent | Gemini/OpenAI STT pipeline |
+| `POST /api/v1/audio/speech` | TTS handlers | ✅ passthrough | TTS pipeline (T033b-3 ported) |
+| `POST /api/v1/audio/transcriptions` | STT handlers | ✅ passthrough | multipart STT (T033b-4 ported) |
 | `GET /api/v1/audio/voices` | TTS voices list | ❌ absent | static voice catalog |
 | `POST /api/v1/embeddings` | `src/app/api/v1/embeddings/route.js` → `embeddingsCore.js` | ❌ absent | tracked as T031b (chat-class pipeline) |
 | `POST /api/v1/images/generations` | image gen handlers | ❌ absent | Gemini/OpenAI image pipeline |
@@ -90,7 +90,23 @@ provider adapter + translator. Ordered roughly by dependency/leverage:
    wiring in `internal/app/wire.go` (`newProxyWebFetchHandler`), dashboard passthrough. 12 handler tests + 11 adapter/helper tests + 5 usecase tests.
 5. **`/v1/audio/speech` (TTS)** — Gemini-tts + OpenAI TTS; needs provider
    tts adapters (JS has `gemini.js` TTS branch).
+   **PORTED (T033b-3):** `handleAudioSpeech` parses JSON body, resolves provider
+   from `model` (provider/model prefix only when first segment is a known TTS
+   provider; bare model or `model/voice` → openai fallback), dispatches the
+   `ttsproxy` usecase by static TTS config — openai (raw mp3), gemini
+   (generateContent → base64 PCM → WAV), elevenlabs (xi-api-key, raw mp3),
+   minimax (t2a_v2 hex decode), inworld (Basic auth, base64 audioContent),
+   cartesia (X-API-Key), playht (userId:apiKey split), nvidia (raw wav),
+   deepgram (?model= + {text}, raw mp3). response_format precedence:
+   body → query → "mp3" (raw binary) or "json" (base64 envelope). 14 usecase
+   tests + 11 handler tests.
 6. **`/v1/audio/transcriptions` (STT)** — Gemini-stt + OpenAI STT.
+   **PORTED (T033b-4):** `handleAudioTranscriptions` parses multipart, resolves
+   provider from `model` (provider/ prefix or bare → openai), dispatches the
+   `sttproxy` usecase by static STT config — openai/groq (multipart
+   passthrough, response_format preserved), deepgram (raw binary + query
+   params, reshape `{text}`), assemblyai (upload→submit→poll, reshape
+   `{text}`), gemini (generateContent inline_data, reshape `{text}`).
 7. **`/v1/audio/voices`** — static catalog, no upstream.
 8. **`/v1/images/generations`** — image gen; Gemini image models are in the
    catalog now (T032), but the generation pipeline is unported.

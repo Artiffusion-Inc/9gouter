@@ -103,3 +103,6 @@ internal/adapter/transport/http/dashboard_assets/*
 /shadowdiff
 tools/shadowdiff/mismatches.jsonl
 tools/shadowdiff/traffic/
+
+# e2e import scratch (never commit)
+/tools/import-backup/

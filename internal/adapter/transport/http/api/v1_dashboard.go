@@ -36,7 +36,7 @@ func RegisterV1Dashboard(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("POST /api/v1/responses/compact", h.passthrough("/v1/responses/compact"))
 	mux.HandleFunc("POST /api/v1/audio/speech", h.notAvailable)
 	mux.HandleFunc("POST /api/v1/audio/transcriptions", h.notAvailable)
-	mux.HandleFunc("GET /api/v1/audio/voices", h.notAvailable)
+	mux.HandleFunc("GET /api/v1/audio/voices", h.passthrough("/v1/audio/voices"))
 	mux.HandleFunc("POST /api/v1/embeddings", h.passthrough("/v1/embeddings"))
 	mux.HandleFunc("POST /api/v1/images/generations", h.notAvailable)
 	mux.HandleFunc("POST /api/v1/search", h.notAvailable)

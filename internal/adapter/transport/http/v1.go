@@ -19,6 +19,7 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
 	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
 	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
@@ -150,6 +151,15 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	// not yet carry params/capabilities/options/dimensions/contextWindow, so
 	// those extra JS fields are omitted until the catalog is enriched.
 	mux.HandleFunc("GET /v1/models/info", handler.handleModelsInfo)
+	// GET /v1/audio/voices?provider={p}[&lang=xx] — OpenAI-style TTS voice
+	// catalog. Ports src/app/api/v1/audio/voices/route.js: validate the
+	// provider, self-fetch the internal /api/media-providers/tts/{p}/voices
+	// list, normalize to {object:"list", data:[{id,name,lang,gender,model}]}
+	// where model is "<alias>/<voiceId>". Dispatch re-enters the same mux so
+	// RegisterMediaProviders serves the per-provider voice lists.
+	mux.HandleFunc("GET /v1/audio/voices", func(w http.ResponseWriter, r *http.Request) {
+		api.HandleV1AudioVoices(w, r, mux.ServeHTTP)
+	})
 }
 
 type v1Handler struct {

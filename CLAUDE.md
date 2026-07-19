@@ -6,6 +6,16 @@
 
 The `main` branch is the **Go rewrite** — a single static binary serving the OpenAI-compatible `/v1/*` API, the dashboard `/api/*` management surface, and the embedded Next.js static-export UI. The legacy Node.js / Next.js / `open-sse` backend lives on branch `legacy/js-backend` and is kept only for rollback; do not edit it on `main`.
 
+> **Legacy tree still tracked on `main` (pending cutover deletion):** the old JS
+> directories — `open-sse/`, `src/`, `tests/`, `public/`, `gitbook/`, `cli/`,
+> `i18n/`, `skills/`, `images/` — are **still committed on `main`** (≈1167
+> files). They are NOT active code; the runtime is the Go binary only. Do not
+> edit them — they are slated for deletion at cutover (T021). The *working*
+> tree on `main` is just: `cmd/`, `internal/`, `tools/`, `docs/`, `scripts/`,
+> `.github/`. `src/app/**` (dashboard UI) is the one legacy path still built
+> into the binary via `scripts/build-dashboard.sh`; the rest of `src/` is
+> dead legacy pending deletion.
+
 - **Single binary**: `cmd/9router` → listens on `:20127`
 - **Storage**: SQLite via `modernc.org/sqlite` (pure Go, CGO_ENABLED=0), default `./data/9router.db` (`DB_PATH`)
 - **Dashboard**: Next.js `output:export` static build, embedded into the binary via `//go:embed all:dashboard_assets` and served by `internal/adapter/transport/http/static.go` with SPA fallback
@@ -44,11 +54,12 @@ internal/
 | Provider adapters | `internal/adapter/provider/<name>/` |
 | Translators | `internal/adapter/translator/<name>/` |
 | /v1 chat routing | `internal/adapter/transport/http/` + `internal/usecase/proxychat/` |
+| Account fallback / per-model locks | `internal/adapter/transport/http/accountfallback/` |
 | Dashboard /api handlers | `internal/adapter/transport/http/api/*.go` |
 | Static dashboard serving | `internal/adapter/transport/http/static.go` (`//go:embed all:dashboard_assets`) |
 | Proxy stack | `internal/adapter/transport/proxy/*.go` |
 | Backup import/export | `internal/adapter/transport/http/api/settings_backup.go`, `settings_extra.go` |
-| Dashboard UI source | `src/app/**` (Next.js, `output:export`) |
+| Dashboard UI source | `src/app/**` (Next.js, `output:export`; rest of `src/` is legacy pending deletion) |
 | Dashboard build script | `scripts/build-dashboard.sh` |
 
 ### Configuration (env vars)
@@ -89,6 +100,23 @@ Backup import/export is implemented in the Go API, mirroring the legacy JS `expo
 - `POST /api/settings/database` → `ImportDb` (wipes + inserts; session-auth protected)
 
 Payload shape (`api.BackupPayload`): `settings, providerConnections, providerNodes, proxyPools, apiKeys, combos, modelAliases, customModels, mitmAlias, pricing` — identical to the JS dashboard "Download backup" / "Restore" buttons, so a JS-era backup JSON imports directly.
+
+### #2703 Fix Status (route-aware proxy + account selection)
+
+The `decolua/9router` #2703 fix series ports the JS account-selection + proxy
+pipeline into Go. Fix 1 (strictProxy propagation) landed earlier.
+
+| Fix | What | Status |
+|-----|------|--------|
+| 1 | strictProxy propagation through the proxy stack | DONE (earlier) |
+| 5 | Route diagnostics — typed `FailureSource` on `proxy.FetchError`, structured "route selected" / "proxy fallback to direct" logs | DONE (`2e035f2`) |
+| 4 | Sticky round-robin selection — stay-vs-rotate, `lastUsedAt`/`consecutiveUseCount` persisted, `ErrNoActiveCredentials` → 503 | DONE (`8d57c09`) |
+| 3 | Structured failure types + account fallback loop — `accountfallback` package (ErrorRules, ModelLock\*, typed ProxyRouteError), `ConnectionRepo.ApplyConnectionPatch`, `v1.handleChat` while(true) loop; proxy/relay outage fails hard WITHOUT locking the account | DONE (`3354986`) |
+| 2a | Route-aware `TokenRefresher.Refresh` (proxy opts → `ProxyAwareFetch`) | DONE (`67c6ba0`) |
+| 2b | Refresh dedup + per-connection refresh mutex (`SharedRefreshDedup`, singleflight + 10s TTL) | DONE (`121b22e`) |
+| 2c | Proactive `ShouldRefreshCredentials` + `MergeRefreshedCredentials` (per-provider policy: codex 5d lead/8d maxAge/trackRefreshAt, kimi-coding 5m, default 5m) + wire in `resolveCredentialsWithOpts` | DONE (`f9f901c`) |
+| 2d | Reactive 401/403 refresh-retry in the chat path (refresh once, retry same connection, then fallback); `V1Deps.TokenRefreshers` injection | DONE (`89209b7`) |
+| 2e | `getProjectIdForConnection` (antigravity/gemini-cli) — `projectid.Fetcher` (loadCodeAssist → onboardUser poll, 1h cache, inflight dedup) wired via `V1Deps.ProjectIDFetcher` | DONE (`daf6bf2`) |
 
 ### Cutover Tooling
 

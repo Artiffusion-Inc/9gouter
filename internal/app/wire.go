@@ -22,10 +22,11 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver/tokenrefresh"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
 	httptransport "github.com/Artiffusion-Inc/9router/internal/adapter/transport/http"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
+
 	// Side-effect import: triggers RegisterRequest/RegisterResponse in every
 	// translator subpackage so the registry is populated in the final binary.
 	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/register"
@@ -38,6 +39,7 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxychat"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxyembeddings"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxyfetch"
+	"github.com/Artiffusion-Inc/9router/internal/usecase/videoproxy"
 )
 
 // App is the wired application. It exposes the HTTP server and the underlying
@@ -81,6 +83,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	chatHandler := newProxyChatHandler(repos, proxyOpts, cfg, logger)
 	embeddingsHandler := newProxyEmbeddingsHandler(repos, proxyOpts, cfg, logger)
 	webFetchHandler := newProxyWebFetchHandler(cfg, logger)
+	videoHandler := newVideoProxyHandler(cfg, logger)
 
 	mux := http.NewServeMux()
 	httptransport.RegisterV1(mux, httptransport.V1Deps{
@@ -98,6 +101,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Chat:           chatHandler,
 		Embeddings:     embeddingsHandler,
 		WebFetch:       webFetchHandler,
+		Video:          videoHandler,
 	})
 
 	sessionStore, err := auth.NewCookieStore(cfg.DashboardSessionSecret)
@@ -248,8 +252,8 @@ func newProxyChatHandler(r repos, opts proxy.Options, cfg config.Config, logger 
 	return &proxyChatHandler{
 		logger: logger,
 		handler: proxychat.New(proxychat.Dependencies{
-			Registry:  domainProvRegistry,
-			UsageRepo: r.Usage,
+			Registry:   domainProvRegistry,
+			UsageRepo:  r.Usage,
 			StreamPipe: pipeAdapter{},
 			JSONToSSE:  synthesizerFunc(translator.Synthesize),
 			Logger:     &slogLogger{logger},
@@ -386,5 +390,43 @@ func (h *proxyWebFetchHandler) Handle(ctx context.Context, req httptransport.Web
 		StatusCode: res.StatusCode,
 		Err:        res.Err,
 		Body:       res.Body,
+	}, nil
+}
+
+// videoProxyHandler adapts videoproxy.Handler to the
+// httptransport.VideoProxyHandler interface. Lives in the composition root.
+type videoProxyHandler struct {
+	handler *videoproxy.Handler
+}
+
+func newVideoProxyHandler(cfg config.Config, logger *slog.Logger) *videoProxyHandler {
+	return &videoProxyHandler{
+		handler: videoproxy.New(videoproxy.Dependencies{
+			Logger: &slogLogger{logger},
+			Config: cfg,
+		}),
+	}
+}
+
+func (h *videoProxyHandler) Handle(ctx context.Context, req httptransport.VideoProxyRequest) (httptransport.VideoProxyResult, error) {
+	res := h.handler.Handle(ctx, videoproxy.Request{
+		Ctx:            ctx,
+		Action:         videoproxy.Action(req.Action),
+		RequestID:      req.RequestID,
+		Body:           req.Body,
+		ContentType:    req.ContentType,
+		IdempotencyKey: req.IdempotencyKey,
+		ProviderID:     req.ProviderID,
+		Model:          req.Model,
+		Credentials:    req.Credentials,
+		ConnectionID:   req.ConnectionID,
+		UserAgent:      req.UserAgent,
+	})
+	return httptransport.VideoProxyResult{
+		StatusCode:   res.StatusCode,
+		Err:          res.Err,
+		Body:         res.Body,
+		ContentType:  res.ContentType,
+		ConnectionID: res.ConnectionID,
 	}, nil
 }

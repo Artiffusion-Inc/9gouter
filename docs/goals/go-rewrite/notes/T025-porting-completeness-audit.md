@@ -69,15 +69,15 @@ vs Go stub (`v1_dashboard.go` returns "not available"):
 | POST /v1/search | ❌ | stub | **MISSING (P2)** |
 | POST /v1/web/fetch | ✅ | ported | adapter+usecase+handler+SSRF guard (T033b-2) |
 | POST /v1/api/chat | ✅ | ported | OpenAI SSE→Ollama NDJSON transform over proxychat (T033b-8) |
-| POST /v1/videos/generations | ❌ | stub | **MISSING (P2)** |
-| POST /v1/videos/edits | ❌ | stub | **MISSING (P2)** |
-| POST /v1/videos/extensions | ❌ | stub | **MISSING (P2)** |
-| GET /v1/videos/{id} | ❌ | stub | **MISSING (P2)** |
+| POST /v1/videos/generations | ✅ | ported | xAI LRO raw-byte proxy + idempotency (T033b-7) |
+| POST /v1/videos/edits | ✅ | ported | xAI LRO raw-byte proxy (T033b-7) |
+| POST /v1/videos/extensions | ✅ | ported | xAI LRO raw-byte proxy (T033b-7) |
+| GET /v1/videos/{id} | ✅ | ported | xAI LRO poll, provider fixed to xai (T033b-7) |
 | GET /v1 (root) | — | root ok | ported (trivial) |
 | GET /v1beta/models | ❌ | — | **MISSING (P1, Gemini-compat)** |
 | GET /v1beta/models/{path...} | ❌ | — | **MISSING (P1, Gemini-compat)** |
 
-**Client `/v1/*` summary: 3 of 23 real. 20 missing (mostly stubs in dashboard proxy).**
+**Client `/v1/*` summary: 8 of 23 real. 15 missing (mostly stubs in dashboard proxy).**
 
 ## Services (lifecycle) — verified missing
 
@@ -123,9 +123,10 @@ surface (route-aware refresh). One coherent subsystem, not scattered bugs.
 
 ## NOT in scope of this audit (deferred)
 
-- `/v1/audio/*`, `/v1/images/*`, `/v1/videos/*`, `/v1/search`,
-  `/v1/api/chat`, `/v1/responses/compact`, `GET /v1/responses` — P2, niche.
-  Port after P0/P1 stable. (`/v1/web/fetch` is now ported — T033b-2.)
+- `/v1/audio/*`, `/v1/images/*`, `/v1/search`, `/v1/responses/compact`,
+  `GET /v1/responses` — P2, niche. Port after P0/P1 stable. (`/v1/web/fetch`
+  ported — T033b-2; `/v1/api/chat` ported — T033b-8; `/v1/videos/*` ported —
+  T033b-7.)
 - Dashboard `/api/*` stub-vs-real classification — needs T033 first.
 
 ## Conclusion for the board

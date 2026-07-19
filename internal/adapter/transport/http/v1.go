@@ -93,19 +93,53 @@ type WebFetchResult struct {
 	Body       []byte
 }
 
+// VideoProxyHandler is the boundary between the HTTP transport layer and the
+// video-proxy usecase (POST /v1/videos/{generations|edits|extensions} and
+// GET /v1/videos/{id}). Implementations are provided by wire.go (videoproxy
+// adapter).
+type VideoProxyHandler interface {
+	Handle(ctx context.Context, req VideoProxyRequest) (VideoProxyResult, error)
+}
+
+// VideoProxyRequest carries a raw passthrough video call into the usecase.
+// Action is empty for GET poll (RequestID set); RequestID is empty for POST
+// submit (Action set). Body/ContentType/IdempotencyKey apply to POST only.
+type VideoProxyRequest struct {
+	Ctx            context.Context
+	Action         string
+	RequestID      string
+	Body           []byte
+	ContentType    string
+	IdempotencyKey string
+	ProviderID     string
+	Model          string
+	Credentials    domainProv.Credentials
+	ConnectionID   string
+	UserAgent      string
+}
+
+// VideoProxyResult carries the raw upstream response back to the HTTP layer.
+type VideoProxyResult struct {
+	StatusCode   int
+	Err          error
+	Body         []byte
+	ContentType  string
+	ConnectionID string
+}
+
 // ChatRequest carries the parsed HTTP request into the usecase.
 type ChatRequest struct {
-	Ctx         context.Context
-	Body        json.RawMessage
-	Endpoint    string
-	Headers     http.Header
-	ProviderID  string
-	Model       string
-	Credentials domainProv.Credentials
-	Stream      bool
-	APIKey      string
+	Ctx          context.Context
+	Body         json.RawMessage
+	Endpoint     string
+	Headers      http.Header
+	ProviderID   string
+	Model        string
+	Credentials  domainProv.Credentials
+	Stream       bool
+	APIKey       string
 	ConnectionID string
-	UserAgent   string
+	UserAgent    string
 }
 
 // ChatResult carries the outcome back to the HTTP layer.
@@ -124,17 +158,17 @@ type APIKeyValidator interface {
 // It is constructed by the app.Wire composition root and injected into
 // RegisterV1 so the transport layer stays decoupled from DB/lifecycle wiring.
 type V1Deps struct {
-	APIKeysRepo     *repo.APIKeyRepo
-	SettingsRepo    *repo.SettingsRepo
-	ConnectionRepo  *repo.ConnectionRepo
-	ComboRepo       *repo.ComboRepo
-	AliasRepo       *repo.AliasRepo
-	NodeRepo        *repo.NodeRepo
-	ProxyPoolRepo   *repo.ProxyPoolRepo
-	DisabledModels  *repo.DisabledModelsRepo
-	ProxyOpts       proxy.Options
-	Logger          *slog.Logger
-	Config          config.Config
+	APIKeysRepo    *repo.APIKeyRepo
+	SettingsRepo   *repo.SettingsRepo
+	ConnectionRepo *repo.ConnectionRepo
+	ComboRepo      *repo.ComboRepo
+	AliasRepo      *repo.AliasRepo
+	NodeRepo       *repo.NodeRepo
+	ProxyPoolRepo  *repo.ProxyPoolRepo
+	DisabledModels *repo.DisabledModelsRepo
+	ProxyOpts      proxy.Options
+	Logger         *slog.Logger
+	Config         config.Config
 
 	// Chat is the injected chat usecase boundary.
 	Chat ChatHandler
@@ -144,6 +178,10 @@ type V1Deps struct {
 
 	// WebFetch is the injected web-fetch usecase boundary (POST /v1/web/fetch).
 	WebFetch WebFetchHandler
+
+	// Video is the injected video-proxy usecase boundary (POST /v1/videos/*
+	// and GET /v1/videos/{id}).
+	Video VideoProxyHandler
 }
 
 // RegisterV1 mounts POST handlers for /v1/chat/completions, /v1/messages,
@@ -206,6 +244,19 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	// rows (the JS path does not persist usage; cost is in-band only). Combo
 	// expansion and account fallback are separate slices.
 	mux.HandleFunc("POST /v1/web/fetch", handler.handleWebFetch)
+	// POST /v1/videos/{generations|edits|extensions} — xAI video submit (LRO).
+	// Raw byte passthrough; the usecase forwards to the upstream videoConfig.
+	// GET /v1/videos/{id} — poll an in-progress job.
+	mux.HandleFunc("POST /v1/videos/generations", func(w http.ResponseWriter, r *http.Request) {
+		handler.handleVideoCreate(w, r, "generations")
+	})
+	mux.HandleFunc("POST /v1/videos/edits", func(w http.ResponseWriter, r *http.Request) {
+		handler.handleVideoCreate(w, r, "edits")
+	})
+	mux.HandleFunc("POST /v1/videos/extensions", func(w http.ResponseWriter, r *http.Request) {
+		handler.handleVideoCreate(w, r, "extensions")
+	})
+	mux.HandleFunc("GET /v1/videos/{id}", handler.handleVideoGet)
 }
 
 type v1Handler struct {
@@ -293,15 +344,15 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	sseWriter := New(w, ctx)
 
 	req := ChatRequest{
-		Ctx:          ctx,
-		Body:         body,
-		Endpoint:     r.URL.Path,
-		Headers:      r.Header.Clone(),
-		ProviderID:   modelInfo.Provider,
-		Model:        modelInfo.Model,
-		Credentials:  creds,
-		Stream:       stream,
-		APIKey:       apiKey,
+		Ctx:         ctx,
+		Body:        body,
+		Endpoint:    r.URL.Path,
+		Headers:     r.Header.Clone(),
+		ProviderID:  modelInfo.Provider,
+		Model:       modelInfo.Model,
+		Credentials: creds,
+		Stream:      stream,
+		APIKey:      apiKey,
 		ConnectionID: func() string {
 			if m := creds.ProviderSpecificData; m != nil {
 				if v, ok := m["_connectionId"].(string); ok {
@@ -310,7 +361,7 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 			}
 			return ""
 		}(),
-		UserAgent:    r.UserAgent(),
+		UserAgent: r.UserAgent(),
 	}
 
 	res, err := h.deps.Chat.Handle(ctx, req, w, sseWriter)
@@ -441,9 +492,9 @@ func (h *v1Handler) resolveCredentials(ctx context.Context, providerID, model st
 	// No-auth providers use a virtual public connection.
 	if isNoAuthProvider(providerID) {
 		return domainProv.Credentials{
-			APIKey:       "public",
-			AccessToken:  "public",
-				ProviderSpecificData: map[string]any{
+			APIKey:      "public",
+			AccessToken: "public",
+			ProviderSpecificData: map[string]any{
 				"connectionProxyEnabled": false,
 			},
 		}, nil
@@ -811,7 +862,6 @@ func (h *v1Handler) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(res.StatusCode)
 	_, _ = w.Write(res.Body)
 }
-
 
 // kindEndpoint maps a service kind to the /v1/* endpoint that serves it,
 // mirroring the JS KIND_ENDPOINT table in src/app/api/v1/models/info/route.js.

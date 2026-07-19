@@ -44,10 +44,10 @@ the cheap win in this audit.
 | `POST /api/v1/embeddings` | `src/app/api/v1/embeddings/route.js` → `embeddingsCore.js` | ❌ absent | tracked as T031b (chat-class pipeline) |
 | `POST /api/v1/images/generations` | image gen handlers | ❌ absent | Gemini/OpenAI image pipeline |
 | `POST /api/v1/search` | web-search handlers | ❌ absent | Gemini searchViaChat |
-| `POST /api/v1/videos/generations` | video gen handlers | ❌ absent | Veo/video pipeline |
-| `POST /api/v1/videos/edits` | video edit handlers | ❌ absent | video pipeline |
-| `POST /api/v1/videos/extensions` | video extension handlers | ❌ absent | video pipeline |
-| `GET /api/v1/videos/{id}` | video status/poll | ❌ absent | video pipeline |
+| `POST /api/v1/videos/generations` | video gen handlers | ✅ passthrough | xAI LRO raw-byte proxy (T033b-7 ported) |
+| `POST /api/v1/videos/edits` | video edit handlers | ✅ passthrough | xAI LRO raw-byte proxy (T033b-7 ported) |
+| `POST /api/v1/videos/extensions` | video extension handlers | ✅ passthrough | xAI LRO raw-byte proxy (T033b-7 ported) |
+| `GET /api/v1/videos/{id}` | video status/poll | ✅ passthrough | xAI LRO poll (T033b-7 ported) |
 | `POST /api/v1/web/fetch` | web-fetch handlers | ✅ passthrough | webFetch service kind (T033b-2 ported) |
 | `POST /api/v1/responses/compact` | responses compact variant | ❌ absent | responses sub-variant |
 
@@ -94,8 +94,11 @@ provider adapter + translator. Ordered roughly by dependency/leverage:
 7. **`/v1/audio/voices`** — static catalog, no upstream.
 8. **`/v1/images/generations`** — image gen; Gemini image models are in the
    catalog now (T032), but the generation pipeline is unported.
-9. **`/v1/videos/*`** (generations, edits, extensions, GET status) — Veo
-   pipeline; async poll model.
+9. **`/v1/videos/*`** (generations, edits, extensions, GET status) — xAI LRO
+   video pipeline. **PORTED (T033b-7):** `handleVideoCreate`/`handleVideoGet`
+   raw-byte proxy to xAI with provider-prefix strip + idempotency-key
+   forwarding; `videoproxy` usecase does the upstream call with 401-refresh
+   retry. Poll pins provider to xAI and forwards `{id}`.
 10. **`/v1/api/chat`** — internal chat variant; needs spec check vs
     OpenAI SSE ↔ Ollama NDJSON. **PORTED (T033b-8):** dispatches to the chat
     pipeline via `handleApiChat` and transforms the OpenAI SSE response on the

@@ -40,10 +40,10 @@ func RegisterV1Dashboard(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("POST /api/v1/embeddings", h.passthrough("/v1/embeddings"))
 	mux.HandleFunc("POST /api/v1/images/generations", h.notAvailable)
 	mux.HandleFunc("POST /api/v1/search", h.notAvailable)
-	mux.HandleFunc("POST /api/v1/videos/generations", h.notAvailable)
-	mux.HandleFunc("POST /api/v1/videos/edits", h.notAvailable)
-	mux.HandleFunc("POST /api/v1/videos/extensions", h.notAvailable)
-	mux.HandleFunc("GET /api/v1/videos/{id}", h.notAvailable)
+	mux.HandleFunc("POST /api/v1/videos/generations", h.passthrough("/v1/videos/generations"))
+	mux.HandleFunc("POST /api/v1/videos/edits", h.passthrough("/v1/videos/edits"))
+	mux.HandleFunc("POST /api/v1/videos/extensions", h.passthrough("/v1/videos/extensions"))
+	mux.HandleFunc("GET /api/v1/videos/{id}", h.passthrough("/v1/videos/{id}"))
 	mux.HandleFunc("POST /api/v1/web/fetch", h.passthrough("/v1/web/fetch"))
 }
 

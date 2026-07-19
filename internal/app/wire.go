@@ -20,6 +20,7 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/sqlite"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/projectid"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver/tokenrefresh"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
@@ -53,6 +54,9 @@ type App struct {
 	Logger *slog.Logger
 	DB     *sql.DB
 	Server *http.Server
+	// projectIDFetcher runs the antigravity/gemini-cli Cloud Code project-id
+	// background cleanup sweep; stopped in Close (#2703 Fix 2e).
+	projectIDFetcher *projectid.Fetcher
 }
 
 // Wire builds the application from configuration. It opens the database,
@@ -93,19 +97,25 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	imageHandler := newImageProxyHandler(cfg, logger)
 	searchHandler := newSearchHandler(cfg, logger)
 
+	// Cloud Code project-id fetcher for antigravity/gemini-cli (#2703 Fix 2e).
+	// Shares the default HTTP client (60s timeout); the background cleanup
+	// sweep is stopped when the App shuts down.
+	projectIDFetcher := projectid.New(nil)
+
 	mux := http.NewServeMux()
 	httptransport.RegisterV1(mux, httptransport.V1Deps{
-		APIKeysRepo:    repos.APIKeys,
-		SettingsRepo:   repos.Settings,
-		ConnectionRepo: repos.Connections,
-		ComboRepo:      repos.Combos,
-		AliasRepo:      repos.Aliases,
-		NodeRepo:       repos.Nodes,
-		ProxyPoolRepo:  repos.ProxyPools,
-		DisabledModels: repos.DisabledModels,
-		ProxyOpts:      proxyOpts,
-		Logger:         logger,
-		Config:         cfg,
+		APIKeysRepo:      repos.APIKeys,
+		SettingsRepo:    repos.Settings,
+		ConnectionRepo:  repos.Connections,
+		ComboRepo:       repos.Combos,
+		AliasRepo:        repos.Aliases,
+		NodeRepo:        repos.Nodes,
+		ProxyPoolRepo:   repos.ProxyPools,
+		DisabledModels:  repos.DisabledModels,
+		ProxyOpts:       proxyOpts,
+		Logger:          logger,
+		Config:          cfg,
+		ProjectIDFetcher: projectIDFetcher,
 		Chat:           chatHandler,
 		Embeddings:     embeddingsHandler,
 		WebFetch:       webFetchHandler,
@@ -178,15 +188,19 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	})
 
 	return &App{
-		Config: cfg,
-		Logger: logger,
-		DB:     db,
-		Server: server,
+		Config:           cfg,
+		Logger:           logger,
+		DB:               db,
+		Server:           server,
+		projectIDFetcher: projectIDFetcher,
 	}, nil
 }
 
-// Close shuts down the database connection.
+// Close shuts down the database connection and background sweeps.
 func (a *App) Close() error {
+	if a.projectIDFetcher != nil {
+		a.projectIDFetcher.Stop()
+	}
 	if a.DB != nil {
 		return a.DB.Close()
 	}

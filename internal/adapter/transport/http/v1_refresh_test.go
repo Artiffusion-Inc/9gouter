@@ -182,3 +182,117 @@ func errUnauthorized() error { return &unauthorizedErr{} }
 type unauthorizedErr struct{}
 
 func (*unauthorizedErr) Error() string { return "401 unauthorized" }
+
+// stubProjectIDFetcher is a ProjectIDResolver that returns a fixed project id
+// and records the connection ids it was asked about.
+type stubProjectIDFetcher struct {
+	pid      string
+	seen     []string
+}
+
+func (s *stubProjectIDFetcher) ForConnection(_ context.Context, connectionID, _ string) (string, error) {
+	s.seen = append(s.seen, connectionID)
+	return s.pid, nil
+}
+
+func (s *stubProjectIDFetcher) Invalidate(_ string) {}
+
+// TestV1_ChatCompletions_AntigravityEnsuresProjectID verifies #2703 Fix 2e:
+// an antigravity connection without a projectId in its data gets one fetched
+// and injected into the credentials PSD before the chat call, and persisted
+// to the connection for subsequent requests.
+func TestV1_ChatCompletions_AntigravityEnsuresProjectID(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+	mustCreateConnectionWithID(t, db, "antigravity-a", "antigravity",
+		`{"accessToken":"at","providerSpecificData":{"connectionProxyEnabled":false}}`)
+
+	chat := &stubChatHandler{streamed: false}
+	pidFetcher := &stubProjectIDFetcher{pid: "real-proj-99"}
+	deps := V1Deps{
+		APIKeysRepo:     repo.NewAPIKeyRepo(db),
+		SettingsRepo:    repo.NewSettingsRepo(db),
+		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ComboRepo:       repo.NewComboRepo(db),
+		AliasRepo:        repo.NewAliasRepo(db),
+		NodeRepo:        repo.NewNodeRepo(db),
+		ProxyPoolRepo:   repo.NewProxyPoolRepo(db),
+		Chat:            chat,
+		Config:          config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:          slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		ProjectIDFetcher: pidFetcher,
+	}
+
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"model":"antigravity/gemini-2.5-pro","messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if len(pidFetcher.seen) != 1 || pidFetcher.seen[0] != "antigravity-a" {
+		t.Fatalf("expected fetcher called for antigravity-a, got %v", pidFetcher.seen)
+	}
+	// The injected project id must reach the provider executor's credentials.
+	if pid, _ := chat.got.Credentials.ProviderSpecificData["projectId"].(string); pid != "real-proj-99" {
+		t.Errorf("creds projectId=%v want real-proj-99", chat.got.Credentials.ProviderSpecificData["projectId"])
+	}
+	// And persisted to the connection.
+	conn, err := deps.ConnectionRepo.GetByID(context.Background(), "antigravity-a")
+	if err != nil || conn == nil {
+		t.Fatalf("get conn: %v", err)
+	}
+	var data map[string]any
+	_ = json.Unmarshal(conn.Data, &data)
+	if pid, _ := data["projectId"].(string); pid != "real-proj-99" {
+		t.Errorf("persisted projectId=%v want real-proj-99; data=%v", data["projectId"], data)
+	}
+}
+
+// TestV1_ChatCompletions_ProjectIDSkippedForNonAntigravity verifies the fetcher
+// is NOT consulted for providers that do not need a Cloud Code project id.
+func TestV1_ChatCompletions_ProjectIDSkippedForNonAntigravity(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+	mustCreateConnectionWithID(t, db, "openai-a", "openai",
+		`{"apiKey":"sk-a","providerSpecificData":{"connectionProxyEnabled":false}}`)
+
+	chat := &stubChatHandler{streamed: false}
+	pidFetcher := &stubProjectIDFetcher{pid: "should-not-appear"}
+	deps := V1Deps{
+		APIKeysRepo:     repo.NewAPIKeyRepo(db),
+		SettingsRepo:    repo.NewSettingsRepo(db),
+		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ComboRepo:       repo.NewComboRepo(db),
+		AliasRepo:        repo.NewAliasRepo(db),
+		NodeRepo:        repo.NewNodeRepo(db),
+		ProxyPoolRepo:   repo.NewProxyPoolRepo(db),
+		Chat:            chat,
+		Config:          config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:          slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		ProjectIDFetcher: pidFetcher,
+	}
+
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if len(pidFetcher.seen) != 0 {
+		t.Fatalf("fetcher must not be called for openai, got %v", pidFetcher.seen)
+	}
+}

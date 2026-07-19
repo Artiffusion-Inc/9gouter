@@ -339,6 +339,22 @@ type V1Deps struct {
 	// deterministic (the real refreshers hit the network); production leaves it
 	// nil so the shared tokenrefresh.Lookup registry is used.
 	TokenRefreshers map[string]resolver.TokenRefresher
+
+	// ProjectIDFetcher optionally injects the Cloud Code project-id resolver
+	// for antigravity/gemini-cli (#2703 Fix 2e). When nil, project-id fetch is
+	// skipped (the provider falls back to whatever projectId is already in the
+	// connection data, or none). Tests inject a stub fetcher; production wires
+	// the real projectid.Fetcher.
+	ProjectIDFetcher ProjectIDResolver
+}
+
+// ProjectIDResolver is the per-connection Cloud Code project-id resolver
+// (projectid.Fetcher satisfies it). Declared here so the transport layer does
+// not import the projectid package directly (keeps the dependency direction
+// from transport → provider/* explicit and testable).
+type ProjectIDResolver interface {
+	ForConnection(ctx context.Context, connectionID, accessToken string) (string, error)
+	Invalidate(connectionID string)
 }
 
 // RegisterV1 mounts POST handlers for /v1/chat/completions, /v1/messages,
@@ -929,7 +945,52 @@ func (h *v1Handler) resolveCredentialsWithOpts(ctx context.Context, providerID, 
 	// will then mark it unavailable and the fallback loop tries the next one.
 	h.proactiveRefreshCredentials(ctx, providerID, conn.ID, data, &creds)
 
+	// Ensure a real Google Cloud Code project id is available for Antigravity /
+	// Gemini CLI (#2703 Fix 2e, ports open-sse/services/projectId.js). Those
+	// providers route generateContent requests scoped to the user's bound
+	// project; without the real project id Google's anti-abuse system flags
+	// random/synthetic ids. When the connection data has no projectId, fetch it
+	// via loadCodeAssist/onboardUser using the (just-refreshed) access token,
+	// persist it for subsequent requests, and inject it into the credentials
+	// PSD the provider executor reads. A fetch failure is non-fatal: the
+	// request proceeds without a project id (upstream surfaces a 400 the user
+	// can re-auth past), matching the JS null-return contract.
+	h.ensureProjectID(ctx, providerID, conn.ID, &creds)
+
 	return creds, nil
+}
+
+// ensureProjectID fetches and injects the Cloud Code project id for
+// antigravity/gemini-cli when one is missing (#2703 Fix 2e). It mutates the
+// credentials' PSD and persists the project id to the connection.
+func (h *v1Handler) ensureProjectID(ctx context.Context, providerID, connectionID string, creds *domainProv.Credentials) {
+	if creds == nil || h.deps.ProjectIDFetcher == nil {
+		return
+	}
+	if providerID != "antigravity" && providerID != "gemini-cli" {
+		return
+	}
+	if creds.ProviderSpecificData == nil {
+		creds.ProviderSpecificData = map[string]any{}
+	}
+	if existing, _ := creds.ProviderSpecificData["projectId"].(string); existing != "" {
+		return
+	}
+	accessToken := creds.AccessToken
+	if accessToken == "" {
+		return
+	}
+	pid, err := h.deps.ProjectIDFetcher.ForConnection(ctx, connectionID, accessToken)
+	if err != nil || pid == "" {
+		return
+	}
+	creds.ProviderSpecificData["projectId"] = pid
+	// Persist for subsequent requests (best-effort; the fetcher caches, so a
+	// failed persist just means a re-fetch on the next request).
+	if _, perr := h.deps.ConnectionRepo.ApplyConnectionPatch(ctx, connectionID, map[string]any{"projectId": pid}); perr != nil {
+		h.deps.Logger.Warn("project id persist failed",
+			"provider", providerID, "connectionId", connectionID, "err", perr)
+	}
 }
 
 // resolveConnectionProxyConfig merges the connection's assigned proxy pool

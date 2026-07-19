@@ -331,6 +331,14 @@ type V1Deps struct {
 
 	// Search is the injected web-search usecase boundary (POST /v1/search).
 	Search SearchHandler
+
+	// TokenRefreshers optionally injects per-provider OAuth refreshers for the
+	// proactive (Fix 2c) and reactive 401/403 (Fix 2d) credential refresh. When
+	// nil or missing a provider entry, the handler falls back to
+	// tokenrefresh.Lookup. Tests inject stub refreshers to keep the refresh
+	// deterministic (the real refreshers hit the network); production leaves it
+	// nil so the shared tokenrefresh.Lookup registry is used.
+	TokenRefreshers map[string]resolver.TokenRefresher
 }
 
 // RegisterV1 mounts POST handlers for /v1/chat/completions, /v1/messages,
@@ -554,8 +562,35 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	excluded := map[string]struct{}{}
 	var lastErr error
 	var lastStatus int
+	var lastConnID string
+	// refreshedConns tracks connections that already got a reactive 401/403
+	// refresh-retry (Fix 2d), so a still-failing token does not loop forever:
+	// refresh once, retry on the same connection, and on a second 401 fall
+	// back to the next connection (which exclude+rotate handles below).
+	refreshedConns := map[string]struct{}{}
 	for {
-		creds, err := h.resolveCredentialsWithOpts(ctx, modelInfo.Provider, modelInfo.Model, excluded, "")
+		// Reactive 401/403 retry (decolua/9router #2703 Fix 2d): when the
+		// previous attempt failed with a 401/403, refresh the connection's
+		// credentials once and retry on the SAME connection (preferred pin)
+		// before falling back to the next. preferredConnectionID is set only
+		// when a refresh actually produced a fresh token; otherwise the
+		// loop falls through to normal selection (which excludes the dead
+		// connection via the excluded set filled by the previous iteration).
+		var preferredConnectionID string
+		if (lastStatus == http.StatusUnauthorized || lastStatus == http.StatusForbidden) && lastConnID != "" {
+			if _, already := refreshedConns[lastConnID]; !already {
+				if h.reactiveRefreshConnection(ctx, modelInfo.Provider, lastConnID) {
+					preferredConnectionID = lastConnID
+					refreshedConns[lastConnID] = struct{}{}
+					// Allow the retry to re-select this connection even if the
+					// previous iteration excluded it: the dead-token exclude is
+					// superseded by a successful refresh.
+					delete(excluded, lastConnID)
+				}
+			}
+		}
+
+		creds, err := h.resolveCredentialsWithOpts(ctx, modelInfo.Provider, modelInfo.Model, excluded, preferredConnectionID)
 		if err != nil {
 			if errors.Is(err, ErrNoActiveCredentials) {
 				if len(excluded) == 0 {
@@ -657,6 +692,7 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 		if req.ConnectionID != "" {
 			excluded[req.ConnectionID] = struct{}{}
 		}
+		lastConnID = req.ConnectionID
 		lastErr = res.Err
 		lastStatus = res.StatusCode
 		// Reset response headers so the next attempt can write a fresh
@@ -951,7 +987,82 @@ func (h *v1Handler) resolveConnectionProxyConfig(ctx context.Context, psd map[st
 	}
 }
 
-// proxyOptionsFromPSD builds the resolver.ProxyOptions a route-aware token
+// lookupRefresher returns the TokenRefresher for a provider: the injected
+// V1Deps.TokenRefreshers entry wins, else the shared tokenrefresh.Lookup
+// registry. Returns nil when the provider has no refresh handler.
+func (h *v1Handler) lookupRefresher(providerID string) resolver.TokenRefresher {
+	if h.deps.TokenRefreshers != nil {
+		// An explicit entry (even nil) overrides the registry, so tests can
+		// force "no refresher" for a provider that tokenrefresh.Lookup would
+		// otherwise resolve (claude, codex, ...). Production leaves
+		// TokenRefreshers nil so this branch is skipped.
+		if r, ok := h.deps.TokenRefreshers[providerID]; ok {
+			return r
+		}
+	}
+	return tokenrefresh.Lookup(providerID)
+}
+
+// reactiveRefreshConnection runs a forced (no shouldRefresh gate) credential
+// refresh for a connection that just 401/403'd the upstream (Fix 2d) and
+// persists the merged patch. Returns true when a fresh token was written and
+// the caller should retry on the SAME connection before falling back; false
+// (no-op) when the provider has no refresher, the refresh failed, or the
+// refresh token is unrecoverable (in the last case the caller falls back to
+// the next connection — the unrecoverable marker is persisted so the dashboard
+// can flag re-auth). Errors are logged, not returned: a failed refresh falls
+// through to the normal fallback path.
+func (h *v1Handler) reactiveRefreshConnection(ctx context.Context, providerID, connectionID string) bool {
+	if connectionID == "" || connectionID == "noauth" {
+		return false
+	}
+	refresher := h.lookupRefresher(providerID)
+	if refresher == nil {
+		return false
+	}
+	conn, err := h.deps.ConnectionRepo.GetByID(ctx, connectionID)
+	if err != nil || conn == nil {
+		return false
+	}
+	var data map[string]any
+	if err := json.Unmarshal(conn.Data, &data); err != nil {
+		return false
+	}
+	// Build ProxyOptions from the connection's resolved proxy config so the
+	// refresh takes the same route as the chat call that just 401'd. The
+	// connection-level proxy fields live on the data blob; the pool-derived
+	// strict/proxyUrl/noProxy are merged in by resolveConnectionProxyConfig
+	// (same call the serve path makes) so a strict route stays strict for the
+	// refresh. data already carries proxyPoolId at top level.
+	psdForProxy := map[string]any{}
+	for k, v := range data {
+		psdForProxy[k] = v
+	}
+	h.resolveConnectionProxyConfig(ctx, psdForProxy)
+	opts := proxyOptionsFromPSD(psdForProxy, h.deps.Logger)
+	res, err := resolver.ReactiveRefresh(ctx, providerID, data, refresher, opts, slogAdapter{h.deps.Logger}, time.Now())
+	if err != nil {
+		h.deps.Logger.Warn("reactive credential refresh failed",
+			"provider", providerID, "connectionId", connectionID, "err", err)
+		return false
+	}
+	if !res.Refreshed || res.Patch == nil {
+		return false
+	}
+	if _, perr := h.deps.ConnectionRepo.ApplyConnectionPatch(ctx, connectionID, res.Patch); perr != nil {
+		h.deps.Logger.Warn("reactive credential refresh persist failed",
+			"provider", providerID, "connectionId", connectionID, "err", perr)
+		return false
+	}
+	if res.Unrecoverable {
+		h.deps.Logger.Warn("reactive refresh token unrecoverable; connection needs re-auth",
+			"provider", providerID, "connectionId", connectionID)
+		return false
+	}
+	h.logger.Info("reactive credential refresh succeeded",
+		"provider", providerID, "connectionId", connectionID)
+	return true
+}
 // refresh (Fix 2a/2c) needs from a connection's providerSpecificData. It reads
 // the same keys the provider executor turns into proxy.ProxyFetchOptions so the
 // refresh call takes the same route as the chat call — a strict route must not
@@ -983,7 +1094,7 @@ func (h *v1Handler) proactiveRefreshCredentials(ctx context.Context, providerID,
 	if data == nil || creds == nil {
 		return
 	}
-	refresher := tokenrefresh.Lookup(providerID)
+	refresher := h.lookupRefresher(providerID)
 	if refresher == nil {
 		return
 	}

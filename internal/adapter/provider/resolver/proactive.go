@@ -77,3 +77,37 @@ func ProactiveRefreshIfNeeded(ctx context.Context, providerID string, data map[s
 
 // keep the provider import referenced even when future edits drop direct use.
 var _ = provider.Credentials{}
+
+// ReactiveRefresh forces a credential refresh (no shouldRefresh gate) and
+// returns the merge patch. It is the chat-path 401/403 hook (Fix 2d): when the
+// upstream rejects the access token, the caller refreshes once and retries the
+// same connection before falling back to the next one. Unlike the proactive
+// path, the access token here is known-dead (the upstream just said so), so the
+// expiry lead check is skipped — the refresh runs unconditionally.
+//
+// The same dedup (SharedRefreshDedup) and route-aware proxy options as the
+// proactive path apply, so a concurrent proactive refresh and a reactive one
+// for the same connection coalesce. Returns the same ProactiveRefreshResult
+// shape (Refreshed is true whenever a refresh attempt ran; Unrecoverable is
+// true when the refresh token is permanently invalid). An error means the
+// refresh HTTP call itself failed (network/timeout) — the caller should fall
+// back rather than retry.
+func ReactiveRefresh(ctx context.Context, providerID string, data map[string]any, refresher TokenRefresher, opts ProxyOptions, log Logger, now time.Time) (ProactiveRefreshResult, error) {
+	if refresher == nil {
+		return ProactiveRefreshResult{}, nil
+	}
+	creds := CredentialsForRefresh(data)
+	refreshToken, _ := psdString(data, "refreshToken")
+	refreshed, err := refreshDeduped(ctx, refresher, creds, refreshToken, opts, log)
+	if err != nil {
+		return ProactiveRefreshResult{Refreshed: false}, err
+	}
+	patch := MergeRefreshedCredentials(providerID, data, refreshed, now)
+	if patch == nil {
+		return ProactiveRefreshResult{Refreshed: true}, nil
+	}
+	if UnrecoverableRefreshPatch(patch) {
+		return ProactiveRefreshResult{Patch: patch, Refreshed: true, Unrecoverable: true}, nil
+	}
+	return ProactiveRefreshResult{Patch: patch, Refreshed: true}, nil
+}

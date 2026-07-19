@@ -152,3 +152,62 @@ func (c *countingRefresher) Refresh(ctx context.Context, rt string, psd map[stri
 	atomic.AddInt32(c.calls, 1)
 	return c.inner.Refresh(ctx, rt, psd, opts, log)
 }
+
+// TestReactiveRefresh_ForcesRefresh runs the refresh even when the token is
+// far from expiry (no shouldRefresh gate — the upstream already rejected it).
+func TestReactiveRefresh_ForcesRefresh(t *testing.T) {
+	ResetSharedRefreshDedup()
+	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	// Token is 1h from expiry — proactive would skip, reactive must NOT.
+	data := map[string]any{
+		"refreshToken": "rt-react",
+		"expiresAt":    now.Add(1 * time.Hour).Format(time.RFC3339Nano),
+	}
+	refresher := &tokenRefresherWithExpiry{token: "at-react", expiresIn: 3600}
+	res, err := ReactiveRefresh(context.Background(), "claude", data, refresher, ProxyOptions{}, NopLogger(), now)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !res.Refreshed {
+		t.Fatal("reactive refresh must run regardless of expiry")
+	}
+	if res.Patch["accessToken"] != "at-react" {
+		t.Errorf("patch accessToken=%v want at-react", res.Patch["accessToken"])
+	}
+}
+
+// TestReactiveRefresh_NoRefresher is a no-op when refresher is nil.
+func TestReactiveRefresh_NoRefresher(t *testing.T) {
+	res, err := ReactiveRefresh(context.Background(), "claude", map[string]any{"refreshToken": "rt"}, nil, ProxyOptions{}, NopLogger(), time.Now())
+	if err != nil || res.Refreshed || res.Patch != nil {
+		t.Fatalf("nil refresher must be a no-op, got %+v err=%v", res, err)
+	}
+}
+
+// TestReactiveRefresh_Unrecoverable surfaces the marker (refresh token revoked).
+func TestReactiveRefresh_Unrecoverable(t *testing.T) {
+	ResetSharedRefreshDedup()
+	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	data := map[string]any{"refreshToken": "rt-unrec", "expiresAt": now.Add(1 * time.Hour).Format(time.RFC3339Nano)}
+	res, err := ReactiveRefresh(context.Background(), "claude", data, &unrecoverableRefresher{}, ProxyOptions{}, NopLogger(), now)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !res.Unrecoverable {
+		t.Fatalf("expected Unrecoverable=true, got %+v", res)
+	}
+}
+
+// TestReactiveRefresh_ErrorPropagates does not cache the failure.
+func TestReactiveRefresh_ErrorPropagates(t *testing.T) {
+	ResetSharedRefreshDedup()
+	now := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	data := map[string]any{"refreshToken": "rt-err2", "expiresAt": now.Add(1 * time.Hour).Format(time.RFC3339Nano)}
+	r := &errorRefresher{err: errors.New("500")}
+	if _, err := ReactiveRefresh(context.Background(), "claude", data, r, ProxyOptions{}, NopLogger(), now); err == nil {
+		t.Fatal("expected error propagation")
+	}
+	if _, err := ReactiveRefresh(context.Background(), "claude", data, r, ProxyOptions{}, NopLogger(), now); err == nil {
+		t.Fatal("second reactive refresh must retry (failure not cached)")
+	}
+}

@@ -20,6 +20,8 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/sqlite"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver/tokenrefresh"
 	httptransport "github.com/Artiffusion-Inc/9router/internal/adapter/transport/http"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
@@ -29,7 +31,8 @@ import (
 	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/register"
 	// Side-effect import: registers live-model resolvers (kiro, ...) in the
 	// resolver registry so /v1/models can fetch live catalogs. Each resolver's
-	// init() calls resolver.Register.
+	// init() calls resolver.Register. Wire overrides the kiro registration
+	// below with a real KiroRefresher (the init() default uses the stub).
 	_ "github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
 	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxychat"
@@ -58,6 +61,12 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	}
 
 	repos := buildRepos(db)
+
+	// Override the kiro live resolver with a real KiroRefresher so a 401
+	// from ListAvailableModels triggers an actual token refresh + retry
+	// instead of the stub-refresher fallback. Other resolvers still use
+	// their init() defaults until their refreshers are ported.
+	resolver.Register(resolver.NewKiroResolver(nil, tokenrefresh.NewKiroRefresher()))
 
 	proxyOpts := proxy.OptionsFromConfig(cfg)
 

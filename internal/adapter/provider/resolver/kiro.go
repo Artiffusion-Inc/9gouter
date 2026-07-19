@@ -72,11 +72,12 @@ func NewKiroResolver(cache *Cache, refresher TokenRefresher) LiveModelResolver {
 
 func (k *kiroResolver) ProviderID() string { return "kiro" }
 
-// init registers the default kiro resolver with a fresh cache and the stub
-// token refresher. When T027 lands, prefer constructing NewKiroResolver with
-// the real refresher at the composition root instead of relying on this
-// default registration. The default registration keeps /v1/models working
-// (falling back to the static catalog on 401) with zero wiring.
+// init registers a default kiro resolver with a fresh cache and the stub
+// token refresher. This keeps /v1/models compiling and working (falling
+// back to the static catalog on 401) with zero wiring. The composition root
+// (wire.go) overrides this registration with NewKiroResolver + the real
+// KiroRefresher from internal/adapter/provider/resolver/tokenrefresh, which
+// lives in a separate package to avoid an import cycle with this package.
 func init() {
 	Register(NewKiroResolver(nil, nil))
 }

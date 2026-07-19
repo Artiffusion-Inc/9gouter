@@ -185,6 +185,43 @@ func (r *ConnectionRepo) Reorder(ctx context.Context, provider string) error {
 	return tx.Commit()
 }
 
+// UpdateUsageMeta merges lastUsedAt and consecutiveUseCount into a
+// connection's JSON data blob without triggering a priority reorder. This is
+// the persistence side of sticky round-robin selection (decolua/9router #2703
+// Fix 4): every selection writes back the timestamp + use count so the next
+// request can decide stay-vs-rotate. It is a read-modify-write over `data`
+// because lastUsedAt/consecutiveUseCount live inside the JSON blob alongside
+// the other optional fields, not as top-level columns.
+func (r *ConnectionRepo) UpdateUsageMeta(ctx context.Context, id string, lastUsedAt time.Time, consecutiveUseCount int) error {
+	row := r.db.QueryRowContext(ctx, `SELECT data FROM providerConnections WHERE id = ?`, id)
+	var raw []byte
+	if err := row.Scan(&raw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("connections updateUsageMeta: not found")
+		}
+		return fmt.Errorf("connections updateUsageMeta read: %w", err)
+	}
+	data := map[string]any{}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &data); err != nil {
+			return fmt.Errorf("connections updateUsageMeta parse: %w", err)
+		}
+	}
+	data["lastUsedAt"] = lastUsedAt.UTC().Format(time.RFC3339Nano)
+	data["consecutiveUseCount"] = consecutiveUseCount
+	next, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("connections updateUsageMeta marshal: %w", err)
+	}
+	_, err = r.db.ExecContext(ctx,
+		`UPDATE providerConnections SET data = ?, updatedAt = ? WHERE id = ?`,
+		string(next), formatTime(now()), id)
+	if err != nil {
+		return fmt.Errorf("connections updateUsageMeta write: %w", err)
+	}
+	return nil
+}
+
 // Cleanup removes null optional fields from every connection's JSON data blob.
 // It matches the JS cleanupProviderConnections query behavior.
 func (r *ConnectionRepo) Cleanup(ctx context.Context) (int64, error) {
@@ -236,7 +273,7 @@ var connectionOptionalFields = []string{
 	"accessToken", "refreshToken", "expiresAt", "tokenType",
 	"scope", "projectId", "apiKey", "testStatus",
 	"lastTested", "lastError", "lastErrorAt", "rateLimitedUntil", "expiresIn", "errorCode",
-	"consecutiveUseCount", "idToken", "lastRefreshAt",
+	"consecutiveUseCount", "lastUsedAt", "idToken", "lastRefreshAt",
 }
 
 func (r *ConnectionRepo) upsertTx(ctx context.Context, tx *sql.Tx, c settings.ProviderConnection) error {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -487,8 +488,97 @@ func TestV1_ResolveCredentialsNoPoolNoStrict(t *testing.T) {
 	}
 }
 
-// Ensure stubChatHandler implements ChatHandler.
-var _ ChatHandler = (*stubChatHandler)(nil)
+// TestV1_ChatCompletions_StickyRoundRobin verifies the #2703 Fix 4 sticky
+// round-robin path: with two active connections for a provider whose strategy
+// is round-robin (stickyLimit=1), the first request stays on the most-recent
+// account, the second request (now at the sticky limit) rotates to the other
+// account. The chosen connection id propagates through ChatRequest.
+func TestV1_ChatCompletions_StickyRoundRobin(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+	// Two connections; neither has a lastUsedAt so the first pick is by
+	// priority (a wins), and with stickyLimit=1 the next call rotates to b.
+	mustCreateConnectionWithID(t, db, "openai-a", "openai", `{"apiKey":"sk-a","providerSpecificData":{"connectionProxyEnabled":false}}`)
+	mustCreateConnectionWithID(t, db, "openai-b", "openai", `{"apiKey":"sk-b","providerSpecificData":{"connectionProxyEnabled":false}}`)
+
+	stub := &stubChatHandler{streamed: true}
+	deps := V1Deps{
+		APIKeysRepo:    repo.NewAPIKeyRepo(db),
+		SettingsRepo:   repo.NewSettingsRepo(db),
+		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ComboRepo:      repo.NewComboRepo(db),
+		AliasRepo:       repo.NewAliasRepo(db),
+		NodeRepo:        repo.NewNodeRepo(db),
+		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
+		Chat:           stub,
+		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	}
+
+	// Enable round-robin for openai with stickyLimit=1.
+	settingsJSON := `{"fallbackStrategy":"fill-first","providerStrategies":{"openai":{"fallbackStrategy":"round-robin","stickyRoundRobinLimit":1}}}`
+	if _, err := deps.SettingsRepo.Update(context.Background(), json.RawMessage(settingsJSON)); err != nil {
+		t.Fatalf("settings update: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	doRequest := func() string {
+		body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hi"}],"stream":true}`
+		req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "127.0.0.1:12345"
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		return stub.got.Credentials.APIKey
+	}
+
+	// First request: a wins by priority (both never-used); count 1 == limit 1.
+	first := doRequest()
+	if first != "sk-a" {
+		t.Fatalf("first pick apiKey = %q, want sk-a", first)
+	}
+	// Second request: a hit the limit (1), rotate to b.
+	second := doRequest()
+	if second != "sk-b" {
+		t.Fatalf("second pick apiKey = %q, want sk-b (rotated)", second)
+	}
+}
+
+// TestV1_ChatCompletions_AllExcludedReturns503 verifies that when every active
+// connection is excluded by the fallback loop, resolveCredentials returns
+// ErrNoActiveCredentials and handleChat surfaces 503 instead of 404. This is
+// the transport hook Fix 3's fallback loop will rely on; wired here as part of
+// the Fix 4 selection refactor since resolveCredentialsWithOpts gained the
+// exclude filter.
+func TestV1_ChatCompletions_AllExcludedReturns503(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+	mustCreateConnection(t, db, "openai", `{"apiKey":"sk-test","providerSpecificData":{"connectionProxyEnabled":false}}`)
+
+	deps := V1Deps{
+		APIKeysRepo:    repo.NewAPIKeyRepo(db),
+		SettingsRepo:   repo.NewSettingsRepo(db),
+		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ComboRepo:      repo.NewComboRepo(db),
+		AliasRepo:       repo.NewAliasRepo(db),
+		NodeRepo:        repo.NewNodeRepo(db),
+		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
+		Chat:           &stubChatHandler{},
+		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	}
+
+	h := newV1Handler(deps)
+	_, err := h.resolveCredentialsWithOpts(context.Background(), "openai", "gpt-4", map[string]struct{}{"openai-conn": {}}, "")
+	if !errors.Is(err, ErrNoActiveCredentials) {
+		t.Fatalf("expected ErrNoActiveCredentials, got %v", err)
+	}
+}
 
 // Ensure Credentials from domain provider can be assigned to ChatRequest.
 var _ = domainProv.Credentials{}

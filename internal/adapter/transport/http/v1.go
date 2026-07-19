@@ -8,6 +8,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -534,6 +535,10 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	creds, err := h.resolveCredentials(ctx, modelInfo.Provider, modelInfo.Model)
 	if err != nil {
+		if errors.Is(err, ErrNoActiveCredentials) {
+			h.writeError(w, http.StatusServiceUnavailable, fmt.Sprintf("All active credentials unavailable for provider: %s", modelInfo.Provider))
+			return
+		}
 		h.writeError(w, http.StatusNotFound, fmt.Sprintf("No active credentials for provider: %s", modelInfo.Provider))
 		return
 	}
@@ -703,6 +708,27 @@ func nodePrefix(n settings.ProviderNode) string {
 }
 
 func (h *v1Handler) resolveCredentials(ctx context.Context, providerID, model string) (domainProv.Credentials, error) {
+	return h.resolveCredentialsWithOpts(ctx, providerID, model, nil, "")
+}
+
+// resolveCredentialsWithOpts resolves the connection to use for a provider,
+// honouring sticky round-robin selection (decolua/9router #2703 Fix 4):
+//
+//   - excludedIDs: connection IDs already tried and failed in this request's
+//     fallback loop (Fix 3). Skipped during selection; if every active
+//     connection is excluded, returns ErrNoActiveCredentials so the caller
+//     can surface a 503.
+//   - preferredConnectionID: pins to a specific connection when available
+//     (combos). Empty string disables pinning.
+//
+// The effective strategy (fill-first default, or round-robin when configured
+// globally or per-provider via settings.providerStrategies) and the sticky
+// limit (default 3) are read from settings. On a round-robin selection the
+// chosen connection's lastUsedAt + consecutiveUseCount are persisted via
+// ConnectionRepo.UpdateUsageMeta so the next request can decide stay-vs-
+// rotate, mirroring the JS updateProviderConnection call. Fill-first keeps
+// the previous connections[0] behaviour and skips the write-back.
+func (h *v1Handler) resolveCredentialsWithOpts(ctx context.Context, providerID, model string, excludedIDs map[string]struct{}, preferredConnectionID string) (domainProv.Credentials, error) {
 	// No-auth providers use a virtual public connection.
 	if isNoAuthProvider(providerID) {
 		return domainProv.Credentials{
@@ -718,10 +744,42 @@ func (h *v1Handler) resolveCredentials(ctx context.Context, providerID, model st
 	if err != nil {
 		return domainProv.Credentials{}, err
 	}
-	if len(connections) == 0 {
-		return domainProv.Credentials{}, fmt.Errorf("no active credentials")
+
+	// Filter out connections excluded by the fallback loop (Fix 3) and
+	// connections whose model-lock is still active (Fix 3). For now only the
+	// exclude filter is applied; model-lock filtering lands with Fix 3.
+	available := connections[:0:0]
+	for _, c := range connections {
+		if excludedIDs != nil {
+			if _, skip := excludedIDs[c.ID]; skip {
+				continue
+			}
+		}
+		available = append(available, c)
 	}
-	conn := connections[0]
+	if len(available) == 0 {
+		if len(connections) == 0 {
+			return domainProv.Credentials{}, fmt.Errorf("no active credentials")
+		}
+		return domainProv.Credentials{}, ErrNoActiveCredentials
+	}
+
+	// Preferred pin (combos): if the pinned connection is available, use it
+	// and skip the strategy.
+	var conn settings.ProviderConnection
+	if preferredConnectionID != "" {
+		for _, c := range available {
+			if c.ID == preferredConnectionID {
+				conn = c
+				break
+			}
+		}
+	}
+	if conn.ID == "" {
+		idx, stay := selectConnection(ctx, h, available, providerID)
+		conn = available[idx]
+		persistStickySelection(h, conn, stay)
+	}
 
 	var data map[string]any
 	_ = json.Unmarshal(conn.Data, &data)
@@ -1067,6 +1125,10 @@ func (h *v1Handler) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 
 	creds, err := h.resolveCredentials(ctx, modelInfo.Provider, modelInfo.Model)
 	if err != nil {
+		if errors.Is(err, ErrNoActiveCredentials) {
+			h.writeError(w, http.StatusServiceUnavailable, fmt.Sprintf("All active credentials unavailable for provider: %s", modelInfo.Provider))
+			return
+		}
 		h.writeError(w, http.StatusNotFound, fmt.Sprintf("No active credentials for provider: %s", modelInfo.Provider))
 		return
 	}

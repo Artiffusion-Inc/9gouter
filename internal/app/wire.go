@@ -39,6 +39,7 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxychat"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxyembeddings"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxyfetch"
+	"github.com/Artiffusion-Inc/9router/internal/usecase/sttproxy"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/videoproxy"
 )
 
@@ -84,6 +85,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	embeddingsHandler := newProxyEmbeddingsHandler(repos, proxyOpts, cfg, logger)
 	webFetchHandler := newProxyWebFetchHandler(cfg, logger)
 	videoHandler := newVideoProxyHandler(cfg, logger)
+	sttHandler := newSttHandler(cfg, logger)
 
 	mux := http.NewServeMux()
 	httptransport.RegisterV1(mux, httptransport.V1Deps{
@@ -102,6 +104,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Embeddings:     embeddingsHandler,
 		WebFetch:       webFetchHandler,
 		Video:          videoHandler,
+		Stt:            sttHandler,
 	})
 
 	sessionStore, err := auth.NewCookieStore(cfg.DashboardSessionSecret)
@@ -428,5 +431,42 @@ func (h *videoProxyHandler) Handle(ctx context.Context, req httptransport.VideoP
 		Body:         res.Body,
 		ContentType:  res.ContentType,
 		ConnectionID: res.ConnectionID,
+	}, nil
+}
+
+// sttHandler adapts sttproxy.Handler to the httptransport.SttHandler
+// interface. Lives in the composition root (the only place allowed to know
+// both packages). Like web-fetch, STT does not persist usage rows (the legacy
+// JS STT path never called saveRequestUsage), so it only needs config + logger.
+type sttHandler struct {
+	handler *sttproxy.Handler
+}
+
+func newSttHandler(cfg config.Config, logger *slog.Logger) *sttHandler {
+	return &sttHandler{
+		handler: sttproxy.New(sttproxy.Dependencies{
+			Logger: &slogLogger{logger},
+			Config: cfg,
+		}),
+	}
+}
+
+func (h *sttHandler) Handle(ctx context.Context, req httptransport.SttRequest) (httptransport.SttResult, error) {
+	res := h.handler.Handle(ctx, sttproxy.Request{
+		Ctx:         ctx,
+		ProviderID:  req.ProviderID,
+		Model:       req.Model,
+		File:        req.File,
+		Filename:    req.Filename,
+		FileMIME:    req.FileMIME,
+		FormFields:  req.FormFields,
+		Credentials: req.Credentials,
+		UserAgent:   req.UserAgent,
+	})
+	return httptransport.SttResult{
+		StatusCode:  res.StatusCode,
+		Err:         res.Err,
+		Body:        res.Body,
+		ContentType: res.ContentType,
 	}, nil
 }

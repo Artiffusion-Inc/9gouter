@@ -127,6 +127,38 @@ type VideoProxyResult struct {
 	ConnectionID string
 }
 
+// SttHandler is the boundary between the HTTP transport layer and the
+// stt-proxy usecase (POST /v1/audio/transcriptions). Implementations are
+// provided by wire.go (sttproxy adapter).
+type SttHandler interface {
+	Handle(ctx context.Context, req SttRequest) (SttResult, error)
+}
+
+// SttRequest carries a parsed multipart STT call into the usecase.
+type SttRequest struct {
+	Ctx         context.Context
+	ProviderID  string
+	Model       string
+	File        []byte
+	Filename    string
+	FileMIME    string
+	FormFields  map[string]string
+	Credentials domainProv.Credentials
+	UserAgent   string
+}
+
+// SttResult carries the upstream transcription response back to the HTTP layer.
+// For OpenAI-compatible providers Body/ContentType are the raw upstream bytes
+// (so response_format text/srt/vtt/verbose_json pass through verbatim); for
+// deepgram/assemblyai/gemini Body is the reshaped {"text":...} JSON and
+// ContentType is application/json.
+type SttResult struct {
+	StatusCode  int
+	Err         error
+	Body        []byte
+	ContentType string
+}
+
 // ChatRequest carries the parsed HTTP request into the usecase.
 type ChatRequest struct {
 	Ctx          context.Context
@@ -182,6 +214,10 @@ type V1Deps struct {
 	// Video is the injected video-proxy usecase boundary (POST /v1/videos/*
 	// and GET /v1/videos/{id}).
 	Video VideoProxyHandler
+
+	// Stt is the injected speech-to-text usecase boundary
+	// (POST /v1/audio/transcriptions).
+	Stt SttHandler
 }
 
 // RegisterV1 mounts POST handlers for /v1/chat/completions, /v1/messages,
@@ -257,6 +293,14 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 		handler.handleVideoCreate(w, r, "extensions")
 	})
 	mux.HandleFunc("GET /v1/videos/{id}", handler.handleVideoGet)
+	// POST /v1/audio/transcriptions — OpenAI Whisper-compatible STT. Parses the
+	// multipart form, resolves the provider from body.model (provider/model
+	// prefix or bare → falls back to a provider that has an STT config),
+	// dispatches to the sttproxy usecase by the provider's static STT format
+	// (deepgram/assemblyai/gemini/openai-compatible). Ports legacy JS
+	// src/app/api/v1/audio/transcriptions/route.js + src/sse/handlers/stt.js +
+	// open-sse/handlers/sttCore.js.
+	mux.HandleFunc("POST /v1/audio/transcriptions", handler.handleAudioTranscriptions)
 }
 
 type v1Handler struct {

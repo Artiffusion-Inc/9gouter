@@ -19,12 +19,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
 )
 
 // ErrVertexNotPorted signals vertex refresh (RS256 JWT) is not yet ported.
@@ -56,7 +58,8 @@ type tokenResponse struct {
 
 // doForm posts a form-encoded body with the given headers and decodes a
 // tokenResponse. A non-2xx response is classified and returned as an error.
-func doForm(ctx context.Context, client *http.Client, endpoint string, form url.Values, headers http.Header, log resolver.Logger, label string) (*tokenResponse, error) {
+// opts routes the request through the proxy stack when set (Fix 2a).
+func doForm(ctx context.Context, client *http.Client, opts resolver.ProxyOptions, endpoint string, form url.Values, headers http.Header, log resolver.Logger, label string) (*tokenResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
@@ -68,11 +71,12 @@ func doForm(ctx context.Context, client *http.Client, endpoint string, form url.
 			req.Header.Set(k, v)
 		}
 	}
-	return doRequest(client, req, log, label)
+	return doRequest(client, opts, req, log, label)
 }
 
-// doJSON posts a JSON body and decodes a tokenResponse.
-func doJSON(ctx context.Context, client *http.Client, endpoint string, body any, headers http.Header, log resolver.Logger, label string) (*tokenResponse, error) {
+// doJSON posts a JSON body and decodes a tokenResponse. opts routes the
+// request through the proxy stack when set (Fix 2a).
+func doJSON(ctx context.Context, client *http.Client, opts resolver.ProxyOptions, endpoint string, body any, headers http.Header, log resolver.Logger, label string) (*tokenResponse, error) {
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -88,17 +92,61 @@ func doJSON(ctx context.Context, client *http.Client, endpoint string, body any,
 			req.Header.Set(k, v)
 		}
 	}
-	return doRequest(client, req, log, label)
+	return doRequest(client, opts, req, log, label)
+}
+
+// proxyFetchOptions translates the resolver-layer ProxyOptions (which avoids an
+// import cycle with the proxy package by not embedding proxy.ProxyFetchOptions
+// directly) into the proxy stack's ProxyFetchOptions. An empty opts produces an
+// empty ProxyFetchOptions, which ProxyAwareFetch treats as "direct" (#2703
+// Fix 2a). The Logger is bridged from the resolver.Logger if it is a
+// *slog.Logger.
+func proxyFetchOptions(opts resolver.ProxyOptions) proxy.ProxyFetchOptions {
+	return proxy.ProxyFetchOptions{
+		VercelRelayUrl:        opts.VercelRelayURL,
+		ConnectionProxyUrl:    opts.ConnectionProxyURL,
+		ConnectionProxyEnabled: opts.ConnectionProxyEnabled,
+		StrictProxy:           opts.StrictProxy,
+		NoProxy:               opts.ConnectionNoProxy,
+		Logger:                slogLogger(opts.Logger),
+	}
+}
+
+// slogLogger returns the *slog.Logger behind a resolver.Logger when the
+// concrete value is the standard slog adapter used at call sites. Returns nil
+// otherwise (diagnostics dropped, matching the proxy stack's nil-Logger
+// behavior).
+func slogLogger(l resolver.Logger) *slog.Logger {
+	if l == nil {
+		return nil
+	}
+	if s, ok := l.(*slog.Logger); ok {
+		return s
+	}
+	return nil
+}
+
+// routeAwareDo executes req through the proxy stack when opts is non-empty
+// (Fix 2a), else falls back to a plain client.Do. This is the single seam that
+// makes every token refresher route-aware: a connection behind a strict proxy
+// (e.g. kiro) refreshes through the same proxy path as its chat/catalog calls
+// instead of dialing the token endpoint directly.
+func routeAwareDo(ctx context.Context, client *http.Client, req *http.Request, opts resolver.ProxyOptions) (*http.Response, error) {
+	if opts == (resolver.ProxyOptions{}) {
+		return client.Do(req)
+	}
+	return proxy.ProxyAwareFetch(ctx, client, req, proxy.Options{}, proxyFetchOptions(opts), nil)
 }
 
 // doRequest executes the refresh request, classifies failures, and decodes the
 // response into a tokenResponse. A non-2xx response is an error (caller falls
-// back to the static catalog / marks unrecoverable).
-func doRequest(client *http.Client, req *http.Request, log resolver.Logger, label string) (*tokenResponse, error) {
+// back to the static catalog / marks unrecoverable). opts routes the request
+// through the proxy stack when set (Fix 2a).
+func doRequest(client *http.Client, opts resolver.ProxyOptions, req *http.Request, log resolver.Logger, label string) (*tokenResponse, error) {
 	if log == nil {
 		log = resolver.NopLogger()
 	}
-	resp, err := client.Do(req)
+	resp, err := routeAwareDo(req.Context(), client, req, opts)
 	if err != nil {
 		log.Warn("token refresh network error", "label", label, "error", err)
 		return nil, err

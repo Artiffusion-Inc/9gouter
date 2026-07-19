@@ -59,7 +59,11 @@ func NewKiroRefresher() *KiroRefresher {
 var ErrExternalIDPNotPorted = fmt.Errorf("kiro external_idp refresh not yet ported (T027 follow-up)")
 
 // Refresh implements resolver.TokenRefresher. It never panics on a nil psd.
-func (k *KiroRefresher) Refresh(ctx context.Context, refreshToken string, psd map[string]any, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+// opts routes the refresh HTTP call through the proxy stack when set (Fix 2a) —
+// a kiro connection behind a strict proxy refreshes through the same path as
+// its ListAvailableModels call instead of dialing the AWS OIDC / social token
+// endpoint directly.
+func (k *KiroRefresher) Refresh(ctx context.Context, refreshToken string, psd map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if log == nil {
 		log = resolver.NopLogger()
 	}
@@ -80,12 +84,12 @@ func (k *KiroRefresher) Refresh(ctx context.Context, refreshToken string, psd ma
 	}
 
 	if clientID != "" && clientSecret != "" {
-		return k.refreshAWS(ctx, refreshToken, clientID, clientSecret, authMethod, region, log)
+		return k.refreshAWS(ctx, refreshToken, clientID, clientSecret, authMethod, region, opts, log)
 	}
-	return k.refreshSocial(ctx, refreshToken, log)
+	return k.refreshSocial(ctx, refreshToken, opts, log)
 }
 
-func (k *KiroRefresher) refreshAWS(ctx context.Context, refreshToken, clientID, clientSecret, authMethod, region string, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (k *KiroRefresher) refreshAWS(ctx context.Context, refreshToken, clientID, clientSecret, authMethod, region string, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	endpoint := kiroDefaultOIDC
 	if authMethod == "idc" && region != "" {
 		endpoint = fmt.Sprintf(kiroAWSOIDCBase, region)
@@ -109,7 +113,7 @@ func (k *KiroRefresher) refreshAWS(ctx context.Context, refreshToken, clientID, 
 		ExpiresIn    int    `json:"expiresIn"`
 		ProfileArn   string `json:"profileArn"`
 	}
-	if err := k.do(req, &resp, log, "Kiro AWS"); err != nil {
+	if err := k.do(req, opts, &resp, log, "Kiro AWS"); err != nil {
 		return nil, err
 	}
 	out := &resolver.RefreshedCredentials{
@@ -131,7 +135,7 @@ func (k *KiroRefresher) refreshAWS(ctx context.Context, refreshToken, clientID, 
 	return out, nil
 }
 
-func (k *KiroRefresher) refreshSocial(ctx context.Context, refreshToken string, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (k *KiroRefresher) refreshSocial(ctx context.Context, refreshToken string, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	body, _ := json.Marshal(map[string]string{"refreshToken": refreshToken})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, kiroSocialTokenURL, bytes.NewReader(body))
 	if err != nil {
@@ -146,7 +150,7 @@ func (k *KiroRefresher) refreshSocial(ctx context.Context, refreshToken string, 
 		RefreshToken string `json:"refreshToken"`
 		ExpiresIn    int    `json:"expiresIn"`
 	}
-	if err := k.do(req, &resp, log, "Kiro social"); err != nil {
+	if err := k.do(req, opts, &resp, log, "Kiro social"); err != nil {
 		return nil, err
 	}
 	out := &resolver.RefreshedCredentials{
@@ -161,9 +165,10 @@ func (k *KiroRefresher) refreshSocial(ctx context.Context, refreshToken string, 
 }
 
 // do executes the refresh request, classifies failures, and decodes the JSON
-// response into dst. A non-2xx response is an error (caller falls back).
-func (k *KiroRefresher) do(req *http.Request, dst any, log resolver.Logger, label string) error {
-	resp, err := k.client.Do(req)
+// response into dst. A non-2xx response is an error (caller falls back). opts
+// routes the request through the proxy stack when set (Fix 2a).
+func (k *KiroRefresher) do(req *http.Request, opts resolver.ProxyOptions, dst any, log resolver.Logger, label string) error {
+	resp, err := routeAwareDo(req.Context(), k.client, req, opts)
 	if err != nil {
 		log.Warn("token refresh network error", "label", label, "error", err)
 		return err

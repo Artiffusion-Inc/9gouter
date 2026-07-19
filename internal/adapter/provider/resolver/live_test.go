@@ -217,7 +217,7 @@ func TestCopilotResolve_EmptyToken(t *testing.T) {
 // grok-cli refresh-on-401 tests.
 type stubRefresher struct{ token string; err error }
 
-func (s *stubRefresher) Refresh(_ context.Context, _ string, _ map[string]any, _ Logger) (*RefreshedCredentials, error) {
+func (s *stubRefresher) Refresh(_ context.Context, _ string, _ map[string]any, _ ProxyOptions, _ Logger) (*RefreshedCredentials, error) {
 	if s.err != nil {
 		return nil, s.err
 	}

@@ -19,6 +19,6 @@ var ErrTokenRefreshNotPorted = errors.New("token refresh not yet ported (T027)")
 // StubTokenRefresher is the placeholder TokenRefresher until T027 lands.
 func StubTokenRefresher() TokenRefresher { return stubTokenRefresher{} }
 
-func (stubTokenRefresher) Refresh(ctx context.Context, refreshToken string, psd map[string]any, log Logger) (*RefreshedCredentials, error) {
+func (stubTokenRefresher) Refresh(ctx context.Context, refreshToken string, psd map[string]any, opts ProxyOptions, log Logger) (*RefreshedCredentials, error) {
 	return nil, ErrTokenRefreshNotPorted
 }

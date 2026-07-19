@@ -73,7 +73,7 @@ func (r *copilotResolver) Resolve(ctx context.Context, creds provider.Credential
 		// 401/403 → refresh the Copilot token from the GitHub access token and retry.
 		if is401or403(err) && creds.AccessToken != "" && r.refresher != nil {
 			log.Info("COPILOT_MODELS: got 401/403; refreshing Copilot token")
-			refreshed, rerr := r.refresher.Refresh(ctx, creds.AccessToken, creds.ProviderSpecificData, log)
+			refreshed, rerr := r.refresher.Refresh(ctx, creds.AccessToken, creds.ProviderSpecificData, opts.ProxyOptions, log)
 			if rerr != nil || refreshed == nil || refreshed.AccessToken == "" {
 				log.Warn("COPILOT_MODELS: token refresh did not return a token")
 				return nil, nil

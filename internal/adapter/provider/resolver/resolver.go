@@ -85,6 +85,21 @@ type RefreshedCredentials struct {
 	// token exchange (which returns expires_at, not expires_in). Carried
 	// through verbatim; the hook parses it if non-empty.
 	ExpiresAt string
+	// APIKey is set by providers whose "refresh" actually mints/rotates an
+	// API key (rare). Merged back into the connection by the refresh hook.
+	APIKey string
+	// Token is a generic bearer some providers return alongside or instead
+	// of access_token (e.g. copilotToken). Mirrors the JS mergeRefreshedCredentials
+	// `token` field.
+	Token string
+	// ProjectID is returned by antigravity/gemini-cli refresh and merged back
+	// into the connection's providerSpecificData. Mirrors the JS
+	// mergeRefreshedCredentials `projectId` field (#2703 Fix 2e).
+	ProjectID string
+	// CopilotToken and CopilotTokenExpiresAt carry GitHub Copilot's rotated
+	// session token (the JS flow persists both via the refresh hook).
+	CopilotToken         string
+	CopilotTokenExpiresAt string
 	// ProviderSpecificData carries provider-specific fields the caller must
 	// merge back into the connection (e.g. qwen resource_url, kiro
 	// profileArn). nil/empty means "no patch".
@@ -96,13 +111,21 @@ type RefreshedCredentials struct {
 	Unrecoverable bool
 }
 
-// ProxyOptions is the per-connection proxy subset a resolver may need.
+// ProxyOptions is the per-connection proxy subset a resolver or token refresher
+// may need to route its upstream call through the proxy stack. Populated by the
+// caller from the connection's resolved proxy config (resolveConnectionProxyConfig)
+// and threaded through ResolveOpts and TokenRefresher.Refresh (#2703 Fix 2a —
+// route-aware refresh). It maps 1:1 onto proxy.ProxyFetchOptions.
 type ProxyOptions struct {
 	ConnectionProxyEnabled bool
 	ConnectionProxyURL     string
 	ConnectionNoProxy      string
 	VercelRelayURL         string
 	StrictProxy            bool
+	// Logger receives structured route-diagnostics lines from the proxy stack
+	// during a refresh. When nil, diagnostics are dropped. Mirrors
+	// proxy.ProxyFetchOptions.Logger (#2703 Fix 5).
+	Logger Logger
 }
 
 // Logger is the minimal logger interface resolvers use; slog.Logger satisfies
@@ -118,8 +141,16 @@ type Logger interface {
 // in the tokenRefresh subsystem (T027); resolvers that hit 401/403 inject
 // the provider's refresher via this interface so they can retry once after
 // refreshing.
+//
+// #2703 Fix 2a: Refresh is route-aware. The caller passes the connection's
+// resolved ProxyOptions so the refresh HTTP call goes through the same proxy
+// stack as the chat/catalog call (ProxyAwareFetch), instead of a plain
+// http.Client that ignores per-connection proxy config. opts carries proxy
+// config; an empty ProxyOptions means "direct" (the refresh endpoints of most
+// providers are not themselves behind the customer proxy, but the option
+// must be honored when set, e.g. kiro behind a strict proxy).
 type TokenRefresher interface {
-	Refresh(ctx context.Context, refreshToken string, psd map[string]any, log Logger) (*RefreshedCredentials, error)
+	Refresh(ctx context.Context, refreshToken string, psd map[string]any, opts ProxyOptions, log Logger) (*RefreshedCredentials, error)
 }
 
 // stableHash returns the hex sha256 of seed, used by resolvers to build a

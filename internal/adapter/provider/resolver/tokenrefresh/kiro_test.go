@@ -36,7 +36,7 @@ func hostSwapTransportFn(to string) http.RoundTripper {
 
 func TestKiroRefresh_EmptyToken(t *testing.T) {
 	k := NewKiroRefresher()
-	out, err := k.Refresh(context.Background(), "", nil, resolver.NopLogger())
+	out, err := k.Refresh(context.Background(), "", nil, resolver.ProxyOptions{}, resolver.NopLogger())
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -47,7 +47,7 @@ func TestKiroRefresh_EmptyToken(t *testing.T) {
 
 func TestKiroRefresh_ExternalIDPNotPorted(t *testing.T) {
 	k := NewKiroRefresher()
-	_, err := k.Refresh(context.Background(), "rt", map[string]any{"authMethod": "external_idp"}, resolver.NopLogger())
+	_, err := k.Refresh(context.Background(), "rt", map[string]any{"authMethod": "external_idp"}, resolver.ProxyOptions{}, resolver.NopLogger())
 	if err != ErrExternalIDPNotPorted {
 		t.Fatalf("err = %v, want ErrExternalIDPNotPorted", err)
 	}
@@ -91,7 +91,7 @@ func TestKiroRefresh_AWSBranch(t *testing.T) {
 	out, err := k.Refresh(context.Background(), "rt", map[string]any{
 		"clientId":     "cid",
 		"clientSecret": "csec",
-	}, resolver.NopLogger())
+	}, resolver.ProxyOptions{}, resolver.NopLogger())
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -127,7 +127,7 @@ func TestKiroRefresh_SocialBranch(t *testing.T) {
 	k.client = srv.Client()
 	k.client.Transport = hostSwapTransportFn(srv.URL)
 
-	out, err := k.Refresh(context.Background(), "rt", map[string]any{}, resolver.NopLogger())
+	out, err := k.Refresh(context.Background(), "rt", map[string]any{}, resolver.ProxyOptions{}, resolver.NopLogger())
 	if err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -152,7 +152,7 @@ func TestKiroRefresh_Non200(t *testing.T) {
 	k.client = srv.Client()
 	k.client.Transport = hostSwapTransportFn(srv.URL)
 
-	_, err := k.Refresh(context.Background(), "rt", map[string]any{}, resolver.NopLogger())
+	_, err := k.Refresh(context.Background(), "rt", map[string]any{}, resolver.ProxyOptions{}, resolver.NopLogger())
 	if err == nil {
 		t.Fatal("expected error on 400")
 	}

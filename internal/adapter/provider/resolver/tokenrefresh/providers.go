@@ -57,7 +57,7 @@ type ClaudeRefresher struct{ httpClient *http.Client }
 
 func NewClaudeRefresher() *ClaudeRefresher { return &ClaudeRefresher{httpClient: newRefreshClient()} }
 
-func (r *ClaudeRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (r *ClaudeRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if refreshToken == "" {
 		return nil, nil
 	}
@@ -66,7 +66,7 @@ func (r *ClaudeRefresher) Refresh(ctx context.Context, refreshToken string, _ ma
 		"refresh_token": refreshToken,
 		"client_id":     claudeClientID,
 	}
-	tok, err := doJSON(ctx, r.httpClient, claudeTokenURL, body, nil, log, "Claude")
+	tok, err := doJSON(ctx, r.httpClient, opts, claudeTokenURL, body, nil, log, "Claude")
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ type GoogleRefresher struct{ httpClient *http.Client }
 
 func NewGoogleRefresher() *GoogleRefresher { return &GoogleRefresher{httpClient: newRefreshClient()} }
 
-func (r *GoogleRefresher) Refresh(ctx context.Context, refreshToken string, psd map[string]any, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (r *GoogleRefresher) Refresh(ctx context.Context, refreshToken string, psd map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if refreshToken == "" {
 		return nil, nil
 	}
@@ -92,7 +92,7 @@ func (r *GoogleRefresher) Refresh(ctx context.Context, refreshToken string, psd 
 		"client_id":     {clientID},
 		"client_secret": {clientSecret},
 	}
-	tok, err := doForm(ctx, r.httpClient, googleTokenURL, form, nil, log, "Google")
+	tok, err := doForm(ctx, r.httpClient, opts, googleTokenURL, form, nil, log, "Google")
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ type QwenRefresher struct{ httpClient *http.Client }
 
 func NewQwenRefresher() *QwenRefresher { return &QwenRefresher{httpClient: newRefreshClient()} }
 
-func (r *QwenRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (r *QwenRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if refreshToken == "" {
 		return nil, nil
 	}
@@ -115,7 +115,7 @@ func (r *QwenRefresher) Refresh(ctx context.Context, refreshToken string, _ map[
 		"refresh_token": {refreshToken},
 		"client_id":     {qwenClientID},
 	}
-	tok, err := doForm(ctx, r.httpClient, qwenTokenURL, form, nil, log, "Qwen")
+	tok, err := doForm(ctx, r.httpClient, opts, qwenTokenURL, form, nil, log, "Qwen")
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ type CodexRefresher struct{ httpClient *http.Client }
 
 func NewCodexRefresher() *CodexRefresher { return &CodexRefresher{httpClient: newRefreshClient()} }
 
-func (r *CodexRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (r *CodexRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if refreshToken == "" {
 		return nil, nil
 	}
@@ -142,7 +142,7 @@ func (r *CodexRefresher) Refresh(ctx context.Context, refreshToken string, _ map
 		"grant_type":    "refresh_token",
 		"refresh_token": refreshToken,
 	}
-	tok, err := doJSON(ctx, r.httpClient, codexTokenURL, body, nil, log, "Codex")
+	tok, err := doJSON(ctx, r.httpClient, opts, codexTokenURL, body, nil, log, "Codex")
 	if err != nil {
 		if cls := classifyOAuthRefreshError(err.Error(), 0); cls.Permanent {
 			return &resolver.RefreshedCredentials{Unrecoverable: true}, err
@@ -158,7 +158,7 @@ type IflowRefresher struct{ httpClient *http.Client }
 
 func NewIflowRefresher() *IflowRefresher { return &IflowRefresher{httpClient: newRefreshClient()} }
 
-func (r *IflowRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (r *IflowRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if refreshToken == "" {
 		return nil, nil
 	}
@@ -170,7 +170,7 @@ func (r *IflowRefresher) Refresh(ctx context.Context, refreshToken string, _ map
 	}
 	basic := base64.StdEncoding.EncodeToString([]byte(iflowClientID + ":" + iflowClientSecret))
 	hdr := http.Header{"Authorization": []string{"Basic " + basic}}
-	tok, err := doForm(ctx, r.httpClient, iflowTokenURL, form, hdr, log, "iFlow")
+	tok, err := doForm(ctx, r.httpClient, opts, iflowTokenURL, form, hdr, log, "iFlow")
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +184,7 @@ type GitHubRefresher struct{ httpClient *http.Client }
 
 func NewGitHubRefresher() *GitHubRefresher { return &GitHubRefresher{httpClient: newRefreshClient()} }
 
-func (r *GitHubRefresher) Refresh(ctx context.Context, refreshToken string, psd map[string]any, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (r *GitHubRefresher) Refresh(ctx context.Context, refreshToken string, psd map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if refreshToken == "" {
 		return nil, nil
 	}
@@ -196,7 +196,7 @@ func (r *GitHubRefresher) Refresh(ctx context.Context, refreshToken string, psd 
 	if secret, ok := stringField(psd, "clientSecret"); ok && secret != "" {
 		form.Set("client_secret", secret)
 	}
-	tok, err := doForm(ctx, r.httpClient, githubTokenURL, form, nil, log, "GitHub")
+	tok, err := doForm(ctx, r.httpClient, opts, githubTokenURL, form, nil, log, "GitHub")
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +211,7 @@ type CopilotRefresher struct{ httpClient *http.Client }
 
 func NewCopilotRefresher() *CopilotRefresher { return &CopilotRefresher{httpClient: newRefreshClient()} }
 
-func (r *CopilotRefresher) Refresh(ctx context.Context, githubAccessToken string, _ map[string]any, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (r *CopilotRefresher) Refresh(ctx context.Context, githubAccessToken string, _ map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if githubAccessToken == "" {
 		return nil, nil
 	}
@@ -228,7 +228,7 @@ func (r *CopilotRefresher) Refresh(ctx context.Context, githubAccessToken string
 	if log == nil {
 		log = resolver.NopLogger()
 	}
-	resp, err := r.httpClient.Do(req)
+	resp, err := routeAwareDo(ctx, r.httpClient, req, opts)
 	if err != nil {
 		log.Warn("token refresh network error", "label", "Copilot", "error", err)
 		return nil, err
@@ -258,7 +258,7 @@ type CodebuddyRefresher struct{ httpClient *http.Client }
 
 func NewCodebuddyRefresher() *CodebuddyRefresher { return &CodebuddyRefresher{httpClient: newRefreshClient()} }
 
-func (r *CodebuddyRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (r *CodebuddyRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if refreshToken == "" {
 		return nil, nil
 	}
@@ -286,7 +286,7 @@ func (r *CodebuddyRefresher) Refresh(ctx context.Context, refreshToken string, _
 			req.Header.Set(k, v)
 		}
 	}
-	resp, err := r.httpClient.Do(req)
+	resp, err := routeAwareDo(ctx, r.httpClient, req, opts)
 	if err != nil {
 		log.Warn("token refresh network error", "label", "CodeBuddy", "error", err)
 		return nil, err
@@ -333,7 +333,7 @@ type XaiRefresher struct{ httpClient *http.Client }
 
 func NewXaiRefresher() *XaiRefresher { return &XaiRefresher{httpClient: newRefreshClient()} }
 
-func (r *XaiRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (r *XaiRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if refreshToken == "" {
 		return nil, nil
 	}
@@ -342,7 +342,7 @@ func (r *XaiRefresher) Refresh(ctx context.Context, refreshToken string, _ map[s
 		"client_id":     {xaiClientID},
 		"refresh_token": {refreshToken},
 	}
-	tok, err := doForm(ctx, r.httpClient, xaiTokenURL, form, nil, log, "xAI")
+	tok, err := doForm(ctx, r.httpClient, opts, xaiTokenURL, form, nil, log, "xAI")
 	if err != nil {
 		// JS returns {error:"invalid_grant"} for invalid_grant/invalid_request.
 		if cls := classifyOAuthRefreshError(err.Error(), 0); cls.Permanent {
@@ -367,7 +367,7 @@ func NewGenericRefresher(providerID string) *GenericRefresher {
 	return &GenericRefresher{httpClient: newRefreshClient(), providerID: providerID}
 }
 
-func (r *GenericRefresher) Refresh(ctx context.Context, refreshToken string, psd map[string]any, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (r *GenericRefresher) Refresh(ctx context.Context, refreshToken string, psd map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if refreshToken == "" {
 		return nil, nil
 	}
@@ -385,7 +385,7 @@ func (r *GenericRefresher) Refresh(ctx context.Context, refreshToken string, psd
 	if secret, ok := stringField(psd, "clientSecret"); ok && secret != "" {
 		form.Set("client_secret", secret)
 	}
-	tok, err := doForm(ctx, r.httpClient, refreshURL, form, nil, log, r.providerID)
+	tok, err := doForm(ctx, r.httpClient, opts, refreshURL, form, nil, log, r.providerID)
 	if err != nil {
 		return nil, err
 	}
@@ -399,7 +399,7 @@ type VertexRefresher struct{}
 
 func NewVertexRefresher() *VertexRefresher { return &VertexRefresher{} }
 
-func (*VertexRefresher) Refresh(_ context.Context, _ string, _ map[string]any, _ resolver.Logger) (*resolver.RefreshedCredentials, error) {
+func (*VertexRefresher) Refresh(_ context.Context, _ string, _ map[string]any, _ resolver.ProxyOptions, _ resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	return nil, ErrVertexNotPorted
 }
 

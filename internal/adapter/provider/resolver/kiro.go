@@ -97,7 +97,7 @@ func (k *kiroResolver) Resolve(ctx context.Context, creds provider.Credentials, 
 	raw, err := k.fetchKiroCatalogRaw(ctx, creds)
 	if err != nil {
 		if is401(err) && refreshTokenOf(creds) != "" {
-			refreshed, rerr := k.refresher.Refresh(ctx, refreshTokenOf(creds), creds.ProviderSpecificData, log)
+			refreshed, rerr := k.refresher.Refresh(ctx, refreshTokenOf(creds), creds.ProviderSpecificData, opts.ProxyOptions, log)
 			if rerr != nil {
 				log.Warn("KIRO_MODELS: token refresh failed", "error", rerr)
 				return nil, nil

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -185,6 +186,10 @@ type BaseExecutor struct {
 	ProxyOpts  proxy.Options
 	ProxyFetchOpts proxy.ProxyFetchOptions
 	Fallback *proxy.Fallback
+	// Logger receives route-diagnostics lines emitted by ProxyAwareFetch on a
+	// proxy fallback (decolua/9router #2703 Fix 5). When nil, doFetch falls
+	// back to slog.Default() so a proxy-to-direct fallback is never silent.
+	Logger *slog.Logger
 }
 
 // NewBaseExecutor creates a base executor from config.
@@ -196,6 +201,12 @@ func NewBaseExecutor(provider string, cfg Config) *BaseExecutor {
 		Fetch:    proxy.ProxyAwareFetch,
 		HTTPClient: http.DefaultClient,
 	}
+}
+
+// SetLogger wires a logger into the executor so ProxyAwareFetch can emit
+// structured route-diagnostics lines (#2703 Fix 5).
+func (e *BaseExecutor) SetLogger(l *slog.Logger) {
+	e.Logger = l
 }
 
 // SetProxyOptions wires proxy options from application config.
@@ -603,6 +614,15 @@ func (e *BaseExecutor) doFetch(ctx context.Context, req *http.Request, creds pro
 	defer cancel()
 	req = req.Clone(fetchCtx)
 	proxyOpts := proxyFetchOptsFromCreds(creds, e.ProxyFetchOpts)
+	// Surface proxy-fallback diagnostics through the resolved proxy options
+	// so a non-strict fallback to direct is logged, not silent (#2703 Fix 5).
+	if proxyOpts.Logger == nil {
+		if e.Logger != nil {
+			proxyOpts.Logger = e.Logger
+		} else {
+			proxyOpts.Logger = slog.Default()
+		}
+	}
 	return e.Fetch(ctx, e.HTTPClient, req, e.ProxyOpts, proxyOpts, e.Fallback)
 }
 

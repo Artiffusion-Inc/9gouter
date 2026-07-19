@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -491,3 +492,49 @@ var _ ChatHandler = (*stubChatHandler)(nil)
 
 // Ensure Credentials from domain provider can be assigned to ChatRequest.
 var _ = domainProv.Credentials{}
+
+// TestV1_ChatCompletions_EmitsRouteDiagnostics verifies handleChat emits the
+// #2703 Fix 5 structured route-diagnostics log before the upstream call, with
+// phase=inference and the resolved route classification (direct for a
+// pool-less connection with proxy disabled).
+func TestV1_ChatCompletions_EmitsRouteDiagnostics(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+	mustCreateConnection(t, db, "openai", `{"apiKey":"sk-test","providerSpecificData":{"connectionProxyEnabled":false}}`)
+
+	stub := &stubChatHandler{streamed: true}
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	deps := V1Deps{
+		APIKeysRepo:    repo.NewAPIKeyRepo(db),
+		SettingsRepo:   repo.NewSettingsRepo(db),
+		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ComboRepo:      repo.NewComboRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
+		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
+		Chat:           stub,
+		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:         logger,
+	}
+
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hi"}],"stream":true}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	out := buf.String()
+	for _, want := range []string{`"msg":"route selected"`, `"phase":"inference"`, `"route":"direct"`, `"provider":"openai"`, `"strictProxy":false`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("route-diagnostics log missing %s; got:\n%s", want, out)
+		}
+	}
+}

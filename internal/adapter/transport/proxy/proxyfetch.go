@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -24,6 +25,10 @@ type ProxyFetchOptions struct {
 	StrictProxy bool
 	// NoProxy is a comma-separated list bypassing the connection proxy.
 	NoProxy string
+	// Logger receives structured route-diagnostics lines (phase=... route=...
+	// fallbackToDirect=... failureSource=...). When nil, diagnostics are
+	// silently dropped. Ports decolua/9router #2703 Fix 5.
+	Logger *slog.Logger
 }
 
 // ProxyAwareFetch implements the proxyFetch.js pipeline:
@@ -42,7 +47,11 @@ func ProxyAwareFetch(ctx context.Context, client *http.Client, req *http.Request
 		if err != nil {
 			return nil, err
 		}
-		return client.Do(relayReq)
+		resp, err := client.Do(relayReq)
+		if err != nil {
+			return nil, &FetchError{Err: err, Cause: DescribeFetchCause(err), Source: FailureSourceRelay}
+		}
+		return resp, nil
 	}
 
 	// 2. Resolve proxy URL.
@@ -61,6 +70,7 @@ func ProxyAwareFetch(ctx context.Context, client *http.Client, req *http.Request
 			if proxyOpts.StrictProxy {
 				return nil, err
 			}
+			logProxyFallback(proxyOpts.Logger, "mitm-bypass", proxyURL, originalURL, err)
 		}
 		if realIP, err := MITMBypassResolve(req.URL.Hostname()); err == nil {
 			resp, err := fetchBypass(req, realIP)
@@ -79,6 +89,7 @@ func ProxyAwareFetch(ctx context.Context, client *http.Client, req *http.Request
 		if proxyOpts.StrictProxy {
 			return nil, err
 		}
+		logProxyFallback(proxyOpts.Logger, "standard-proxy", proxyURL, originalURL, err)
 		if fallback != nil {
 			if tr, _, _ := fallback.Find(ctx, originalURL); tr != nil {
 				fallbackClient := &http.Client{Timeout: opts.FetchBodyTimeout, Transport: tr}
@@ -89,6 +100,28 @@ func ProxyAwareFetch(ctx context.Context, client *http.Client, req *http.Request
 
 	// 5. Direct fetch.
 	return fetchDirect(ctx, client, req, opts)
+}
+
+// logProxyFallback emits the structured route-diagnostics line for a proxy
+// failure that is about to fall back to direct (or to a fallback pool). It
+// mirrors the JS chatCore.js "PROXY | provider | model | conn= | pool= | url="
+// log plus the #2703 Fix 5 fields the JS build never emitted: phase,
+// fallbackToDirect, and failureSource. The log is a Warn because a non-strict
+// fallback means the host IP may now be exposed to the upstream — the
+// operator-visible signal that strictProxy should be enabled for this route.
+func logProxyFallback(logger *slog.Logger, route, proxyURL, targetURL string, err error) {
+	if logger == nil {
+		return
+	}
+	logger.Warn("proxy fallback to direct",
+		"phase", "inference",
+		"route", route,
+		"fallbackToDirect", true,
+		"failureSource", string(FailureSourceProxy),
+		"proxyUrl", proxyURL,
+		"targetUrl", targetURL,
+		"cause", DescribeFetchCause(err),
+	)
 }
 
 func resolveConnectionProxyURL(targetURL string, proxyOpts ProxyFetchOptions) string {
@@ -140,7 +173,7 @@ func relayQuery(raw string) string {
 func fetchWithProxy(ctx context.Context, client *http.Client, req *http.Request, opts Options, proxyURL string, strict bool) (*http.Response, error) {
 	if err := FastFail(ctx, opts, proxyURL); err != nil {
 		if strict {
-			return nil, &FetchError{Err: err, Cause: DescribeFetchCause(err)}
+			return nil, &FetchError{Err: err, Cause: DescribeFetchCause(err), Source: FailureSourceProxy}
 		}
 		return nil, err
 	}
@@ -153,7 +186,7 @@ func fetchWithProxy(ctx context.Context, client *http.Client, req *http.Request,
 	if err != nil {
 		GlobalHealth(opts).Invalidate(proxyURL)
 		if strict {
-			return nil, &FetchError{Err: err, Cause: DescribeFetchCause(err)}
+			return nil, &FetchError{Err: err, Cause: DescribeFetchCause(err), Source: FailureSourceProxy}
 		}
 		return nil, err
 	}

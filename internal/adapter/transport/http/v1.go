@@ -562,6 +562,22 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 		UserAgent: r.UserAgent(),
 	}
 
+	// Route-diagnostics log before the upstream call (decolua/9router #2703
+	// Fix 5). Mirrors the JS chatCore.js "PROXY | provider | model | conn= |
+	// pool= | url=" line and adds the structured phase/route/strictProxy/
+	// proxyPoolId fields the JS build never emitted. The route classification
+	// follows the resolved credentials' providerSpecificData: a vercel relay
+	// wins, then an enabled connection/env proxy, else direct.
+	h.logger.Info("route selected",
+		"phase", "inference",
+		"provider", modelInfo.Provider,
+		"model", modelInfo.Model,
+		"route", classifyRoute(creds.ProviderSpecificData),
+		"connectionId", req.ConnectionID,
+		"proxyPoolId", psdString(creds.ProviderSpecificData, "proxyPoolId"),
+		"strictProxy", psdBool(creds.ProviderSpecificData, "strictProxy"),
+	)
+
 	res, err := h.deps.Chat.Handle(ctx, req, w, sseWriter)
 	if err != nil && res.Err == nil {
 		res.Err = err
@@ -874,6 +890,42 @@ func isNoAuthProvider(id string) bool {
 		return true
 	}
 	return false
+}
+
+// classifyRoute reports the resolved proxy route for the #2703 Fix 5
+// diagnostics log. It reads the same providerSpecificData the provider
+// executor turns into ProxyFetchOptions, so the log matches the route the
+// upstream call actually took: vercel-relay > standard-proxy (connection or
+// env proxy enabled) > direct.
+func classifyRoute(psd map[string]any) string {
+	if psd == nil {
+		return "direct"
+	}
+	if v, _ := psd["vercelRelayUrl"].(string); v != "" {
+		return "vercel"
+	}
+	if enabled, _ := psd["connectionProxyEnabled"].(bool); enabled {
+		if v, _ := psd["connectionProxyUrl"].(string); v != "" {
+			return "standard-proxy"
+		}
+	}
+	return "direct"
+}
+
+func psdString(psd map[string]any, key string) string {
+	if psd == nil {
+		return ""
+	}
+	v, _ := psd[key].(string)
+	return v
+}
+
+func psdBool(psd map[string]any, key string) bool {
+	if psd == nil {
+		return false
+	}
+	v, _ := psd[key].(bool)
+	return v
 }
 
 func inferProvider(model string) string {

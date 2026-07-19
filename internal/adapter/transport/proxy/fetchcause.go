@@ -97,10 +97,38 @@ func truncate(s string, max int) string {
 	return s[:max] + "..."
 }
 
+// FailureSource categorises where an upstream fetch error originated, so
+// callers (account-selection / fallback logic) can decide whether a failure
+// should lock the account or only mark the route unhealthy. Ports the intent
+// of decolua/9router #2703 Fix 5 (Diagnostics) — distinct from the JS build,
+// which only ever produced a flattened string. The typed value lets
+// checkFallbackError treat a proxy/relay outage (FailureSourceProxy /
+// FailureSourceRelay) as shouldFallback:false so a healthy account is not
+// locked when its proxy is down.
+type FailureSource string
+
+const (
+	// FailureSourceUnknown is the zero value; the failure could not be
+	// classified (e.g. a non-net error surfaced without a cause chain).
+	FailureSourceUnknown FailureSource = "unknown"
+	// FailureSourceProxy means the error came from the configured connection
+	// or environment proxy (dial/handshake/transport). The account itself is
+	// not at fault.
+	FailureSourceProxy FailureSource = "proxy"
+	// FailureSourceRelay means the error came from the Vercel relay hop.
+	FailureSourceRelay FailureSource = "relay"
+	// FailureSourceUpstream means the error came from the target provider
+	// (non-2xx status, upstream-side network). The account may be at fault.
+	FailureSourceUpstream FailureSource = "upstream"
+)
+
 // FetchError wraps an upstream fetch error with a diagnostic cause for logging.
+// Source categorises the failure origin so account-selection logic can
+// distinguish a proxy outage from a provider failure (#2703 Fix 5).
 type FetchError struct {
-	Err   error
-	Cause string
+	Err    error
+	Cause  string
+	Source FailureSource
 }
 
 func (e *FetchError) Error() string {

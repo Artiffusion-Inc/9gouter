@@ -332,16 +332,131 @@ func TestV1BetaModels_List_NonEmpty(t *testing.T) {
 	}
 }
 
-func TestV1BetaModelsPath_TTSAudioModality_501(t *testing.T) {
-	mux := newV1BetaMux(t)
+// TestV1BetaModelsPath_TTSNoConnections_503 verifies the TTS forward returns
+// 503 (exhausted) when no active gemini connection exists, instead of the
+// previous honest-501 stub.
+func TestV1BetaModelsPath_TTSNoConnections_503(t *testing.T) {
+	mux := newV1BetaMux(t) // no gemini connection created
 	body := `{"contents":[{"role":"user","parts":[{"text":"say hi"}]}],"generationConfig":{"responseModalities":["AUDIO"]}}`
 	req := httptest.NewRequest("POST", "/v1beta/models/gemini-2.5-flash-preview-tts:generateContent", bytes.NewReader([]byte(body)))
 	req.RemoteAddr = "127.0.0.1:12345"
 	rw := httptest.NewRecorder()
 	mux.ServeHTTP(rw, req)
 
-	if rw.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501 for TTS forward; body=%s", rw.Code, rw.Body.String())
+	if rw.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 (exhausted, no gemini connection); body=%s", rw.Code, rw.Body.String())
+	}
+}
+
+// TestV1BetaModelsPath_TTSBadModel_400 verifies the TTS forward rejects a
+// model id that fails the charset guard (path-traversal block).
+func TestV1BetaModelsPath_TTSBadModel_400(t *testing.T) {
+	mux := newV1BetaMux(t)
+	body := `{"generationConfig":{"responseModalities":["AUDIO"]}}`
+	// "../escape" fails v1betaGeminiModelPattern.
+	req := httptest.NewRequest("POST", "/v1beta/models/..%2Fescape:generateContent", bytes.NewReader([]byte(body)))
+	req.RemoteAddr = "127.0.0.1:12345"
+	rw := httptest.NewRecorder()
+	mux.ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (invalid model charset); body=%s", rw.Code, rw.Body.String())
+	}
+}
+
+// TestV1BetaModelsPath_TTSForward_Success verifies the raw-byte TTS forward
+// proxies a successful upstream response with CORS + stripped compression
+// headers, using a local httptest server as the upstream.
+func TestV1BetaModelsPath_TTSForward_Success(t *testing.T) {
+	// Spin up a mock upstream that returns 200 + a binary body.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-goog-api-key") != "gem-key" {
+			http.Error(w, "bad auth", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "audio/pcm")
+		w.Header().Set("Content-Length", "9")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("PCM-BYTES"))
+	}))
+	t.Cleanup(upstream.Close)
+
+	prevBase := v1betaGeminiNativeBaseURL
+	v1betaGeminiNativeBaseURL = upstream.URL
+	t.Cleanup(func() { v1betaGeminiNativeBaseURL = prevBase })
+
+	db := mustOpenDB(t)
+	t.Cleanup(func() { db.Close() })
+	mustCreateConnection(t, db, "gemini", `{"apiKey":"gem-key","providerSpecificData":{"connectionProxyEnabled":false}}`)
+	deps := newV1BetaDeps(t, db, &stubChatHandler{})
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"contents":[{"role":"user","parts":[{"text":"say hi"}]}],"generationConfig":{"responseModalities":["AUDIO"]}}`
+	req := httptest.NewRequest("POST", "/v1beta/models/gemini-2.5-flash-preview-tts:generateContent", bytes.NewReader([]byte(body)))
+	req.RemoteAddr = "127.0.0.1:12345"
+	rw := httptest.NewRecorder()
+	mux.ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rw.Code, rw.Body.String())
+	}
+	if rw.Body.String() != "PCM-BYTES" {
+		t.Errorf("body = %q, want PCM-BYTES", rw.Body.String())
+	}
+	if rw.Header().Get("Content-Encoding") != "" {
+		t.Errorf("Content-Encoding must be stripped, got %q", rw.Header().Get("Content-Encoding"))
+	}
+	if rw.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Errorf("missing CORS header")
+	}
+}
+
+// TestV1BetaModelsPath_TTSForward_5xxRotates verifies a 5xx upstream rotates
+// to the next active gemini connection.
+func TestV1BetaModelsPath_TTSForward_5xxRotates(t *testing.T) {
+	callCount := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		key := r.Header.Get("x-goog-api-key")
+		if key == "bad-key" {
+			http.Error(w, "upstream 502", http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "audio/pcm")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK-BYTES"))
+	}))
+	t.Cleanup(upstream.Close)
+
+	prevBase := v1betaGeminiNativeBaseURL
+	v1betaGeminiNativeBaseURL = upstream.URL
+	t.Cleanup(func() { v1betaGeminiNativeBaseURL = prevBase })
+
+	db := mustOpenDB(t)
+	t.Cleanup(func() { db.Close() })
+	// Two gemini connections with distinct ids: the first (bad-key) returns
+	// 502 and rotates; the second (good-key) succeeds.
+	mustCreateConnectionWithID(t, db, "gemini-bad", "gemini", `{"apiKey":"bad-key","providerSpecificData":{"connectionProxyEnabled":false}}`)
+	mustCreateConnectionWithID(t, db, "gemini-good", "gemini", `{"apiKey":"good-key","providerSpecificData":{"connectionProxyEnabled":false}}`)
+	deps := newV1BetaDeps(t, db, &stubChatHandler{})
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"generationConfig":{"responseModalities":["AUDIO"]}}`
+	req := httptest.NewRequest("POST", "/v1beta/models/gemini-2.5-flash-preview-tts:generateContent", bytes.NewReader([]byte(body)))
+	req.RemoteAddr = "127.0.0.1:12345"
+	rw := httptest.NewRecorder()
+	mux.ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (after rotation); body=%s", rw.Code, rw.Body.String())
+	}
+	if rw.Body.String() != "OK-BYTES" {
+		t.Errorf("body = %q, want OK-BYTES", rw.Body.String())
+	}
+	if callCount < 2 {
+		t.Errorf("upstream called %d time(s), want >=2 (rotation)", callCount)
 	}
 }
 

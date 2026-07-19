@@ -3,12 +3,20 @@ package http
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
+	"time"
 
+	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
+	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
 )
 
 // v1beta implements the Gemini-native /v1beta/models surface, porting legacy
@@ -37,12 +45,16 @@ import (
 // future task. The text-chat branch is the client-surface gap #38 closes.
 
 const (
-	v1betaGeminiNativeBaseURL = "https://generativelanguage.googleapis.com/v1beta/models"
 	// v1betaGeminiModelPattern mirrors the JS GEMINI_NATIVE_MODEL_PATTERN /
 	// sanitizeGeminiFunctionName charset; blocks path traversal in the
 	// upstream model segment.
 	v1betaGeminiModelPattern = "^[a-zA-Z0-9_.:-]+$"
 )
+
+// v1betaGeminiNativeBaseURL is the upstream Gemini endpoint the TTS-forward
+// branch proxies to. It is a var (not a const) so tests can repoint it at a
+// local httptest server; production code never reassigns it.
+var v1betaGeminiNativeBaseURL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 // v1betaModelEntry is one entry in the Gemini /v1beta/models list shape.
 type v1betaModelEntry struct {
@@ -160,20 +172,22 @@ func (h *v1Handler) handleV1BetaModelsPath(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Gemini-native TTS forward (audio modality or a gemini tts model) is a
-	// raw-byte proxy to the upstream Gemini endpoint with a credential
-	// fallback loop — a separate slice. Return an honest 501 rather than
-	// silently mishandling audio.
+	// Gemini-native TTS forward (audio response modality or a gemini tts
+	// model id) is a raw-byte proxy to the upstream Gemini endpoint
+	// (generativelanguage.googleapis.com/v1beta/models/<id>:<action>) with a
+	// credential fallback rotation: on an upstream failure we exclude the
+	// connection and retry the next active gemini connection. Ports legacy
+	// JS forwardGeminiNativeRequest in
+	// src/app/api/v1beta/models/[...path]/route.js.
+	//
+	// MVP scope: the raw-byte forward + exclude-set rotation over active
+	// connections. The JS path also called markAccountUnavailable to persist
+	// a per-account error state (decolua/9router #2703 Fix 3 structured
+	// failures) — that DB-level account-marking is a follow-up slice tracked
+	// under #2703; here we rotate on every retriable failure and return the
+	// last error without persisting account state.
 	if isV1BetaGeminiNativeTTS(model, body) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.WriteHeader(http.StatusNotImplemented)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"error": map[string]any{
-				"message": "Gemini-native TTS forward not yet ported (T032 follow-up); use /v1/audio/speech for TTS",
-				"code":    501,
-			},
-		})
+		h.handleV1BetaTTSForward(w, r, model, stream, body)
 		return
 	}
 
@@ -560,3 +574,302 @@ func numberToInt(v any) int {
 	}
 	return 0
 }
+
+// v1betaGeminiModelRe validates the bare model id segment used to build the
+// upstream Gemini URL. Mirrors the JS GEMINI_NATIVE_MODEL_PATTERN — blocks
+// path traversal in the upstream path.
+var v1betaGeminiModelRe = regexp.MustCompile(v1betaGeminiModelPattern)
+
+// v1BetaTTSFetchTimeout is the per-attempt upstream timeout for the
+// Gemini-native TTS forward. Mirrors the JS GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS
+// default (60s). Tunable via V1BETA_TTS_FETCH_TIMEOUT_MS env in a future slice.
+var v1BetaTTSFetchTimeout = 60 * time.Second
+
+// handleV1BetaTTSForward proxies a Gemini-native TTS request (audio
+// responseModality) raw-byte to the upstream Gemini endpoint, rotating across
+// active gemini connections on retriable failures (exclude-set loop). Ports
+// legacy JS forwardGeminiNativeRequest.
+//
+// The upstream URL is built as v1betaGeminiNativeBaseURL/<modelId><action>
+// with the incoming query string forwarded (minus the client `key=` param —
+// auth comes from the resolved connection). Auth headers are derived from the
+// connection's apiKey (x-goog-api-key) or accessToken (Authorization: Bearer),
+// mirroring JS buildGeminiNativeAuthHeaders.
+//
+// On an upstream failure (network error, 5xx/502/504, or a 401/403 that does
+// not recover on a fresh connection) we add the connection to the exclude set
+// and retry the next active gemini connection. The last error is surfaced as
+// the response when no connections remain. DB-level account-marking
+// (markAccountUnavailable, #2703 Fix 3) is a follow-up — this MVP rotates
+// without persisting per-account error state.
+func (h *v1Handler) handleV1BetaTTSForward(w http.ResponseWriter, r *http.Request, model string, stream bool, body []byte) {
+	ctx := r.Context()
+
+	// API-key gate, identical to the chat surface (the JS path validated the
+	// client key via isValidApiKey when settings.requireApiKey was set).
+	if err := h.requireV1BetaClientKey(ctx, w, r); err != nil {
+		return
+	}
+
+	modelID := normalizeV1BetaModel(model)
+	if !v1betaGeminiModelRe.MatchString(modelID) {
+		h.writeV1BetaError(w, http.StatusBadRequest, "Invalid model")
+		return
+	}
+
+	action := ":generateContent"
+	if stream {
+		action = ":streamGenerateContent"
+	}
+	upstreamURL := buildV1BetaTTSUpstreamURL(r.URL, modelID, action)
+
+	connections, err := h.deps.ConnectionRepo.List(ctx, repo.ConnectionFilter{Provider: "gemini", IsActive: boolPtr(true)})
+	if err != nil {
+		h.writeV1BetaError(w, http.StatusInternalServerError, fmt.Sprintf("list connections: %v", err))
+		return
+	}
+
+	excluded := make(map[string]struct{})
+	var lastErr string
+	var lastStatus int
+
+	for _, conn := range connections {
+		if _, skip := excluded[conn.ID]; skip {
+			continue
+		}
+		creds := buildV1BetaConnCredentials(conn)
+		authHdrs := buildV1BetaAuthHeaders(creds)
+		if authHdrs == nil {
+			excluded[conn.ID] = struct{}{}
+			lastErr = "No Gemini API key configured"
+			lastStatus = http.StatusNotFound
+			continue
+		}
+
+		status, errText, upstreamOK := h.doV1BetaTTSUpstream(ctx, w, r, upstreamURL, authHdrs, body)
+		if upstreamOK {
+			return
+		}
+
+		// Retriable: rotate. Non-retriable client errors (400/401/403/404/429)
+		// surface immediately on the first connection — the JS path's
+		// shouldFallback gate decides this; 5xx/502/504 and network errors
+		// rotate to the next connection.
+		if isV1BetaRetriableStatus(status) {
+			excluded[conn.ID] = struct{}{}
+			if errText != "" {
+				lastErr = errText
+			}
+			lastStatus = status
+			continue
+		}
+		// Non-retriable: write the upstream error to the client directly.
+		h.writeV1BetaError(w, status, errText)
+		return
+	}
+
+	// Exhausted every connection.
+	status := lastStatus
+	if status == 0 {
+		status = http.StatusServiceUnavailable
+	}
+	msg := lastErr
+	if msg == "" {
+		msg = "No active credentials for provider: gemini"
+	}
+	h.writeV1BetaError(w, status, msg)
+}
+
+// buildV1BetaConnCredentials extracts the auth material from a stored gemini
+// connection row into domain.Credentials. Mirrors the field extraction in
+// resolveCredentials but for a single chosen connection (the TTS forward
+// rotates connections, so it cannot reuse the "first connection" path).
+func buildV1BetaConnCredentials(conn settings.ProviderConnection) domainProv.Credentials {
+	var data map[string]any
+	_ = json.Unmarshal(conn.Data, &data)
+	creds := domainProv.Credentials{
+		ProviderSpecificData: map[string]any{"_connectionId": conn.ID},
+	}
+	if v, ok := data["apiKey"].(string); ok {
+		creds.APIKey = v
+	}
+	if v, ok := data["accessToken"].(string); ok {
+		creds.AccessToken = v
+	}
+	if v, ok := data["providerSpecificData"].(map[string]any); ok {
+		for k, val := range v {
+			creds.ProviderSpecificData[k] = val
+		}
+	}
+	return creds
+}
+
+// doV1BetaTTSUpstream performs a single upstream attempt. On success it
+// streams the upstream body to w with CORS + stripped compression headers
+// and returns upstreamOK=true. On failure it returns the status + error text
+// and upstreamOK=false; the caller decides rotation vs surfacing.
+func (h *v1Handler) doV1BetaTTSUpstream(ctx context.Context, w http.ResponseWriter, r *http.Request, upstreamURL string, authHdrs map[string]string, body []byte) (status int, errText string, upstreamOK bool) {
+	client := &http.Client{Timeout: v1BetaTTSFetchTimeout}
+	upReq, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
+	if err != nil {
+		return http.StatusBadGateway, fmt.Sprintf("build upstream request: %v", err), false
+	}
+	ct := r.Header.Get("Content-Type")
+	if ct == "" {
+		ct = "application/json"
+	}
+	upReq.Header.Set("Content-Type", ct)
+	for k, v := range authHdrs {
+		upReq.Header.Set(k, v)
+	}
+
+	resp, err := client.Do(upReq)
+	if err != nil {
+		// Network/timeout errors are retriable → rotate.
+		code := classifyV1BetaNetError(err)
+		return code, fmt.Sprintf("%s (%d)", err.Error(), code), false
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 400 {
+		// Success: stream the upstream body with CORS + stripped compression
+		// headers (mirrors JS corsHeadersFrom — forwarding content-encoding
+		// would make clients decompress plain bytes again).
+		hdr := w.Header()
+		for k, vs := range resp.Header {
+			if k == "Content-Encoding" || k == "Content-Length" || k == "Transfer-Encoding" {
+				continue
+			}
+			for _, v := range vs {
+				hdr.Add(k, v)
+			}
+		}
+		hdr.Set("Access-Control-Allow-Origin", "*")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+		return resp.StatusCode, "", true
+	}
+
+	// Upstream error: read the body for the error text and surface the
+	// upstream status.
+	errBytes, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(errBytes), false
+}
+
+// requireV1BetaClientKey validates the client-supplied API key when
+// settings.requireApiKey is set. Mirrors JS validateGeminiNativeClientKey:
+// the key is read from Authorization: Bearer, x-goog-api-key, or ?key=.
+func (h *v1Handler) requireV1BetaClientKey(ctx context.Context, w http.ResponseWriter, r *http.Request) error {
+	requireKey, err := h.requireAPIKey(ctx)
+	if err != nil {
+		h.writeV1BetaError(w, http.StatusInternalServerError, "Auth check failed")
+		return err
+	}
+	if !requireKey {
+		return nil
+	}
+	apiKey := extractV1BetaClientKey(r)
+	if apiKey == "" {
+		h.writeV1BetaError(w, http.StatusUnauthorized, "Missing API key")
+		return fmt.Errorf("missing api key")
+	}
+	valid, err := h.deps.APIKeysRepo.Validate(ctx, apiKey)
+	if err != nil {
+		h.writeV1BetaError(w, http.StatusInternalServerError, "Auth check failed")
+		return err
+	}
+	if !valid {
+		h.writeV1BetaError(w, http.StatusUnauthorized, "Invalid API key")
+		return fmt.Errorf("invalid api key")
+	}
+	return nil
+}
+
+// extractV1BetaClientKey reads the client API key from Authorization: Bearer,
+// x-goog-api-key, or the ?key= query param — the three Gemini-SDK auth spots.
+func extractV1BetaClientKey(r *http.Request) string {
+	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimPrefix(auth, "Bearer ")
+	}
+	if k := r.Header.Get("x-goog-api-key"); k != "" {
+		return k
+	}
+	return r.URL.Query().Get("key")
+}
+
+// buildV1BetaAuthHeaders returns the upstream auth headers for a resolved
+// gemini credential: x-goog-api-key when an apiKey is present, else
+// Authorization: Bearer <accessToken>. Returns nil when neither is set.
+func buildV1BetaAuthHeaders(creds domainProv.Credentials) map[string]string {
+	if creds.APIKey != "" {
+		return map[string]string{"x-goog-api-key": creds.APIKey}
+	}
+	if creds.AccessToken != "" {
+		return map[string]string{"Authorization": "Bearer " + creds.AccessToken}
+	}
+	return nil
+}
+
+// buildV1BetaTTSUpstreamURL builds the upstream Gemini endpoint URL, copying
+// the incoming query string minus the client `key=` param. Mirrors JS
+// buildGeminiNativeUrl.
+func buildV1BetaTTSUpstreamURL(sourceURL *url.URL, modelID, action string) string {
+	upstream, _ := url.Parse(v1betaGeminiNativeBaseURL + "/" + modelID + action)
+	q := upstream.Query()
+	for k, vs := range sourceURL.Query() {
+		if k == "key" {
+			continue
+		}
+		for _, v := range vs {
+			q.Add(k, v)
+		}
+	}
+	upstream.RawQuery = q.Encode()
+	return upstream.String()
+}
+
+// normalizeV1BetaModel strips the leading models/ or gemini/ prefix, mirroring
+// JS normalizeGeminiNativeModel.
+func normalizeV1BetaModel(model string) string {
+	out := strings.TrimPrefix(model, "models/")
+	out = strings.TrimPrefix(out, "gemini/")
+	return out
+}
+
+// isV1BetaRetriableStatus reports whether a status warrants rotating to the
+// next connection (mirrors the JS shouldFallback gate on retriable upstream
+// failures). 5xx/502/504 rotate; 4xx surface immediately.
+func isV1BetaRetriableStatus(status int) bool {
+	switch status {
+	case 500, 502, 503, 504:
+		return true
+	}
+	return false
+}
+
+// classifyV1BetaNetError maps a network/timeout error to an HTTP status,
+// mirroring the JS isGeminiNativeTimeoutError heuristic: timeouts → 504,
+// other fetch failures → 502.
+func classifyV1BetaNetError(err error) int {
+	msg := err.Error()
+	if strings.Contains(msg, "context deadline exceeded") || strings.Contains(msg, "timeout") {
+		return http.StatusGatewayTimeout
+	}
+	return http.StatusBadGateway
+}
+
+// writeV1BetaError writes a Gemini-shaped error response.
+func (h *v1Handler) writeV1BetaError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"message": message,
+			"code":    status,
+		},
+	})
+}
+
+// v1BetaConn (removed): the TTS forward now iterates []settings.ProviderConnection
+// directly from ConnectionRepo.List, so no separate view type is needed.

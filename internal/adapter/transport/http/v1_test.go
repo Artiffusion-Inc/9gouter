@@ -294,15 +294,23 @@ func mustOpenDB(t *testing.T) *sql.DB {
 
 func mustCreateConnection(t *testing.T, db *sql.DB, provider, data string) {
 	t.Helper()
+	mustCreateConnectionWithID(t, db, provider+"-conn", provider, data)
+}
+
+// mustCreateConnectionWithID creates an active connection with an explicit id,
+// so multiple connections for the same provider can coexist (the default
+// mustCreateConnection keys on provider+"-conn" and would upsert).
+func mustCreateConnectionWithID(t *testing.T, db *sql.DB, id, provider, data string) {
+	t.Helper()
 	connRepo := repo.NewConnectionRepo(db)
 	if err := connRepo.Create(context.Background(), settings.ProviderConnection{
-		ID:       provider + "-conn",
+		ID:       id,
 		Provider: provider,
 		AuthType: "apiKey",
 		IsActive: true,
 		Data:     json.RawMessage(data),
 	}); err != nil {
-		t.Fatalf("create connection: %v", err)
+		t.Fatalf("create connection %s: %v", id, err)
 	}
 }
 

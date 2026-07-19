@@ -75,6 +75,14 @@ type Deps struct {
 
 	// Version is injected by the composition root; defaults to "dev" if empty.
 	Version string
+
+	// V1Dispatch, when set, dispatches a request whose URL.Path has been
+	// rewritten to a /v1/* path through the real client-facing v1 handler
+	// (registered by httptransport.RegisterV1). The dashboard /api/v1/*
+	// passthrough routes use it to alias the implemented /v1/* endpoints
+	// without re-implementing them. nil leaves the passthrough routes as
+	// not-available stubs.
+	V1Dispatch func(http.ResponseWriter, *http.Request)
 }
 
 // writeJSON writes a JSON response with the given status code.

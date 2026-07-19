@@ -1,0 +1,103 @@
+package api
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+// dispatchRecorder captures the rewritten path a passthrough delegates to.
+type dispatchRecorder struct {
+	gotPath string
+}
+
+func (d *dispatchRecorder) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	d.gotPath = r.URL.Path
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"object":"list","data":[]}`))
+}
+
+// newDashboardMux builds a ServeMux with only RegisterV1Dashboard wired,
+// optionally injecting V1Dispatch. It reuses the shared mustOpenDB helper.
+func newDashboardMux(t *testing.T, dispatch http.HandlerFunc) *http.ServeMux {
+	t.Helper()
+	db := mustOpenDB(t)
+	t.Cleanup(func() { db.Close() })
+	deps := buildDeps(t, db)
+	if dispatch != nil {
+		deps.V1Dispatch = dispatch
+	}
+	mux := http.NewServeMux()
+	RegisterV1Dashboard(mux, deps)
+	return mux
+}
+
+func TestV1Dashboard_Passthrough_RewritesPath(t *testing.T) {
+	rec := &dispatchRecorder{}
+	mux := newDashboardMux(t, rec.ServeHTTP)
+
+	req := httptest.NewRequest("GET", "/api/v1/models", nil)
+	rw := httptest.NewRecorder()
+	mux.ServeHTTP(rw, req)
+
+	if rec.gotPath != "/v1/models" {
+		t.Fatalf("dispatch path = %q, want /v1/models", rec.gotPath)
+	}
+	if rw.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rw.Code)
+	}
+}
+
+func TestV1Dashboard_Passthrough_KindSubstituted(t *testing.T) {
+	rec := &dispatchRecorder{}
+	mux := newDashboardMux(t, rec.ServeHTTP)
+
+	req := httptest.NewRequest("GET", "/api/v1/models/image", nil)
+	rw := httptest.NewRecorder()
+	mux.ServeHTTP(rw, req)
+
+	if rec.gotPath != "/v1/models/image" {
+		t.Fatalf("dispatch path = %q, want /v1/models/image", rec.gotPath)
+	}
+}
+
+func TestV1Dashboard_Passthrough_NoDispatch_DegradesToStub(t *testing.T) {
+	mux := newDashboardMux(t, nil)
+
+	req := httptest.NewRequest("GET", "/api/v1/models", nil)
+	rw := httptest.NewRecorder()
+	mux.ServeHTTP(rw, req)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rw.Code)
+	}
+	if !containsSubstr(rw.Body.String(), "not yet available") {
+		t.Fatalf("expected not-available stub body, got: %s", rw.Body.String())
+	}
+}
+
+func TestV1Dashboard_NotAvailable_ForUnimplemented(t *testing.T) {
+	rec := &dispatchRecorder{}
+	mux := newDashboardMux(t, rec.ServeHTTP)
+
+	// /v1/embeddings is not implemented — must NOT dispatch, must return stub.
+	req := httptest.NewRequest("POST", "/api/v1/embeddings", nil)
+	rw := httptest.NewRecorder()
+	mux.ServeHTTP(rw, req)
+
+	if rec.gotPath != "" {
+		t.Fatalf("unimplemented route dispatched to %q — must stay a stub", rec.gotPath)
+	}
+	if !containsSubstr(rw.Body.String(), "not yet available") {
+		t.Fatalf("expected not-available stub, got: %s", rw.Body.String())
+	}
+}
+
+func containsSubstr(haystack, needle string) bool {
+	for i := 0; i+len(needle) <= len(haystack); i++ {
+		if haystack[i:i+len(needle)] == needle {
+			return true
+		}
+	}
+	return false
+}

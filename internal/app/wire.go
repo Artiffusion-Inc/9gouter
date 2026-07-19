@@ -120,6 +120,9 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	api.RegisterTunnel(mux, apiDeps)
 	api.RegisterTranslator(mux, apiDeps)
 	api.RegisterV1Beta(mux, apiDeps)
+	// V1Dispatch delegates /api/v1/* passthrough requests to the /v1/*
+	// routes registered above by httptransport.RegisterV1 on the same mux.
+	apiDeps.V1Dispatch = mux.ServeHTTP
 	api.RegisterV1Dashboard(mux, apiDeps)
 	api.RegisterProvidersExtra(mux, apiDeps)
 	api.RegisterUsageExtra(mux, apiDeps)

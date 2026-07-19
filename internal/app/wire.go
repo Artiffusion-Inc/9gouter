@@ -63,11 +63,17 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 
 	repos := buildRepos(db)
 
-	// Override the kiro live resolver with a real KiroRefresher so a 401
-	// from ListAvailableModels triggers an actual token refresh + retry
-	// instead of the stub-refresher fallback. Other resolvers still use
-	// their init() defaults until their refreshers are ported.
+	// Register live-model resolvers with their real token refreshers so a
+	// 401 from the upstream /models endpoint triggers an actual refresh +
+	// retry instead of the stub-refresher fallback. kiro, grok-cli (xAI),
+	// and copilot (GitHub token exchange) refresh on 401; clinepass and
+	// kimchi have no refresh (long-lived tokens) so they pass nil.
 	resolver.Register(resolver.NewKiroResolver(nil, tokenrefresh.NewKiroRefresher()))
+	resolver.Register(resolver.NewGrokCliResolver(nil, tokenrefresh.NewXaiRefresher()))
+	resolver.Register(resolver.NewCopilotResolver(nil, tokenrefresh.NewCopilotRefresher(), cfg.Version))
+	resolver.Register(resolver.NewClinepassResolver(nil, cfg.Version))
+	resolver.Register(resolver.NewKimchiResolver(nil))
+	resolver.Register(resolver.NewQoderResolver()) // stub: COSY signing not yet ported
 
 	proxyOpts := proxy.OptionsFromConfig(cfg)
 

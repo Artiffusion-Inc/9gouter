@@ -12,6 +12,8 @@ package resolver
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"time"
 
 	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
@@ -113,11 +115,19 @@ type Logger interface {
 
 // TokenRefresher refreshes an expired access token for a provider. The kiro
 // resolver uses it on a 401 from ListAvailableModels. Implementations live
-// in the tokenRefresh subsystem (T027, not yet ported); a stub that returns
-// an error keeps resolvers compiling and forces the fallback path until the
-// real refresher lands.
+// in the tokenRefresh subsystem (T027); resolvers that hit 401/403 inject
+// the provider's refresher via this interface so they can retry once after
+// refreshing.
 type TokenRefresher interface {
 	Refresh(ctx context.Context, refreshToken string, psd map[string]any, log Logger) (*RefreshedCredentials, error)
+}
+
+// stableHash returns the hex sha256 of seed, used by resolvers to build a
+// stable per-credential cache key (different login sessions for the same
+// account share an entry).
+func stableHash(seed string) string {
+	sum := sha256.Sum256([]byte(seed))
+	return hex.EncodeToString(sum[:])
 }
 
 // Cache is a per-credential TTL cache of resolved catalogs, mirroring the JS

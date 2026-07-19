@@ -378,6 +378,12 @@ func connectionCredentials(c settings.ProviderConnection) domainProv.Credentials
 	if v, ok := data["accessToken"].(string); ok {
 		creds.AccessToken = v
 	}
+	if v, ok := data["refreshToken"].(string); ok && v != "" {
+		// Copy the top-level refreshToken into ProviderSpecificData so
+		// resolvers that refresh-on-401 (grok-cli, copilot) can reach it via
+		// refreshTokenOf(creds) without knowing the on-disk layout.
+		creds.ProviderSpecificData["refreshToken"] = v
+	}
 	if v, ok := data["providerSpecificData"].(map[string]any); ok {
 		for k, val := range v {
 			creds.ProviderSpecificData[k] = val

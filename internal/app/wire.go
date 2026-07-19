@@ -68,6 +68,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		AliasRepo:      repos.Aliases,
 		NodeRepo:       repos.Nodes,
 		ProxyPoolRepo:  repos.ProxyPools,
+		DisabledModels: repos.DisabledModels,
 		ProxyOpts:      proxyOpts,
 		Logger:         logger,
 		Config:         cfg,

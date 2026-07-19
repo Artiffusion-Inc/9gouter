@@ -119,6 +119,14 @@ type Config struct {
 	Quirks          Quirks
 	ReasoningInject *ReasoningInject
 	RuntimeTransports []RuntimeTransport
+
+	// Catalog is the static provider metadata (alias, models, serviceKinds)
+	// used by GET /v1/models and kind filtering. Mirrors the JS
+	// open-sse/providers/registry/<provider>.js `alias` / `models` /
+	// `serviceKinds` fields. Empty Models means the provider has no static
+	// catalog (live-model resolvers or compatible-fetch fill it at runtime —
+	// not yet ported). Empty ServiceKinds defaults to ["llm"].
+	Catalog provider.ProviderCatalog
 }
 
 // RuntimeTransport mirrors credentials.runtimeTransport.

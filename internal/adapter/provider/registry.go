@@ -390,10 +390,29 @@ var configs = map[string]base.Config{
 	"ollama": {
 		BaseURL: "https://ollama.com/api/chat",
 		Format:  "ollama",
+		Catalog: domain.ProviderCatalog{
+			ID:           "ollama",
+			Alias:        "ollama",
+			ServiceKinds: []string{"llm"},
+			Models: []domain.Model{
+				{ID: "gpt-oss:120b", Name: "GPT OSS 120B"},
+				{ID: "kimi-k2.5", Name: "Kimi K2.5"},
+				{ID: "glm-5", Name: "GLM 5"},
+				{ID: "minimax-m2.5", Name: "MiniMax M2.5"},
+				{ID: "glm-4.7-flash", Name: "GLM 4.7 Flash"},
+				{ID: "qwen3.5", Name: "Qwen3.5"},
+				{ID: "minimax-m3", Name: "MiniMax M3"},
+			},
+		},
 	},
 	"ollama-local": {
 		BaseURL: "http://localhost:11434/api/chat",
 		Format:  "ollama",
+		Catalog: domain.ProviderCatalog{
+			ID:           "ollama-local",
+			Alias:        "ollama-local",
+			ServiceKinds: []string{"llm"},
+		},
 	},
 	"openai": {
 		BaseURL: "https://api.openai.com/v1/chat/completions",
@@ -664,4 +683,53 @@ func Lookup(providerID string) (domain.Provider, error) {
 // Alias returns the canonical alias for a provider id.
 func Alias(providerID string) string {
 	return providerAlias(providerID)
+}
+
+// Catalog returns the static provider catalog (alias, models, serviceKinds)
+// for a provider id, or false if the provider is unknown or has no catalog.
+// Models may be empty for providers whose catalog is populated at runtime by
+// live-model resolvers (not yet ported) or compatible-fetch — callers should
+// treat an empty Models list as "no static catalog".
+func Catalog(providerID string) (domain.ProviderCatalog, bool) {
+	id, ok := aliases[providerID]
+	if !ok {
+		return domain.ProviderCatalog{}, false
+	}
+	cfg, ok := configs[id]
+	if !ok {
+		return domain.ProviderCatalog{}, false
+	}
+	cat := cfg.Catalog
+	if cat.ID == "" {
+		cat.ID = id
+	}
+	if cat.Alias == "" {
+		cat.Alias = providerAlias(id)
+	}
+	if len(cat.ServiceKinds) == 0 {
+		cat.ServiceKinds = []string{"llm"}
+	}
+	return cat, true
+}
+
+// AllCatalogs returns the static catalog for every configured provider.
+// Providers without an explicit Catalog still appear with their alias and a
+// default ["llm"] service kind, but an empty Models list. This is the data
+// source for GET /v1/models (static portion).
+func AllCatalogs() []domain.ProviderCatalog {
+	out := make([]domain.ProviderCatalog, 0, len(configs))
+	for id, cfg := range configs {
+		cat := cfg.Catalog
+		if cat.ID == "" {
+			cat.ID = id
+		}
+		if cat.Alias == "" {
+			cat.Alias = providerAlias(id)
+		}
+		if len(cat.ServiceKinds) == 0 {
+			cat.ServiceKinds = []string{"llm"}
+		}
+		out = append(out, cat)
+	}
+	return out
 }

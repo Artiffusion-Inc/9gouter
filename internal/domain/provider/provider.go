@@ -51,3 +51,26 @@ type Provider interface {
 	ID() string
 	Executor() Executor
 }
+
+// Model is a static catalog entry for a provider, mirroring the JS registry
+// `models: [{ id, name, kind? }]` shape. Kind is the service kind
+// ("llm"|"image"|"tts"|"embedding"|"stt"|"imageToText"|"video"|"webSearch"|
+// "webFetch"); empty defaults to "llm".
+type Model struct {
+	ID   string
+	Name string
+	Kind string
+}
+
+// ProviderCatalog is the static, connection-independent metadata for a
+// provider: its alias, static model list, and service kinds. It is the Go
+// analog of open-sse/providers/registry/<provider>.js (the subset needed by
+// GET /v1/models and kind filtering — display/notice/transport live in
+// base.Config). serviceKinds empty defaults to ["llm"] per the JS
+// getProvidersByKind convention.
+type ProviderCatalog struct {
+	ID           string
+	Alias        string
+	Models       []Model
+	ServiceKinds []string
+}

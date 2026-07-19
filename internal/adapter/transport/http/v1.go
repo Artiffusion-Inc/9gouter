@@ -64,16 +64,17 @@ type APIKeyValidator interface {
 // It is constructed by the app.Wire composition root and injected into
 // RegisterV1 so the transport layer stays decoupled from DB/lifecycle wiring.
 type V1Deps struct {
-	APIKeysRepo    *repo.APIKeyRepo
-	SettingsRepo   *repo.SettingsRepo
-	ConnectionRepo *repo.ConnectionRepo
-	ComboRepo      *repo.ComboRepo
-	AliasRepo      *repo.AliasRepo
-	NodeRepo       *repo.NodeRepo
-	ProxyPoolRepo  *repo.ProxyPoolRepo
-	ProxyOpts      proxy.Options
-	Logger         *slog.Logger
-	Config         config.Config
+	APIKeysRepo     *repo.APIKeyRepo
+	SettingsRepo    *repo.SettingsRepo
+	ConnectionRepo  *repo.ConnectionRepo
+	ComboRepo       *repo.ComboRepo
+	AliasRepo       *repo.AliasRepo
+	NodeRepo        *repo.NodeRepo
+	ProxyPoolRepo   *repo.ProxyPoolRepo
+	DisabledModels  *repo.DisabledModelsRepo
+	ProxyOpts       proxy.Options
+	Logger          *slog.Logger
+	Config          config.Config
 
 	// Chat is the injected chat usecase boundary.
 	Chat ChatHandler
@@ -86,6 +87,14 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	mux.HandleFunc("POST /v1/chat/completions", handler.handleChat)
 	mux.HandleFunc("POST /v1/messages", handler.handleChat)
 	mux.HandleFunc("POST /v1/responses", handler.handleChat)
+	// GET /v1/models — OpenAI-compatible model catalog. Static MVP (issue
+	// decolua/9router #2702): combos + per-provider static catalogs (only for
+	// providers with an active connection) + custom models + aliases, minus
+	// disabled, filtered by service kind. Live-model resolvers and
+	// compatible-fetch are not yet ported — providers without a static catalog
+	// contribute only their custom models until the resolver pipeline lands.
+	mux.HandleFunc("GET /v1/models", handler.handleModels)
+	mux.HandleFunc("GET /v1/models/{kind}", handler.handleModels)
 }
 
 type v1Handler struct {

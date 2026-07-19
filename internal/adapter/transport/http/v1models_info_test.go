@@ -148,7 +148,7 @@ func TestKindEndpointMap(t *testing.T) {
 		"embedding":   "/v1/embeddings",
 		"imageToText": "/v1/chat/completions",
 		"webSearch":   "/v1/search",
-		"webFetch":    "/v1/fetch",
+		"webFetch":    "/v1/web/fetch",
 	}
 	for k, v := range want {
 		if kindEndpoint[k] != v {

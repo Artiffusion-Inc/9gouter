@@ -65,12 +65,10 @@ func (h *v1DashboardHandler) passthrough(v1Path string) http.HandlerFunc {
 			h.notAvailable(w, r)
 			return
 		}
-		// Substitute the Go ServeMux {kind} placeholder, if present in the
-		// target path, with the value captured on the incoming request.
+		// Substitute any Go ServeMux {name} placeholder in the target path
+		// (e.g. {kind}, {id}) with the value captured on the incoming request.
 		target := v1Path
-		if strings.Contains(target, "{kind}") {
-			target = strings.ReplaceAll(target, "{kind}", r.PathValue("kind"))
-		}
+		target = substitutePathValues(target, r)
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = target
 		r2.URL.RawPath = ""
@@ -83,4 +81,28 @@ func (h *v1DashboardHandler) notAvailable(w http.ResponseWriter, r *http.Request
 		"success": false,
 		"message": "Dashboard /api/v1 endpoint not yet available in Go build; use /v1 directly",
 	})
+}
+
+// substitutePathValues replaces every "{name}" placeholder in path with the
+// corresponding r.PathValue("name"). This generalizes the {kind} substitution
+// so any path-value placeholder (e.g. {id} for video polling) is forwarded.
+func substitutePathValues(path string, r *http.Request) string {
+	if !strings.Contains(path, "{") {
+		return path
+	}
+	out := path
+	for {
+		start := strings.Index(out, "{")
+		if start < 0 {
+			break
+		}
+		end := strings.Index(out[start:], "}")
+		if end < 0 {
+			break
+		}
+		end += start
+		name := out[start+1 : end]
+		out = out[:start] + r.PathValue(name) + out[end+1:]
+	}
+	return out
 }

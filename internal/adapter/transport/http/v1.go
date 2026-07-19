@@ -767,7 +767,7 @@ var kindEndpoint = map[string]string{
 	"embedding":   "/v1/embeddings",
 	"imageToText": "/v1/chat/completions",
 	"webSearch":   "/v1/search",
-	"webFetch":    "/v1/fetch",
+	"webFetch":    "/v1/web/fetch",
 }
 
 // modelInfoResponse is the JSON shape returned by GET /v1/models/info.

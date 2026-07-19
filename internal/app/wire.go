@@ -27,6 +27,10 @@ import (
 	// Side-effect import: triggers RegisterRequest/RegisterResponse in every
 	// translator subpackage so the registry is populated in the final binary.
 	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/register"
+	// Side-effect import: registers live-model resolvers (kiro, ...) in the
+	// resolver registry so /v1/models can fetch live catalogs. Each resolver's
+	// init() calls resolver.Register.
+	_ "github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
 	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxychat"
 )

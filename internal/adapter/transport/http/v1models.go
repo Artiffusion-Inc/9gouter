@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
+	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
 )
 
 // GET /v1/models — OpenAI-compatible model catalog.
@@ -112,13 +116,19 @@ func (h *v1Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 // is unit-testable without HTTP machinery.
 func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string) []oaiModel {
 	// Active connections, keyed by provider (first active wins, mirroring JS
-	// activeConnectionByProvider).
+	// activeConnectionByProvider). We keep the connection records too: the
+	// live-model resolver needs the full credentials (accessToken + psd),
+	// not just the provider id.
 	activeProviders := map[string]bool{}
+	var activeConns []settings.ProviderConnection
 	if h.deps.ConnectionRepo != nil {
 		conns, err := h.deps.ConnectionRepo.List(ctx, repo.ConnectionFilter{IsActive: boolPtr(true)})
 		if err == nil {
 			for _, c := range conns {
-				activeProviders[c.Provider] = true
+				if !activeProviders[c.Provider] {
+					activeProviders[c.Provider] = true
+					activeConns = append(activeConns, c)
+				}
 			}
 		}
 	}
@@ -220,6 +230,14 @@ func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string) []
 	// connection (JS activeConnectionByProvider). The catalog's Alias is the
 	// output prefix; a connection's providerSpecificData.prefix would override
 	// it in JS, but we use the catalog alias (prefix override is a follow-up).
+	//
+	// Providers with a registered live-model resolver skip the static catalog
+	// for their LLM entries — the live catalog takes precedence (mirrors the
+	// JS LIVE_MODEL_RESOLVERS behavior, where /v1/models prefers the live
+	// catalog for resolver-backed providers). On any live-resolve failure the
+	// resolver returns nil and we fall back to the static catalog below.
+	liveCatalogs := h.resolveLiveCatalogs(ctx, activeConns)
+
 	for _, cat := range provider.AllCatalogs() {
 		if !activeProviders[cat.ID] {
 			continue
@@ -232,8 +250,18 @@ func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string) []
 		if alias == "" {
 			alias = cat.ID
 		}
+		// If a live catalog resolved for this provider, skip the static LLM
+		// entries and emit the live ones instead (below). Non-LLM kinds still
+		// come from the static catalog — live resolvers only serve LLM.
+		hasLiveLLM := false
+		if live, ok := liveCatalogs[cat.ID]; ok && live != nil {
+			hasLiveLLM = true
+		}
 		for _, m := range cat.Models {
 			mk := modelKind(m.Kind)
+			if hasLiveLLM && mk == "llm" {
+				continue
+			}
 			if kindFilter != nil && !containsStr(kindFilter, mk) {
 				continue
 			}
@@ -243,13 +271,37 @@ func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string) []
 			add(alias+"/"+m.ID, alias, m.Kind)
 		}
 		// Custom models for this provider alias (LLM-only by current schema).
-		if kindFilter == nil || containsStr(kindFilter, "llm") {
+		// Skip custom LLM models too when a live catalog is present.
+		if (kindFilter == nil || containsStr(kindFilter, "llm")) && !hasLiveLLM {
 			for _, id := range customByAlias[alias] {
 				if disabled[alias] != nil && disabled[alias][id] {
 					continue
 				}
 				add(alias+"/"+id, alias, "llm")
 			}
+		}
+	}
+
+	// Live catalogs: emit their resolved models under the provider alias.
+	// These run after the static loop so the `seen` set dedups any overlap,
+	// but since we skipped static LLM entries for resolver-backed providers,
+	// live LLM ids are fresh here.
+	for providerID, live := range liveCatalogs {
+		if live == nil {
+			continue
+		}
+		alias := providerID
+		if cat, ok := provider.Catalog(providerID); ok && cat.Alias != "" {
+			alias = cat.Alias
+		}
+		if kindFilter != nil && !containsStr(kindFilter, "llm") {
+			continue
+		}
+		for _, m := range live.Models {
+			if disabled[alias] != nil && disabled[alias][m.ID] {
+				continue
+			}
+			add(alias+"/"+m.ID, alias, "llm")
 		}
 	}
 
@@ -275,6 +327,68 @@ func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string) []
 
 	return out
 }
+
+// resolveLiveCatalogs fetches the live model catalog for every active
+// connection whose provider has a registered live-model resolver. Each
+// resolver runs under a short per-call timeout (liveResolveTimeout) so a
+// slow or dead upstream never blocks /v1/models. On any failure or timeout
+// the resolver returns nil and is omitted from the map, so the caller falls
+// back to the static catalog for that provider.
+//
+// Returns map[providerID]*resolver.Result; absent = no resolver / no
+// active connection; nil value = resolver present but produced no catalog.
+func (h *v1Handler) resolveLiveCatalogs(ctx context.Context, conns []settings.ProviderConnection) map[string]*resolver.Result {
+	out := map[string]*resolver.Result{}
+	if len(conns) == 0 {
+		return out
+	}
+	for _, c := range conns {
+		r := resolver.Lookup(c.Provider)
+		if r == nil {
+			continue
+		}
+		creds := connectionCredentials(c)
+		// Per-call timeout so one dead upstream can't stall the whole list.
+		rctx, cancel := context.WithTimeout(ctx, liveResolveTimeout)
+		result, err := r.Resolve(rctx, creds, resolver.ResolveOpts{Logger: slogAdapter{h.logger}})
+		cancel()
+		if err != nil || result == nil {
+			continue
+		}
+		if len(result.Models) == 0 {
+			out[c.Provider] = nil
+			continue
+		}
+		out[c.Provider] = result
+	}
+	return out
+}
+
+// connectionCredentials builds provider.Credentials from a connection record
+// for the live resolver. Mirrors v1.go resolveCredentials' field extraction.
+func connectionCredentials(c settings.ProviderConnection) domainProv.Credentials {
+	creds := domainProv.Credentials{
+		ProviderSpecificData: map[string]any{"_connectionId": c.ID},
+	}
+	var data map[string]any
+	_ = json.Unmarshal(c.Data, &data)
+	if v, ok := data["apiKey"].(string); ok {
+		creds.APIKey = v
+	}
+	if v, ok := data["accessToken"].(string); ok {
+		creds.AccessToken = v
+	}
+	if v, ok := data["providerSpecificData"].(map[string]any); ok {
+		for k, val := range v {
+			creds.ProviderSpecificData[k] = val
+		}
+	}
+	return creds
+}
+
+// liveResolveTimeout bounds each live resolver call. Matches the JS
+// fetchCompatibleModelIds 5s budget.
+const liveResolveTimeout = 5 * time.Second
 
 func kindsIntersect(a, b []string) bool {
 	for _, x := range a {

@@ -119,6 +119,11 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	mux.HandleFunc("POST /v1/chat/completions", handler.handleChat)
 	mux.HandleFunc("POST /v1/messages", handler.handleChat)
 	mux.HandleFunc("POST /v1/responses", handler.handleChat)
+	// POST /v1/responses/compact — thin wrapper over the chat pipeline:
+	// injects body._compact = true and rewrites the path to /v1/responses so
+	// source-format detection treats it as an OpenAI Responses request. Ports
+	// legacy JS src/app/api/v1/responses/compact/route.js.
+	mux.HandleFunc("POST /v1/responses/compact", handler.handleResponsesCompact)
 	// POST /v1/messages/count_tokens — Anthropic-compatible token-count
 	// estimate. Local (chars/4) only, no upstream — mirrors legacy JS
 	// src/app/api/v1/messages/count_tokens/route.js.

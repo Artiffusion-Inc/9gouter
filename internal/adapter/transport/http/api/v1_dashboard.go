@@ -33,7 +33,7 @@ func RegisterV1Dashboard(mux *http.ServeMux, deps Deps) {
 
 	// Not yet implemented in /v1/* — explicit not-available stubs.
 	mux.HandleFunc("POST /api/v1/api/chat", h.notAvailable)
-	mux.HandleFunc("POST /api/v1/responses/compact", h.notAvailable)
+	mux.HandleFunc("POST /api/v1/responses/compact", h.passthrough("/v1/responses/compact"))
 	mux.HandleFunc("POST /api/v1/audio/speech", h.notAvailable)
 	mux.HandleFunc("POST /api/v1/audio/transcriptions", h.notAvailable)
 	mux.HandleFunc("GET /api/v1/audio/voices", h.notAvailable)

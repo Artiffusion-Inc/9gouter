@@ -75,6 +75,23 @@ type RefreshedCredentials struct {
 	AccessToken  string
 	RefreshToken string
 	ExpiresIn    int
+	// IDToken is returned by providers that issue OpenID Connect id_tokens
+	// alongside the access token (codex, xai). Carried through so the
+	// OnCredentialsRefreshed hook can persist it into the connection.
+	IDToken string
+	// ExpiresAt is an RFC3339 timestamp returned by GitHub Copilot's
+	// token exchange (which returns expires_at, not expires_in). Carried
+	// through verbatim; the hook parses it if non-empty.
+	ExpiresAt string
+	// ProviderSpecificData carries provider-specific fields the caller must
+	// merge back into the connection (e.g. qwen resource_url, kiro
+	// profileArn). nil/empty means "no patch".
+	ProviderSpecificData map[string]any
+	// Unrecoverable is set when the upstream signals the refresh token is
+	// permanently invalid (invalid_grant / refresh_token_expired / reused).
+	// The caller should mark the connection as needing re-auth rather than
+	// retry. When true, AccessToken is empty and the error path is used.
+	Unrecoverable bool
 }
 
 // ProxyOptions is the per-connection proxy subset a resolver may need.

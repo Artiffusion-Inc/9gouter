@@ -27,11 +27,15 @@ func RegisterV1Dashboard(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("POST /api/v1/messages", h.passthrough("/v1/messages"))
 	mux.HandleFunc("POST /api/v1/messages/count_tokens", h.passthrough("/v1/messages/count_tokens"))
 	mux.HandleFunc("POST /api/v1/responses", h.passthrough("/v1/responses"))
+	mux.HandleFunc("GET /api/v1/responses/{id}", h.passthrough("/v1/responses/{id}"))
 	mux.HandleFunc("GET /api/v1/models", h.passthrough("/v1/models"))
 	mux.HandleFunc("GET /api/v1/models/{kind}", h.passthrough("/v1/models/{kind}"))
 	mux.HandleFunc("GET /api/v1/models/info", h.passthrough("/v1/models/info"))
 
-	// Not yet implemented in /v1/* — explicit not-available stubs.
+	// Modality endpoints — passthrough to /v1/* (some /v1/* handlers are
+	// honest 501 stubs where the upstream transport is not yet ported, e.g.
+	// GET /v1/responses/{id}; the passthrough still rewrites and delegates so
+	// the client sees the real /v1/* response rather than a dashboard stub).
 	mux.HandleFunc("POST /api/v1/api/chat", h.passthrough("/v1/api/chat"))
 	mux.HandleFunc("POST /api/v1/responses/compact", h.passthrough("/v1/responses/compact"))
 	mux.HandleFunc("POST /api/v1/audio/speech", h.passthrough("/v1/audio/speech"))

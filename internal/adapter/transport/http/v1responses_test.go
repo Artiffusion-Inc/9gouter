@@ -89,3 +89,32 @@ func TestResponsesCompact_OverwritesExistingFlag(t *testing.T) {
 		t.Errorf("_compact = %v, want true (forced)", got["_compact"])
 	}
 }
+
+// TestResponsesGet_501NotImplemented verifies GET /v1/responses/{id} returns
+// an honest 501 (the RetrieveResponse poll pipeline is not implemented — no
+// upstream provider returns Responses-API LRO state) rather than a 404 that
+// would read as "route does not exist".
+func TestResponsesGet_501NotImplemented(t *testing.T) {
+	stub := &stubChatHandler{}
+	_, mux := newResponsesHandler(t, stub)
+
+	req := httptest.NewRequest("GET", "/v1/responses/resp_abc123", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("status = %d, want 501", rec.Code)
+	}
+	if stub.got != nil {
+		t.Errorf("chat handler must not be invoked for GET poll")
+	}
+	var errBody map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &errBody); err != nil {
+		t.Fatalf("error body not JSON: %v", err)
+	}
+	errObj, _ := errBody["error"].(map[string]any)
+	if msg, _ := errObj["message"].(string); !strings.Contains(msg, "resp_abc123") {
+		t.Errorf("error message does not echo the id: %q", msg)
+	}
+}

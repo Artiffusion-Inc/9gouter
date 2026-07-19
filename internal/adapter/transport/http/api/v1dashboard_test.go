@@ -116,6 +116,24 @@ func TestV1Dashboard_Passthrough_Search(t *testing.T) {
 	}
 }
 
+// TestV1Dashboard_Passthrough_ResponsesGet verifies GET /api/v1/responses/{id}
+// rewrites to /v1/responses/{id} and forwards the id path value.
+func TestV1Dashboard_Passthrough_ResponsesGet(t *testing.T) {
+	rec := &dispatchRecorder{}
+	mux := newDashboardMux(t, rec.ServeHTTP)
+
+	req := httptest.NewRequest("GET", "/api/v1/responses/resp_123", nil)
+	rw := httptest.NewRecorder()
+	mux.ServeHTTP(rw, req)
+
+	if rec.gotPath != "/v1/responses/resp_123" {
+		t.Fatalf("dispatch path = %q, want /v1/responses/resp_123", rec.gotPath)
+	}
+	if rw.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (dispatch stub)", rw.Code)
+	}
+}
+
 // TestV1Dashboard_Passthrough_Embeddings verifies /api/v1/embeddings now
 // rewrites to /v1/embeddings and dispatches (it was a notAvailable stub before
 // the T031b embeddings pipeline landed).

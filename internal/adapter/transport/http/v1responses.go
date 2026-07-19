@@ -56,3 +56,20 @@ func (h *v1Handler) dispatchResponsesCompact(w http.ResponseWriter, r *http.Requ
 	r2.Header.Set("Content-Type", "application/json")
 	h.handleChat(w, r2)
 }
+
+// handleResponsesGet implements GET /v1/responses/{id} — the OpenAI Responses
+// API RetrieveResponse endpoint used to poll a long-running response. The
+// legacy JS build never implemented it (route.js only exported POST), and the
+// Go rewrite has no upstream provider that returns Responses-API LRO state
+// (status in_progress/completed/incomplete): Codex and grok-cli pass through
+// previous_response_id but are handled synchronously through the chat pipeline.
+//
+// The endpoint is registered so the route is no longer MISSING (T025/T033 P2)
+// and clients polling an in-progress response get an honest 501 instead of a
+// 404 that looks like the route does not exist. When an upstream provider that
+// emits LRO Responses state is wired, this becomes a passthrough to that
+// provider's retrieve endpoint.
+func (h *v1Handler) handleResponsesGet(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	h.writeError(w, http.StatusNotImplemented, "Responses API polling (GET /v1/responses/{id}) not implemented; no upstream provider returns long-running Responses state (id="+id+")")
+}

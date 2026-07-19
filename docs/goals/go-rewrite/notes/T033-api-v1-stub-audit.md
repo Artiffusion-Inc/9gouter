@@ -49,7 +49,7 @@ the cheap win in this audit.
 | `POST /api/v1/videos/extensions` | video extension handlers | ✅ passthrough | xAI LRO raw-byte proxy (T033b-7 ported) |
 | `GET /api/v1/videos/{id}` | video status/poll | ✅ passthrough | xAI LRO poll (T033b-7 ported) |
 | `POST /api/v1/web/fetch` | web-fetch handlers | ✅ passthrough | webFetch service kind (T033b-2 ported) |
-| `POST /api/v1/responses/compact` | responses compact variant | ❌ absent | responses sub-variant |
+| `POST /api/v1/responses/compact` | responses compact variant | ✅ passthrough | responses sub-variant (T033b-8 ported) |
 
 These 14 require **new** `/v1/*` implementations first (each is a distinct
 media/modality pipeline: TTS, STT, image, video, web-fetch, embeddings,

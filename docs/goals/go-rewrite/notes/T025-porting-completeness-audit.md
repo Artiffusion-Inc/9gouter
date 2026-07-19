@@ -64,8 +64,8 @@ vs Go stub (`v1_dashboard.go` returns "not available"):
 | GET /v1/audio/voices | ❌ | stub | **MISSING (P2)** |
 | POST /v1/images/generations | ✅ | ported | image gen: openai-compat/gemini/codex (T033b-6) |
 | POST /v1/messages/count_tokens | ❌ | stub | **MISSING (P1)** |
-| POST /v1/responses/compact | ❌ | stub | **MISSING (P2)** |
-| GET /v1/responses | ❌ | — | **MISSING (P2)** |
+| POST /v1/responses/compact | ✅ | passthrough | responses sub-variant (T033b-8 ported) |
+| GET /v1/responses/{id} | ✅ | 501 stub | OpenAI RetrieveResponse poll — honest 501 (no upstream returns LRO Responses state; T033b-8) |
 | POST /v1/search | ✅ | ported | web-search: serper/tavily/searxng dedicated + gemini/openai/perplexity-chat searchViaChat (T033b-1) |
 | POST /v1/web/fetch | ✅ | ported | adapter+usecase+handler+SSRF guard (T033b-2) |
 | POST /v1/api/chat | ✅ | ported | OpenAI SSE→Ollama NDJSON transform over proxychat (T033b-8) |

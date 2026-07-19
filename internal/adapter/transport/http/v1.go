@@ -346,6 +346,12 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	// source-format detection treats it as an OpenAI Responses request. Ports
 	// legacy JS src/app/api/v1/responses/compact/route.js.
 	mux.HandleFunc("POST /v1/responses/compact", handler.handleResponsesCompact)
+	// GET /v1/responses/{id} — OpenAI Responses API RetrieveResponse (poll a
+	// long-running response). Registered as an honest 501 stub: no upstream
+	// provider in the Go build returns Responses-API LRO state yet. Ports the
+	// route surface (T025/T033 P2); the poll pipeline lands when an LRO
+	// Responses upstream is wired.
+	mux.HandleFunc("GET /v1/responses/{id}", handler.handleResponsesGet)
 	// POST /v1/messages/count_tokens — Anthropic-compatible token-count
 	// estimate. Local (chars/4) only, no upstream — mirrors legacy JS
 	// src/app/api/v1/messages/count_tokens/route.js.

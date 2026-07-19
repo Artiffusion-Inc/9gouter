@@ -104,6 +104,19 @@ func (d *refreshDedup) Refresh(ctx context.Context, key string, fn func() (*Refr
 // refreshDedupCache Maps.
 var SharedRefreshDedup RefreshDedup = &refreshDedup{}
 
+// ResetSharedRefreshDedup clears the shared dedup's inflight and result cache.
+// Tests call it between cases so a result cached under a short refreshToken key
+// (e.g. "rt") by one test does not leak into another test that happens to reuse
+// the same key. Production code never calls it.
+func ResetSharedRefreshDedup() {
+	if d, ok := SharedRefreshDedup.(*refreshDedup); ok && d != nil {
+		d.mu.Lock()
+		d.inflight = map[string]*refreshCall{}
+		d.results = map[string]refreshCachedResult{}
+		d.mu.Unlock()
+	}
+}
+
 // RefreshKey mirrors the JS getRefreshLockKey: a stable per-connection identity
 // for dedup. Preference order matches the JS chain:
 // connectionId → id → email → name → refreshToken(suffix) → "default".

@@ -20,6 +20,8 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver/tokenrefresh"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/webfetch"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/accountfallback"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
@@ -878,6 +880,19 @@ func (h *v1Handler) resolveCredentialsWithOpts(ctx context.Context, providerID, 
 	// strict route must never fall back to the host's direct IP.
 	h.resolveConnectionProxyConfig(ctx, creds.ProviderSpecificData)
 
+	// Proactive OAuth refresh (decolua/9router #2703 Fix 2c): when the access
+	// token is near expiry (within the provider's refresh lead) or stale past
+	// the provider's maxRefreshAgeMs, exchange it before serving the request
+	// so the upstream call does not 401 on a dead token. The refresh HTTP call
+	// is routed through the same per-connection proxy stack the chat call will
+	// use (route-aware refresh, Fix 2a), deduped across concurrent requests on
+	// the same connection (Fix 2b), and the merged patch is persisted back to
+	// the connection so the next request sees the fresh token. Unrecoverable
+	// refresh tokens (invalid_grant) are persisted as a re-auth marker and the
+	// connection is left to fail on the dead token; the reactive retry (Fix 2d)
+	// will then mark it unavailable and the fallback loop tries the next one.
+	h.proactiveRefreshCredentials(ctx, providerID, conn.ID, data, &creds)
+
 	return creds, nil
 }
 
@@ -933,6 +948,109 @@ func (h *v1Handler) resolveConnectionProxyConfig(ctx context.Context, psd map[st
 		if v, ok := poolData["noProxy"].(string); ok && v != "" {
 			psd["connectionNoProxy"] = v
 		}
+	}
+}
+
+// proxyOptionsFromPSD builds the resolver.ProxyOptions a route-aware token
+// refresh (Fix 2a/2c) needs from a connection's providerSpecificData. It reads
+// the same keys the provider executor turns into proxy.ProxyFetchOptions so the
+// refresh call takes the same route as the chat call — a strict route must not
+// refresh over a direct connection. Empty values yield an empty ProxyOptions
+// (direct), matching ProxyAwareFetch's "direct" path.
+func proxyOptionsFromPSD(psd map[string]any, log *slog.Logger) resolver.ProxyOptions {
+	return resolver.ProxyOptions{
+		ConnectionProxyEnabled: psdBool(psd, "connectionProxyEnabled"),
+		ConnectionProxyURL:     psdString(psd, "connectionProxyUrl"),
+		ConnectionNoProxy:      psdString(psd, "connectionNoProxy"),
+		VercelRelayURL:         psdString(psd, "vercelRelayUrl"),
+		StrictProxy:            psdBool(psd, "strictProxy"),
+		Logger:                 slogAdapter{log},
+	}
+}
+
+// proactiveRefreshCredentials runs the proactive OAuth refresh (Fix 2c) for the
+// resolved connection and persists the merged patch. It is a best-effort,
+// non-blocking-by-contract operation: a refresh failure is logged but does not
+// fail the request — the dead token is served, the upstream 401 fires the
+// reactive retry (Fix 2d), and the fallback loop moves on. Only a successful
+// merge (or an unrecoverable marker) is persisted.
+//
+// data is the connection's parsed JSON data blob (already read by the caller);
+// creds is mutated in place so the request that triggered the refresh serves
+// the rotated token rather than the stale one (creds.AccessToken + the
+// providerSpecificData map the provider executor reads).
+func (h *v1Handler) proactiveRefreshCredentials(ctx context.Context, providerID, connectionID string, data map[string]any, creds *domainProv.Credentials) {
+	if data == nil || creds == nil {
+		return
+	}
+	refresher := tokenrefresh.Lookup(providerID)
+	if refresher == nil {
+		return
+	}
+	opts := proxyOptionsFromPSD(creds.ProviderSpecificData, h.deps.Logger)
+	res, err := resolver.ProactiveRefreshIfNeeded(ctx, providerID, data, refresher, opts, slogAdapter{h.deps.Logger}, time.Now())
+	if err != nil {
+		h.deps.Logger.Warn("proactive credential refresh failed",
+			"provider", providerID, "connectionId", connectionID, "err", err)
+		return
+	}
+	if !res.Refreshed || res.Patch == nil {
+		return
+	}
+	if res.Unrecoverable {
+		// Persist the unrecoverable marker so the dashboard can flag the
+		// connection for re-auth, then bail — the dead token is served and
+		// the reactive retry / fallback loop handles it.
+		if _, perr := h.deps.ConnectionRepo.ApplyConnectionPatch(ctx, connectionID, res.Patch); perr != nil {
+			h.deps.Logger.Warn("proactive credential refresh persist failed (unrecoverable)",
+				"provider", providerID, "connectionId", connectionID, "err", perr)
+		}
+		h.deps.Logger.Warn("credential refresh token is unrecoverable; connection needs re-auth",
+			"provider", providerID, "connectionId", connectionID)
+		return
+	}
+	if _, perr := h.deps.ConnectionRepo.ApplyConnectionPatch(ctx, connectionID, res.Patch); perr != nil {
+		h.deps.Logger.Warn("proactive credential refresh persist failed",
+			"provider", providerID, "connectionId", connectionID, "err", perr)
+		return
+	}
+	// Apply the merged patch back into the in-flight credential view so this
+	// request serves the rotated token. creds.AccessToken is the field the
+	// provider executor reads for refresh-capable connections; the PSD map
+	// carries the rest (refreshToken, expiresAt, providerSpecificData sub-keys).
+	mergePatchIntoPSD(creds.ProviderSpecificData, res.Patch)
+	if at, _ := res.Patch["accessToken"].(string); at != "" {
+		creds.AccessToken = at
+	}
+	if k, _ := res.Patch["apiKey"].(string); k != "" {
+		creds.APIKey = k
+	}
+	if expStr, _ := res.Patch["expiresAt"].(string); expStr != "" {
+		if t, perr := time.Parse(time.RFC3339Nano, expStr); perr == nil {
+			creds.ExpiresAt = &t
+		}
+	}
+}
+
+// mergePatchIntoPSD folds a flat-field merge patch (from
+// resolver.MergeRefreshedCredentials) into the providerSpecificData view the
+// provider executor reads. accessToken/apiKey/token/expiresAt/idToken/
+// refreshToken and providerSpecificData sub-keys are written through; the
+// lastRefreshAt stamp is carried too.
+func mergePatchIntoPSD(psd, patch map[string]any) {
+	if psd == nil || patch == nil {
+		return
+	}
+	for k, v := range patch {
+		if k == "providerSpecificData" {
+			if sub, ok := v.(map[string]any); ok {
+				for sk, sv := range sub {
+					psd[sk] = sv
+				}
+			}
+			continue
+		}
+		psd[k] = v
 	}
 }
 

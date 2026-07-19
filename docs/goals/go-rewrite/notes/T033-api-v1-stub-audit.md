@@ -36,7 +36,7 @@ the cheap win in this audit.
 
 | `/api/v1/*` stub route | Legacy JS source | Go `/v1/*` | Notes |
 |------------------------|------------------|------------|-------|
-| `POST /api/v1/api/chat` | `src/app/api/v1/api/chat/route.js` | ❌ absent | internal-only chat variant |
+| `POST /api/v1/api/chat` | `src/app/api/v1/api/chat/route.js` | ✅ passthrough | internal chat variant (T033b-8: SSE→NDJSON) |
 | `GET /api/v1/models/info` | `src/app/api/v1/models/info/route.js` | ✅ `/v1/models/info` (T033b) | per-model capability metadata (static catalog subset) |
 | `POST /api/v1/audio/speech` | TTS handlers | ❌ absent | Gemini/OpenAI TTS pipeline |
 | `POST /api/v1/audio/transcriptions` | STT handlers | ❌ absent | Gemini/OpenAI STT pipeline |
@@ -97,6 +97,13 @@ provider adapter + translator. Ordered roughly by dependency/leverage:
 9. **`/v1/videos/*`** (generations, edits, extensions, GET status) — Veo
    pipeline; async poll model.
 10. **`/v1/api/chat`** — internal chat variant; needs spec check vs
+    OpenAI SSE ↔ Ollama NDJSON. **PORTED (T033b-8):** dispatches to the chat
+    pipeline via `handleApiChat` and transforms the OpenAI SSE response on the
+    fly into Ollama NDJSON (`ollamaNDJSONConverter`, ports
+    `open-sse/utils/ollamaTransform.js`). Content/tool_calls/finish_reason
+    mapping, sentinel-emitted guard (fixes a latent JS double-emit bug),
+    model name taken from request body (fallback `llama3.2`). 11 tests
+    (7 transform unit + 4 handler e2e incl. dashboard passthrough).
     `/v1/chat/completions`.
 11. **`/v1/responses/compact`** — responses sub-variant; needs spec.
 

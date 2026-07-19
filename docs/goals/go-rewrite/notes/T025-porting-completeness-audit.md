@@ -68,7 +68,7 @@ vs Go stub (`v1_dashboard.go` returns "not available"):
 | GET /v1/responses | ❌ | — | **MISSING (P2)** |
 | POST /v1/search | ❌ | stub | **MISSING (P2)** |
 | POST /v1/web/fetch | ✅ | ported | adapter+usecase+handler+SSRF guard (T033b-2) |
-| POST /v1/api/chat | ❌ | stub | **MISSING (P2)** |
+| POST /v1/api/chat | ✅ | ported | OpenAI SSE→Ollama NDJSON transform over proxychat (T033b-8) |
 | POST /v1/videos/generations | ❌ | stub | **MISSING (P2)** |
 | POST /v1/videos/edits | ❌ | stub | **MISSING (P2)** |
 | POST /v1/videos/extensions | ❌ | stub | **MISSING (P2)** |

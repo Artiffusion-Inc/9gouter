@@ -153,6 +153,11 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	mux.HandleFunc("POST /v1/chat/completions", handler.handleChat)
 	mux.HandleFunc("POST /v1/messages", handler.handleChat)
 	mux.HandleFunc("POST /v1/responses", handler.handleChat)
+	// POST /v1/api/chat — Ollama-native chat surface. Dispatches to the chat
+	// pipeline and transforms the OpenAI SSE response to Ollama NDJSON on the
+	// fly. Ports legacy JS src/app/api/v1/api/chat/route.js +
+	// open-sse/utils/ollamaTransform.js.
+	mux.HandleFunc("POST /v1/api/chat", handler.handleApiChat)
 	// POST /v1/responses/compact — thin wrapper over the chat pipeline:
 	// injects body._compact = true and rewrites the path to /v1/responses so
 	// source-format detection treats it as an OpenAI Responses request. Ports

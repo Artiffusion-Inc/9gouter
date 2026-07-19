@@ -306,6 +306,178 @@ func mustCreateConnection(t *testing.T, db *sql.DB, provider, data string) {
 	}
 }
 
+// TestV1_ResolveCredentialsPropagatesStrictProxy is the integration regression
+// test for decolua/9router #2703 Fix 1: when a connection references a proxy
+// pool with strictProxy=true, that strict flag plus the pool's proxyUrl must
+// be resolved into Credentials.ProviderSpecificData so the provider executor's
+// ProxyAwareFetch receives them per-request. Before the fix, strictProxy was
+// dropped during credential resolution and strict mode silently fell back to
+// the host's direct IP.
+func TestV1_ResolveCredentialsPropagatesStrictProxy(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+
+	// Pool with strict mode + a SOCKS5 egress URL.
+	poolData := `{"name":"pool-a","proxyUrl":"socks5://egress-a.example:1080","noProxy":"localhost,127.0.0.1","strictProxy":true,"type":"socks5"}`
+	poolRepo := repo.NewProxyPoolRepo(db)
+	if err := poolRepo.Create(context.Background(), settings.ProxyPool{
+		ID:       "pool-a",
+		IsActive: true,
+		Data:     json.RawMessage(poolData),
+	}); err != nil {
+		t.Fatalf("create proxy pool: %v", err)
+	}
+
+	// Connection references the pool via proxyPoolId but has no per-connection
+	// proxy URL of its own — the pool's URL must be inherited.
+	mustCreateConnection(t, db, "openai", `{"apiKey":"sk-test","providerSpecificData":{"proxyPoolId":"pool-a"}}`)
+
+	stub := &stubChatHandler{streamed: true}
+	deps := V1Deps{
+		APIKeysRepo:    repo.NewAPIKeyRepo(db),
+		SettingsRepo:   repo.NewSettingsRepo(db),
+		ConnectionRepo: repo.NewConnectionRepo(db),
+		ComboRepo:      repo.NewComboRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
+		ProxyPoolRepo:  poolRepo,
+		Chat:           stub,
+		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	}
+
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hi"}],"stream":true}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if stub.got == nil {
+		t.Fatal("chat handler was not called")
+	}
+	psd := stub.got.Credentials.ProviderSpecificData
+	if psd == nil {
+		t.Fatal("providerSpecificData is nil")
+	}
+	if v, ok := psd["strictProxy"].(bool); !ok || !v {
+		t.Fatalf("strictProxy not propagated from pool, got %#v", psd["strictProxy"])
+	}
+	if v, _ := psd["connectionProxyUrl"].(string); v != "socks5://egress-a.example:1080" {
+		t.Fatalf("pool proxyUrl not inherited: got %q", v)
+	}
+	if v, _ := psd["connectionNoProxy"].(string); v != "localhost,127.0.0.1" {
+		t.Fatalf("pool noProxy not inherited: got %q", v)
+	}
+	if v, ok := psd["connectionProxyEnabled"].(bool); !ok || !v {
+		t.Fatalf("connectionProxyEnabled should be implicitly true for pool-assigned connection, got %#v", psd["connectionProxyEnabled"])
+	}
+}
+
+// TestV1_ResolveCredentialsPerConnectionURLOverridesPool verifies that a
+// per-connection proxyUrl wins over the pool's proxyUrl — the operator can
+// override egress per connection while still inheriting strictProxy from the
+// pool.
+func TestV1_ResolveCredentialsPerConnectionURLOverridesPool(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+
+	poolData := `{"name":"pool-a","proxyUrl":"socks5://pool.example:1080","strictProxy":true,"type":"socks5"}`
+	poolRepo := repo.NewProxyPoolRepo(db)
+	if err := poolRepo.Create(context.Background(), settings.ProxyPool{
+		ID:       "pool-a",
+		IsActive: true,
+		Data:     json.RawMessage(poolData),
+	}); err != nil {
+		t.Fatalf("create proxy pool: %v", err)
+	}
+
+	mustCreateConnection(t, db, "openai", `{"apiKey":"sk-test","providerSpecificData":{"proxyPoolId":"pool-a","connectionProxyUrl":"http://conn-override.example:8080","connectionProxyEnabled":true}}`)
+
+	stub := &stubChatHandler{streamed: true}
+	deps := V1Deps{
+		APIKeysRepo:    repo.NewAPIKeyRepo(db),
+		SettingsRepo:   repo.NewSettingsRepo(db),
+		ConnectionRepo: repo.NewConnectionRepo(db),
+		ComboRepo:      repo.NewComboRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
+		ProxyPoolRepo:  poolRepo,
+		Chat:           stub,
+		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	}
+
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hi"}],"stream":true}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	psd := stub.got.Credentials.ProviderSpecificData
+	if v, _ := psd["connectionProxyUrl"].(string); v != "http://conn-override.example:8080" {
+		t.Fatalf("per-connection proxyUrl should win, got %q", v)
+	}
+	if v, ok := psd["strictProxy"].(bool); !ok || !v {
+		t.Fatalf("strictProxy should still be inherited from pool, got %#v", psd["strictProxy"])
+	}
+}
+
+// TestV1_ResolveCredentialsNoPoolNoStrict verifies a connection without a
+// proxy pool assignment does not get strictProxy injected — backwards
+// compatibility.
+func TestV1_ResolveCredentialsNoPoolNoStrict(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+
+	mustCreateConnection(t, db, "openai", `{"apiKey":"sk-test","providerSpecificData":{"connectionProxyEnabled":false}}`)
+
+	stub := &stubChatHandler{streamed: true}
+	deps := V1Deps{
+		APIKeysRepo:    repo.NewAPIKeyRepo(db),
+		SettingsRepo:   repo.NewSettingsRepo(db),
+		ConnectionRepo: repo.NewConnectionRepo(db),
+		ComboRepo:      repo.NewComboRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
+		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
+		Chat:           stub,
+		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	}
+
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hi"}],"stream":true}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	psd := stub.got.Credentials.ProviderSpecificData
+	if v, present := psd["strictProxy"]; present {
+		t.Fatalf("strictProxy should be absent for pool-less connection, got %#v", v)
+	}
+}
+
 // Ensure stubChatHandler implements ChatHandler.
 var _ ChatHandler = (*stubChatHandler)(nil)
 

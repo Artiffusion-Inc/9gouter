@@ -369,7 +369,71 @@ func (h *v1Handler) resolveCredentials(ctx context.Context, providerID, model st
 			creds.ProviderSpecificData[k] = val
 		}
 	}
+
+	// Resolve per-connection route affinity (decolua/9router #2703 Fix 1).
+	// When a connection has a proxyPoolId, look up the pool and copy its
+	// strictProxy + proxyUrl + noProxy into providerSpecificData so the
+	// provider executor's ProxyAwareFetch sees the strict flag per-request.
+	// strictProxy reaching proxyAwareFetch is the acceptance criterion; a
+	// strict route must never fall back to the host's direct IP.
+	h.resolveConnectionProxyConfig(ctx, creds.ProviderSpecificData)
+
 	return creds, nil
+}
+
+// resolveConnectionProxyConfig merges the connection's assigned proxy pool
+// into providerSpecificData. It copies the pool's strictProxy, proxyUrl, and
+// noProxy when the connection references a pool via proxyPoolId, so the
+// provider executor can build ProxyFetchOptions per-request. This mirrors
+// the JS resolveConnectionProxyConfig that chatCore.js consumed.
+//
+// Connection-level fields (connectionProxyEnabled/Url/NoProxy, vercelRelayUrl)
+// already live in providerSpecificData from the connection's stored data and
+// are passed through unchanged; only the pool-derived strict flag and pool
+// proxy URL/noProxy are filled here when a pool is assigned and the
+// connection does not already carry an explicit per-connection proxy URL.
+func (h *v1Handler) resolveConnectionProxyConfig(ctx context.Context, psd map[string]any) {
+	if psd == nil {
+		return
+	}
+	poolID, _ := psd["proxyPoolId"].(string)
+	if poolID == "" {
+		return
+	}
+	pool, err := h.deps.ProxyPoolRepo.GetByID(ctx, poolID)
+	if err != nil || pool == nil || !pool.IsActive {
+		// Pool missing or inactive: leave strictProxy unset so the
+		// executor falls back to its default. Strict-mode fail-closed for a
+		// missing strict pool is the executor's responsibility once
+		// strictProxy=true is resolved; an inactive pool with no strict flag
+		// is a config error the operator should fix, not a silent direct
+		// fallback.
+		return
+	}
+	var poolData map[string]any
+	_ = json.Unmarshal(pool.Data, &poolData)
+	if v, ok := poolData["strictProxy"].(bool); ok {
+		psd["strictProxy"] = v
+	}
+	// Only inherit the pool's proxyUrl/noProxy when the connection does not
+	// set its own per-connection proxy URL — the per-connection value wins.
+	if _, hasConnURL := psd["connectionProxyUrl"].(string); !hasConnURL || psd["connectionProxyUrl"] == "" {
+		if v, ok := poolData["proxyUrl"].(string); ok && v != "" {
+			psd["connectionProxyUrl"] = v
+			// A pool-assigned connection is implicitly proxy-enabled unless
+			// the connection explicitly disabled it.
+			if enabled, set := psd["connectionProxyEnabled"].(bool); !set || !enabled {
+				if !set {
+					psd["connectionProxyEnabled"] = true
+				}
+			}
+		}
+	}
+	if _, hasConnNoProxy := psd["connectionNoProxy"].(string); !hasConnNoProxy || psd["connectionNoProxy"] == "" {
+		if v, ok := poolData["noProxy"].(string); ok && v != "" {
+			psd["connectionNoProxy"] = v
+		}
+	}
 }
 
 func (h *v1Handler) writeError(w http.ResponseWriter, status int, message string) {

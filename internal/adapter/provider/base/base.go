@@ -490,7 +490,7 @@ func (e *BaseExecutor) Execute(ctx context.Context, req provider.ExecRequest) (p
 			}
 		}
 
-		resp, err := e.doFetch(ctx, upReq)
+		resp, err := e.doFetch(ctx, upReq, req.Credentials)
 		if err != nil {
 			lastError = err
 			// Map network/fetch exceptions to 502 retry config.
@@ -533,7 +533,51 @@ func (e *BaseExecutor) Execute(ctx context.Context, req provider.ExecRequest) (p
 	return provider.Resp{}, lastError
 }
 
-func (e *BaseExecutor) doFetch(ctx context.Context, req *http.Request) (*http.Response, error) {
+// proxyFetchOptsFromCreds resolves per-connection proxy options from the
+// credentials' providerSpecificData. This closes the route-affinity gap from
+// decolua/9router #2703 (Fix 1): the connection's resolved proxy fields,
+// including strictProxy, must reach ProxyAwareFetch so a strict route never
+// falls back to the host's direct IP. Without this, doFetch sent the empty
+// executor-level ProxyFetchOpts and strict mode was silently ignored for
+// normal chat traffic.
+//
+// Fields mirror the JS resolveConnectionProxyConfig subset that chatCore.js
+// copied into credentials.providerSpecificData:
+//   - connectionProxyEnabled / connectionProxyUrl / connectionNoProxy
+//   - vercelRelayUrl
+//   - strictProxy (resolved from the connection's proxyPoolId)
+//
+// Anything absent falls back to the executor default (env/global proxy),
+// preserving backwards compatibility for connections without an assigned pool.
+func proxyFetchOptsFromCreds(creds provider.Credentials, def proxy.ProxyFetchOptions) proxy.ProxyFetchOptions {
+	opts := def
+	if creds.ProviderSpecificData == nil {
+		return opts
+	}
+	psd := creds.ProviderSpecificData
+	if v, ok := psd["connectionProxyEnabled"].(bool); ok {
+		opts.ConnectionProxyEnabled = v
+	}
+	if v, ok := psd["connectionProxyUrl"].(string); ok {
+		opts.ConnectionProxyUrl = v
+	}
+	if v, ok := psd["connectionNoProxy"].(string); ok {
+		opts.NoProxy = v
+	}
+	if v, ok := psd["vercelRelayUrl"].(string); ok {
+		opts.VercelRelayUrl = v
+	}
+	// strictProxy: resolved from the connection's proxy pool. Only flip to
+	// true on an explicit true (defensive: never enable strict mode on a
+	// missing/ambiguous value). A bool false overrides a true default only
+	// when present, matching the JS `=== true` guard.
+	if v, ok := psd["strictProxy"].(bool); ok {
+		opts.StrictProxy = v
+	}
+	return opts
+}
+
+func (e *BaseExecutor) doFetch(ctx context.Context, req *http.Request, creds provider.Credentials) (*http.Response, error) {
 	// Use a context with timeout for connect timeout if possible.
 	timeoutMs := e.Config.TimeoutMs
 	if timeoutMs <= 0 {
@@ -542,7 +586,8 @@ func (e *BaseExecutor) doFetch(ctx context.Context, req *http.Request) (*http.Re
 	fetchCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
 	defer cancel()
 	req = req.Clone(fetchCtx)
-	return e.Fetch(ctx, e.HTTPClient, req, e.ProxyOpts, e.ProxyFetchOpts, e.Fallback)
+	proxyOpts := proxyFetchOptsFromCreds(creds, e.ProxyFetchOpts)
+	return e.Fetch(ctx, e.HTTPClient, req, e.ProxyOpts, proxyOpts, e.Fallback)
 }
 
 func (e *BaseExecutor) computeDynamicRetryDelay(response *http.Response, attempt, delayMs int) int {

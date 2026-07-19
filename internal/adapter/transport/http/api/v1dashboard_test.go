@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -80,17 +81,38 @@ func TestV1Dashboard_NotAvailable_ForUnimplemented(t *testing.T) {
 	rec := &dispatchRecorder{}
 	mux := newDashboardMux(t, rec.ServeHTTP)
 
-	// /api/v1/search is still unimplemented — must NOT dispatch,
-	// must return the not-available stub.
-	req := httptest.NewRequest("POST", "/api/v1/search", nil)
+	// No route is registered as a direct notAvailable stub anymore (every
+	// /api/v1/* route is a passthrough). This test now asserts that an
+	// unregistered /api/v1 path yields 404 rather than dispatching — keeping
+	// the guard that unknown surfaces do not silently dispatch.
+	req := httptest.NewRequest("POST", "/api/v1/does-not-exist", nil)
 	rw := httptest.NewRecorder()
 	mux.ServeHTTP(rw, req)
 
 	if rec.gotPath != "" {
-		t.Fatalf("unimplemented route dispatched to %q — must stay a stub", rec.gotPath)
+		t.Fatalf("unknown /api/v1 path dispatched to %q — must not dispatch", rec.gotPath)
 	}
-	if !containsSubstr(rw.Body.String(), "not yet available") {
-		t.Fatalf("expected not-available stub, got: %s", rw.Body.String())
+	if rw.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unregistered /api/v1 path, got %d", rw.Code)
+	}
+}
+
+// TestV1Dashboard_Passthrough_Search verifies /api/v1/search now rewrites to
+// /v1/search and dispatches (it was a notAvailable stub before the T033b-1
+// search pipeline landed).
+func TestV1Dashboard_Passthrough_Search(t *testing.T) {
+	rec := &dispatchRecorder{}
+	mux := newDashboardMux(t, rec.ServeHTTP)
+
+	req := httptest.NewRequest("POST", "/api/v1/search", strings.NewReader(`{"query":"x"}`))
+	rw := httptest.NewRecorder()
+	mux.ServeHTTP(rw, req)
+
+	if rec.gotPath != "/v1/search" {
+		t.Fatalf("dispatch path = %q, want /v1/search", rec.gotPath)
+	}
+	if rw.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rw.Code)
 	}
 }
 

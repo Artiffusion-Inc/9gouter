@@ -224,6 +224,39 @@ type ImageResult struct {
 	ContentType string
 }
 
+// SearchHandler is the boundary between the HTTP transport layer and the
+// web-search usecase (POST /v1/search). Implementations are provided by wire.go
+// (searchproxy adapter).
+type SearchHandler interface {
+	Handle(ctx context.Context, req SearchRequest) (SearchResult, error)
+}
+
+// SearchRequest carries a parsed web-search call into the usecase.
+type SearchRequest struct {
+	Ctx         context.Context
+	ProviderID  string
+	Query       string
+	Model       string
+	MaxResults  int
+	SearchType  string
+	Country     string
+	Language    string
+	TimeRange   string
+	Offset      int
+	Credentials domainProv.Credentials
+	UserAgent   string
+}
+
+// SearchResult carries the unified search response back to the HTTP layer.
+// Body is the {provider,query,results,answer,usage,metrics,errors} JSON and
+// ContentType is application/json.
+type SearchResult struct {
+	StatusCode  int
+	Err         error
+	Body        []byte
+	ContentType string
+}
+
 // ChatRequest carries the parsed HTTP request into the usecase.
 type ChatRequest struct {
 	Ctx          context.Context
@@ -291,6 +324,9 @@ type V1Deps struct {
 	// Image is the injected image-generation usecase boundary
 	// (POST /v1/images/generations).
 	Image ImageHandler
+
+	// Search is the injected web-search usecase boundary (POST /v1/search).
+	Search SearchHandler
 }
 
 // RegisterV1 mounts POST handlers for /v1/chat/completions, /v1/messages,
@@ -391,6 +427,16 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	// src/app/api/v1/images/generations/route.js + open-sse/handlers/
 	// imageGeneration.js + imageGenerationCore.js + imageProviders/*.
 	mux.HandleFunc("POST /v1/images/generations", handler.handleImagesGenerations)
+
+	// POST /v1/search — web-search endpoint. Parses the JSON body, resolves the
+	// provider from body.provider || body.model (alias → canonical id), and
+	// dispatches to the searchproxy usecase, which routes dedicated search APIs
+	// vs chat-based search (LLM + search tool) and normalizes into the unified
+	// {provider,query,results,answer,usage,metrics,errors} shape. Ports legacy
+	// JS src/app/api/v1/search/route.js + src/sse/handlers/search.js +
+	// open-sse/handlers/search/index.js + callers.js + normalizers.js +
+	// chatSearch.js.
+	mux.HandleFunc("POST /v1/search", handler.handleSearch)
 }
 
 type v1Handler struct {

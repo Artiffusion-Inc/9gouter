@@ -66,7 +66,7 @@ vs Go stub (`v1_dashboard.go` returns "not available"):
 | POST /v1/messages/count_tokens | ❌ | stub | **MISSING (P1)** |
 | POST /v1/responses/compact | ❌ | stub | **MISSING (P2)** |
 | GET /v1/responses | ❌ | — | **MISSING (P2)** |
-| POST /v1/search | ❌ | stub | **MISSING (P2)** |
+| POST /v1/search | ✅ | ported | web-search: serper/tavily/searxng dedicated + gemini/openai/perplexity-chat searchViaChat (T033b-1) |
 | POST /v1/web/fetch | ✅ | ported | adapter+usecase+handler+SSRF guard (T033b-2) |
 | POST /v1/api/chat | ✅ | ported | OpenAI SSE→Ollama NDJSON transform over proxychat (T033b-8) |
 | POST /v1/videos/generations | ✅ | ported | xAI LRO raw-byte proxy + idempotency (T033b-7) |

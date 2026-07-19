@@ -39,7 +39,7 @@ func RegisterV1Dashboard(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("GET /api/v1/audio/voices", h.passthrough("/v1/audio/voices"))
 	mux.HandleFunc("POST /api/v1/embeddings", h.passthrough("/v1/embeddings"))
 	mux.HandleFunc("POST /api/v1/images/generations", h.passthrough("/v1/images/generations"))
-	mux.HandleFunc("POST /api/v1/search", h.notAvailable)
+	mux.HandleFunc("POST /api/v1/search", h.passthrough("/v1/search"))
 	mux.HandleFunc("POST /api/v1/videos/generations", h.passthrough("/v1/videos/generations"))
 	mux.HandleFunc("POST /api/v1/videos/edits", h.passthrough("/v1/videos/edits"))
 	mux.HandleFunc("POST /api/v1/videos/extensions", h.passthrough("/v1/videos/extensions"))

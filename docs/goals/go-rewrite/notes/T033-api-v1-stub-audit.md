@@ -43,7 +43,7 @@ the cheap win in this audit.
 | `GET /api/v1/audio/voices` | TTS voices list | ❌ absent | static voice catalog |
 | `POST /api/v1/embeddings` | `src/app/api/v1/embeddings/route.js` → `embeddingsCore.js` | ❌ absent | tracked as T031b (chat-class pipeline) |
 | `POST /api/v1/images/generations` | image gen handlers | ✅ passthrough | image gen pipeline (T033b-6 ported) |
-| `POST /api/v1/search` | web-search handlers | ❌ absent | Gemini searchViaChat |
+| `POST /api/v1/search` | web-search handlers | ✅ passthrough | Gemini searchViaChat (T033b-1 ported) |
 | `POST /api/v1/videos/generations` | video gen handlers | ✅ passthrough | xAI LRO raw-byte proxy (T033b-7 ported) |
 | `POST /api/v1/videos/edits` | video edit handlers | ✅ passthrough | xAI LRO raw-byte proxy (T033b-7 ported) |
 | `POST /api/v1/videos/extensions` | video extension handlers | ✅ passthrough | xAI LRO raw-byte proxy (T033b-7 ported) |
@@ -83,6 +83,26 @@ provider adapter + translator. Ordered roughly by dependency/leverage:
    be a static-ish first pass off the catalog.
 3. **`/v1/search`** — Gemini `searchViaChat`; reuses the chat pipeline
    with a search-system-instruction wrapper.
+   **PORTED (T033b-1):** `internal/adapter/provider/search` (static registry: 10
+   dedicated searchConfig providers + 6 chat-based searchViaChat providers, alias
+   resolution), `internal/usecase/searchproxy` (Handler routing dedicated → chat
+   fallback for retriable dedicated failures, per-provider request building +
+   response normalization into the unified {provider,query,results,answer,
+   usage,metrics,errors} shape, sanitizeQuery + global 15s timeout), `internal/
+   adapter/transport/http/v1search.go` (handleSearch: parse JSON body
+   {provider||model, query, max_results, search_type, country, language,
+   time_range, offset}, api-key gate, resolveSearchProvider alias→canonical,
+   resolveCredentials, dispatch, writeSearchResult), wiring in `internal/app/
+   wire.go` (`newSearchHandler`), dashboard passthrough `/api/v1/search`.
+   MVP providers: dedicated serper (web/news X-API-Key), tavily (Bearer,
+   topic=news), searxng (no-auth, SEARXNG_URL env override, categories general/
+   news); chat gemini (generateContent + google_search tool, groundingChunks
+   reshape, models/ prefix stripped), openai (chat/completions + web_search tool
+   when model name lacks "search", annotations→citations with fallback to
+   top-level citations[]), perplexity chat fallback (chat/completions + sonar,
+   top-level citations[]). Deferred (501): brave-search, google-pse, linkup,
+   searchapi, youcom, exa (dedicated), xai/kimi/minimax/perplexity-agent (chat).
+   17 usecase tests + 12 handler tests + 1 dashboard passthrough test.
 4. **`/v1/web/fetch`** — webFetch service kind; independent fetch+extract.
    **PORTED (T033b-2):** `internal/adapter/provider/webfetch` (firecrawl/jina-reader/tavily/exa adapters),
    `internal/usecase/proxyfetch` (Handler, buildResponseJSON mirroring JS buildData, no usage persistence),

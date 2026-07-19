@@ -42,6 +42,7 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/usecase/sttproxy"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/ttsproxy"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/imageproxy"
+	"github.com/Artiffusion-Inc/9router/internal/usecase/searchproxy"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/videoproxy"
 )
 
@@ -90,6 +91,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	sttHandler := newSttHandler(cfg, logger)
 	ttsHandler := newTtsHandler(cfg, logger)
 	imageHandler := newImageProxyHandler(cfg, logger)
+	searchHandler := newSearchHandler(cfg, logger)
 
 	mux := http.NewServeMux()
 	httptransport.RegisterV1(mux, httptransport.V1Deps{
@@ -111,6 +113,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Stt:            sttHandler,
 		Tts:            ttsHandler,
 		Image:          imageHandler,
+		Search:          searchHandler,
 	})
 
 	sessionStore, err := auth.NewCookieStore(cfg.DashboardSessionSecret)
@@ -548,6 +551,47 @@ func (h *imageProxyHandler) Handle(ctx context.Context, req httptransport.ImageR
 		UserAgent:      req.UserAgent,
 	})
 	return httptransport.ImageResult{
+		StatusCode:  res.StatusCode,
+		Err:         res.Err,
+		Body:        res.Body,
+		ContentType: res.ContentType,
+	}, nil
+}
+
+// searchHandler adapts searchproxy.Handler to the httptransport.SearchHandler
+// interface. Lives in the composition root (the only place allowed to know
+// both packages). Like image/TTS, web search does not persist usage rows (the
+// legacy JS search path never called saveRequestUsage), so it only needs
+// config + logger.
+type searchHandler struct {
+	handler *searchproxy.Handler
+}
+
+func newSearchHandler(cfg config.Config, logger *slog.Logger) *searchHandler {
+	return &searchHandler{
+		handler: searchproxy.New(searchproxy.Dependencies{
+			Logger: &slogLogger{logger},
+			Config: cfg,
+		}),
+	}
+}
+
+func (h *searchHandler) Handle(ctx context.Context, req httptransport.SearchRequest) (httptransport.SearchResult, error) {
+	res := h.handler.Handle(ctx, searchproxy.Request{
+		Ctx:         ctx,
+		ProviderID:  req.ProviderID,
+		Query:       req.Query,
+		Model:       req.Model,
+		MaxResults:  req.MaxResults,
+		SearchType:  req.SearchType,
+		Country:     req.Country,
+		Language:    req.Language,
+		TimeRange:   req.TimeRange,
+		Offset:      req.Offset,
+		Credentials: req.Credentials,
+		UserAgent:   req.UserAgent,
+	})
+	return httptransport.SearchResult{
 		StatusCode:  res.StatusCode,
 		Err:         res.Err,
 		Body:        res.Body,

@@ -8,7 +8,10 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
 )
@@ -293,7 +296,68 @@ func TestGrokCliResolve_RefreshOn401(t *testing.T) {
 	}
 }
 
-// TestGrokCliResolve_EmptyToken returns nil,nil for missing accessToken.
+// countingStubRefresher is a TokenRefresher that counts how many times Refresh
+// is called. Used by the dedup-coalescing live test to prove concurrent
+// resolves on a 401 share a single refresh (#2703 Fix 2b).
+type countingStubRefresher struct {
+	mu    sync.Mutex
+	calls int
+	token string
+}
+
+func (c *countingStubRefresher) Refresh(_ context.Context, _ string, _ map[string]any, _ ProxyOptions, _ Logger) (*RefreshedCredentials, error) {
+	c.mu.Lock()
+	c.calls++
+	n := c.calls
+	c.mu.Unlock()
+	// Simulate a refresh that takes a moment so concurrent resolves overlap.
+	time.Sleep(20 * time.Millisecond)
+	_ = n
+	return &RefreshedCredentials{AccessToken: c.token}, nil
+}
+
+// TestGrokCliResolve_ConcurrentRefreshCoalesces proves #2703 Fix 2b: when two
+// resolves race the same 401, the shared dedup collapses them into a single
+// upstream refresh rather than firing two.
+func TestGrokCliResolve_ConcurrentRefreshCoalesces(t *testing.T) {
+	calls := int32(0)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&calls, 1)
+		_, _ = io.ReadAll(r.Body)
+		if n <= 2 {
+			// Both concurrent resolves get a 401 on their first fetch attempt.
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[{"id":"grok-4","context_length":256000}]`))
+	}))
+	t.Cleanup(srv.Close)
+	refresher := &countingStubRefresher{token: "refreshed-at"}
+	r := NewGrokCliResolver(nil, refresher).(*grokCliResolver)
+	withSwap(r, srv.URL)
+
+	creds := provider.Credentials{
+		AccessToken:          "at",
+		ProviderSpecificData: map[string]any{"refreshToken": "rt", "connectionId": "shared-conn"},
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = r.Resolve(context.Background(), creds, ResolveOpts{})
+		}()
+	}
+	wg.Wait()
+
+	if refresher.calls > 1 {
+		t.Fatalf("concurrent same-connection 401 refreshes must coalesce into 1, got %d", refresher.calls)
+	}
+	if refresher.calls != 1 {
+		t.Fatalf("expected exactly 1 refresh call, got %d", refresher.calls)
+	}
+}
 func TestGrokCliResolve_EmptyToken(t *testing.T) {
 	r := NewGrokCliResolver(nil, nil)
 	out, err := r.Resolve(context.Background(), provider.Credentials{}, ResolveOpts{})

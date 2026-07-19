@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"sync"
 	"time"
 
 	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
@@ -163,9 +164,11 @@ func stableHash(seed string) string {
 
 // Cache is a per-credential TTL cache of resolved catalogs, mirroring the JS
 // `catalogCache: Map<string, { expiresAt, models }>`. It is safe for
-// concurrent use. Keyed by a stable per-credential hash (resolver-defined).
+// concurrent use (mu guards the store map). Keyed by a stable per-credential
+// hash (resolver-defined).
 type Cache struct {
 	ttl   time.Duration
+	mu    sync.RWMutex
 	store map[string]cacheEntry
 }
 
@@ -187,6 +190,8 @@ func (c *Cache) Get(key string) (*Result, bool) {
 	if c == nil {
 		return nil, false
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if e, ok := c.store[key]; ok && time.Now().Before(e.expiresAt) {
 		return e.result, true
 	}
@@ -198,6 +203,8 @@ func (c *Cache) Set(key string, result *Result) {
 	if c == nil {
 		return
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.store[key] = cacheEntry{expiresAt: time.Now().Add(c.ttl), result: result}
 }
 
@@ -206,6 +213,8 @@ func (c *Cache) Invalidate(key string) {
 	if c == nil {
 		return
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	delete(c.store, key)
 }
 
@@ -214,6 +223,8 @@ func (c *Cache) Clear() {
 	if c == nil {
 		return
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.store = map[string]cacheEntry{}
 }
 

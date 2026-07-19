@@ -70,7 +70,7 @@ func (r *grokCliResolver) Resolve(ctx context.Context, creds provider.Credential
 	if err != nil {
 		if is401or403(err) && refreshTokenOf(creds) != "" && r.refresher != nil {
 			log.Info("GROK_CLI_MODELS: got 401/403; refreshing token")
-			refreshed, rerr := r.refresher.Refresh(ctx, refreshTokenOf(creds), creds.ProviderSpecificData, opts.ProxyOptions, log)
+			refreshed, rerr := refreshDeduped(ctx, r.refresher, creds, refreshTokenOf(creds), opts.ProxyOptions, log)
 			if rerr != nil || refreshed == nil || refreshed.AccessToken == "" {
 				log.Warn("GROK_CLI_MODELS: token refresh did not return a token")
 				return nil, nil

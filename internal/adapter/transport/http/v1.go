@@ -87,6 +87,10 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	mux.HandleFunc("POST /v1/chat/completions", handler.handleChat)
 	mux.HandleFunc("POST /v1/messages", handler.handleChat)
 	mux.HandleFunc("POST /v1/responses", handler.handleChat)
+	// POST /v1/messages/count_tokens — Anthropic-compatible token-count
+	// estimate. Local (chars/4) only, no upstream — mirrors legacy JS
+	// src/app/api/v1/messages/count_tokens/route.js.
+	mux.HandleFunc("POST /v1/messages/count_tokens", handler.handleCountTokens)
 	// GET /v1/models — OpenAI-compatible model catalog. Static MVP (issue
 	// decolua/9router #2702): combos + per-provider static catalogs (only for
 	// providers with an active connection) + custom models + aliases, minus

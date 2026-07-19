@@ -55,15 +55,15 @@ vs Go stub (`v1_dashboard.go` returns "not available"):
 | POST /v1/chat/completions | ✅ | (also stub) | **ported** |
 | POST /v1/messages | ✅ | (also stub) | **ported** |
 | POST /v1/responses | ✅ | (also stub) | **ported** |
-| GET /v1/models | ❌ | stub | **MISSING (P0, #2702)** |
+| GET /v1/models | ✅ | passthrough | **ported (static catalog MVP, #2702)** |
 | GET /v1/models/info | ✅ | passthrough | **ported (T033b, static-catalog subset)** |
-| GET /v1/models/{kind} | ❌ | stub | **MISSING (P1)** |
-| POST /v1/embeddings | ❌ | stub | **MISSING (P1)** |
+| GET /v1/models/{kind} | ✅ | passthrough | **ported (static catalog MVP)** |
+| POST /v1/embeddings | ✅ | passthrough | **ported (T031b)** |
 | POST /v1/audio/speech | ✅ | ported | TTS: openai/gemini/elevenlabs/minimax/inworld/cartesia/playht/nvidia/deepgram (T033b-3) |
 | POST /v1/audio/transcriptions | ✅ | ported | multipart STT: openai/groq/deepgram/assemblyai/gemini (T033b-4) |
-| GET /v1/audio/voices | ❌ | stub | **MISSING (P2)** |
+| GET /v1/audio/voices | ✅ | passthrough | **ported (T033b-5, static catalog)** |
 | POST /v1/images/generations | ✅ | ported | image gen: openai-compat/gemini/codex (T033b-6) |
-| POST /v1/messages/count_tokens | ❌ | stub | **MISSING (P1)** |
+| POST /v1/messages/count_tokens | ✅ | passthrough | **ported (T031b)** |
 | POST /v1/responses/compact | ✅ | passthrough | responses sub-variant (T033b-8 ported) |
 | GET /v1/responses/{id} | ✅ | 501 stub | OpenAI RetrieveResponse poll — honest 501 (no upstream returns LRO Responses state; T033b-8) |
 | POST /v1/search | ✅ | ported | web-search: serper/tavily/searxng dedicated + gemini/openai/perplexity-chat searchViaChat (T033b-1) |
@@ -74,67 +74,82 @@ vs Go stub (`v1_dashboard.go` returns "not available"):
 | POST /v1/videos/extensions | ✅ | ported | xAI LRO raw-byte proxy (T033b-7) |
 | GET /v1/videos/{id} | ✅ | ported | xAI LRO poll, provider fixed to xai (T033b-7) |
 | GET /v1 (root) | — | root ok | ported (trivial) |
-| GET /v1beta/models | ❌ | — | **MISSING (P1, Gemini-compat)** |
-| GET /v1beta/models/{path...} | ❌ | — | **MISSING (P1, Gemini-compat)** |
+| GET /v1beta/models | ❌ | — | **MISSING (P1, Gemini-compat) — tracked as #38 / T032** |
+| GET /v1beta/models/{path...} | ❌ | — | **MISSING (P1, Gemini-compat) — tracked as #38 / T032** |
 
-**Client `/v1/*` summary: 11 of 23 real. 12 missing (mostly stubs in dashboard proxy).**
+**Client `/v1/*` summary: 21 of 23 real. 2 missing (both /v1beta/models, Gemini-native proxy — T032).**
 
-## Services (lifecycle) — verified missing
+## Services (lifecycle) — PORTED (audit updated post-T027b/T030b)
 
 - `open-sse/services/tokenRefresh.js` + `tokenRefresh/dedup.js` +
-  `tokenRefresh/providers.js` → **MISSING (P0)**. No token refresh in Go at all.
-  Confirmed by grep: zero `refreshCredentials`/`RefreshToken` in internal/.
+  `tokenRefresh/providers.js` → **PORTED (T027b)** at
+  `internal/adapter/provider/resolver/tokenrefresh/` (kiro, xai/grok-cli,
+  copilot refreshers; clinepass/kimchi use static creds; qoder stub).
 - 6 live-model resolvers (kiro/qoder/kimchi/copilot/clinepass/grokCli) →
-  **MISSING (P0)**. Block on token refresh.
+  **PORTED (T030b)** at `internal/adapter/provider/resolver/`, wired in
+  `internal/app/wire.go` via `resolver.Register`. (qoder is a stub: COSY
+  signing not yet ported.)
 - `open-sse/providers/capabilities.js` (service-kind → capability map) →
-  **MISSING (P1)**. Needed by `/v1/models` kind filtering.
-- `src/shared/constants/models.js` (PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS,
-  getModelKind) + `src/shared/constants/providers.js` (AI_PROVIDERS,
-  isAnthropicCompatibleProvider, isOpenAICompatibleProvider, getProviderAlias,
-  serviceKinds) → **MISSING (P0)** — `/v1/models` and kind logic depend on these
-  constants. This is large: the static model catalog for every provider.
+  **INLINE (T026/T028)** as `ServiceKinds` on `provider.ProviderCatalog`
+  in `internal/adapter/provider/registry.go`; `/v1/models` kind filtering
+  consumes it directly (`kindsIntersect` in v1models.go).
+- `src/shared/constants/models.js` + `providers.js` (PROVIDER_MODELS,
+  AI_PROVIDERS, serviceKinds, alias/kind helpers) → **PORTED (T026)** as
+  `provider.AllCatalogs` / `provider.ProviderCatalog` in
+  `internal/adapter/provider/registry.go`.
 
-## The dominant gap cluster
+## The dominant gap cluster — CLOSED
 
-**Server-side provider lifecycle**: token refresh + live-model resolvers +
-provider/model constants + capabilities. This single cluster blocks
-`/v1/models`, `/v1beta/models`, `/api/models/availability`, and every
-OAuth provider's long-running auth. It is also exactly the #2703 Fix 2/3
-surface (route-aware refresh). One coherent subsystem, not scattered bugs.
+**Server-side provider lifecycle** (token refresh + live-model resolvers +
+provider/model constants + capabilities) is ported. The only remaining
+lifecycle surface is #2703 Fix 2–5 (route-aware refresh pipeline, structured
+failure types, sticky selection, diagnostics) — tracked separately, not a
+cutover blocker. `/v1beta/models` (T032 / #38) is the last client-surface gap.
 
 ## Recommended Worker batch (largest-safe-slice ordering)
 
-1. **T026 — Provider constants port** (models.js + providers.js → Go).
-   Pure data, no I/O. Unblocks /v1/models, capabilities, kind filtering.
-2. **T027 — Token refresh pipeline** (tokenRefresh.js + dedup + providers).
-   Unblocks live-model resolvers, #2703 Fix 2/3, OAuth provider auth.
-3. **T028 — Capabilities mapping** (capabilities.js). Unblocks kind-aware
-   /v1/models.
-4. **T029 — GET /v1/models + /v1/models/{kind} + /v1/models/info** (the #2702
-   fix). Static + custom + alias − disabled + kind filter, no live resolvers
-   yet. Depends on T026 + T028.
-5. **T030 — Live-model resolvers** (kiro/qoder/kimchi/copilot/clinepass/grokCli).
-   Depends on T027. Restores "updates when thinking mode changes" (#2702).
-6. **T031 — /v1/embeddings + /v1/messages/count_tokens** (P1, no new deps).
-7. **T032 — /v1beta/models** (Gemini-compat). Depends on T026 + T028.
-8. **T033 — Stub audit: classify every `/api/*` handler as real|stub|partial.**
-   Read every handler body. This is the only way to know how many dashboard
-   buttons silently do nothing (like tunnel.enable). Separate read-only task.
+1. ~~T026 — Provider constants port~~ **DONE**.
+2. ~~T027 — Token refresh pipeline~~ **DONE (T027b)**.
+3. ~~T028 — Capabilities mapping~~ **DONE (inline ServiceKinds)**.
+4. ~~T029 — GET /v1/models + /v1/models/{kind} + /v1/models/info~~ **DONE**.
+5. ~~T030 — Live-model resolvers~~ **DONE (T030b)**.
+6. ~~T031 — /v1/embeddings + /v1/messages/count_tokens~~ **DONE (T031b)**.
+7. **T032 — /v1beta/models** (Gemini-compat). Last client-surface gap → #38.
+8. ~~T033 — Stub audit~~ **DONE (T033-api-v1-stub-audit.md)**.
 
-## NOT in scope of this audit (deferred)
+## Originally deferred — now ported (T031b/T033b)
 
-- `/v1/audio/*`, `/v1/images/*`, `/v1/search`, `/v1/responses/compact`,
-  `GET /v1/responses` — P2, niche. Port after P0/P1 stable. (`/v1/web/fetch`
-  ported — T033b-2; `/v1/api/chat` ported — T033b-8; `/v1/videos/*` ported —
-  T033b-7.)
-- Dashboard `/api/*` stub-vs-real classification — needs T033 first.
+The original audit deferred these as P2/niche; all have since landed:
+- `/v1/audio/speech` + `/v1/audio/transcriptions` + `/v1/audio/voices`
+  (T033b-3/4/5), `/v1/images/generations` (T033b-6), `/v1/videos/*`
+  (T033b-7), `/v1/search` (T033b-1), `/v1/web/fetch` (T033b-2),
+  `/v1/api/chat` (T033b-8), `/v1/responses/compact` + `GET /v1/responses/{id}`
+  (T033b-8), `/v1/embeddings` + `/v1/messages/count_tokens` (T031b).
 
-## Conclusion for the board
+## Still open
 
-The Go rewrite shipped the chat happy path and most dashboard routes, but
-**the entire server-side provider lifecycle (token refresh, live model
-discovery, provider/model constants, capabilities) was never ported**, and
-**the OpenAI client surface is 3 of 23 endpoints**. This is the systemic gap
-behind #2702 and #2703. It is one coherent subsystem — port it as a batch in
-the ordering above before cutover, or the Go binary cannot serve any OAuth
-provider long-term and cannot report its model catalog to clients.
+- `/v1beta/models` + `/v1beta/models/{path...}` (Gemini-native proxy) → #38 / T032 (P1).
+- Dashboard `/api/*` stub-vs-real classification — done: see
+  `T033-api-v1-stub-audit.md` (all `/api/v1/*` flipped to passthrough as their
+  `/v1/*` counterparts landed).
+- #2703 Fix 2–5 (route-aware refresh pipeline, structured failure types,
+  sticky selection, diagnostics) — tracked separately.
+
+## Conclusion for the board (updated post-port)
+
+The original audit (2026-07-19) concluded the server-side provider lifecycle
+and most `/v1/*` endpoints were unported. That is **no longer accurate** as of
+the T026–T033b batch:
+
+- **Server-side provider lifecycle** (token refresh, live-model resolvers,
+  provider/model constants, capabilities) is **ported** (T026/T027b/T028/T030b)
+  — the systemic gap behind #2702/#2703 on the lifecycle axis is closed.
+- **OpenAI client surface `/v1/*`** is **21 of 23 real endpoints** (see table
+  above). The 2 remaining are both `/v1beta/models` (Gemini-native proxy,
+  P1) — tracked as #38 / T032, not a cutover blocker.
+- The remaining lifecycle surface is **#2703 Fix 2–5** (route-aware refresh
+  pipeline, structured failure types, sticky selection, diagnostics) —
+  tracked separately, not blocking cutover.
+
+The Go binary can now serve OAuth providers long-term and report its model
+catalog to clients. Open client-surface items: `/v1beta/models` (#38).

@@ -113,6 +113,28 @@ func TestV1Dashboard_Passthrough_Embeddings(t *testing.T) {
 	}
 }
 
+// TestV1Dashboard_Passthrough_ModelsInfo verifies /api/v1/models/info now
+// rewrites to /v1/models/info and dispatches (it was a notAvailable stub before
+// the T033b models/info endpoint landed). Query string is preserved.
+func TestV1Dashboard_Passthrough_ModelsInfo(t *testing.T) {
+	rec := &dispatchRecorder{}
+	mux := newDashboardMux(t, rec.ServeHTTP)
+
+	req := httptest.NewRequest("GET", "/api/v1/models/info?id=openai/dall-e-3&kind=image", nil)
+	rw := httptest.NewRecorder()
+	mux.ServeHTTP(rw, req)
+
+	if rec.gotPath != "/v1/models/info" {
+		t.Fatalf("dispatch path = %q, want /v1/models/info", rec.gotPath)
+	}
+	if q := req.URL.RawQuery; q != "id=openai/dall-e-3&kind=image" {
+		t.Fatalf("query not preserved: %q", q)
+	}
+	if rw.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rw.Code)
+	}
+}
+
 func containsSubstr(haystack, needle string) bool {
 	for i := 0; i+len(needle) <= len(haystack); i++ {
 		if haystack[i:i+len(needle)] == needle {

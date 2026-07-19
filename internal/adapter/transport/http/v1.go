@@ -137,6 +137,14 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	// contribute only their custom models until the resolver pipeline lands.
 	mux.HandleFunc("GET /v1/models", handler.handleModels)
 	mux.HandleFunc("GET /v1/models/{kind}", handler.handleModels)
+	// GET /v1/models/info?id={alias}/{modelId}&kind={optional} — per-model
+	// capability metadata. Ports src/app/api/v1/models/info/route.js:
+	// lookup the model in the provider static catalog (or a virtual
+	// search/fetch model when the provider has a search/fetch config) and
+	// report {id, name, kind, owned_by, endpoint}. Go's static catalog does
+	// not yet carry params/capabilities/options/dimensions/contextWindow, so
+	// those extra JS fields are omitted until the catalog is enriched.
+	mux.HandleFunc("GET /v1/models/info", handler.handleModelsInfo)
 }
 
 type v1Handler struct {
@@ -743,3 +751,98 @@ func (h *v1Handler) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(res.Body)
 }
 
+
+// kindEndpoint maps a service kind to the /v1/* endpoint that serves it,
+// mirroring the JS KIND_ENDPOINT table in src/app/api/v1/models/info/route.js.
+var kindEndpoint = map[string]string{
+	"llm":         "/v1/chat/completions",
+	"image":       "/v1/images/generations",
+	"tts":         "/v1/audio/speech",
+	"stt":         "/v1/audio/transcriptions",
+	"embedding":   "/v1/embeddings",
+	"imageToText": "/v1/chat/completions",
+	"webSearch":   "/v1/search",
+	"webFetch":    "/v1/fetch",
+}
+
+// modelInfoResponse is the JSON shape returned by GET /v1/models/info.
+// Mirrors JS buildInfo. Extra JS fields (params/capabilities/options/
+// dimensions/contextWindow/voicesUrl/searchTypes) are omitted until the Go
+// static catalog carries them; this is the honest subset available today.
+type modelInfoResponse struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Kind     string `json:"kind"`
+	OwnedBy  string `json:"owned_by"`
+	Endpoint string `json:"endpoint"`
+}
+
+// handleModelsInfo implements GET /v1/models/info?id={alias}/{modelId}. It
+// looks up the model in the provider's static catalog (built by
+// provider.AllCatalogs) and reports {id, name, kind, owned_by, endpoint}. The
+// optional ?kind= query disambiguates duplicate ids across kinds (e.g. a gemini
+// model that exists as both llm and tts). Returns 400 for a missing id, 404
+// when no catalog entry matches.
+func (h *v1Handler) handleModelsInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		h.writeError(w, http.StatusBadRequest, "Missing required query param: id (e.g. ?id=openai/dall-e-3)")
+		return
+	}
+	requestedKind := r.URL.Query().Get("kind")
+	info := lookupModelInfo(id, requestedKind)
+	if info == nil {
+		h.writeError(w, http.StatusNotFound, "Model not found: "+id)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(info)
+}
+
+// lookupModelInfo resolves "{alias}/{modelId}" to a modelInfoResponse using
+// the provider static catalogs (provider.AllCatalogs). requestedKind, when
+// non-empty, disambiguates a model id that exists under multiple kinds. The
+// alias half may be either the provider alias or the canonical provider id;
+// AllCatalogs entries are matched on both.
+func lookupModelInfo(fullID, requestedKind string) *modelInfoResponse {
+	slash := strings.Index(fullID, "/")
+	if slash <= 0 {
+		return nil
+	}
+	alias := fullID[:slash]
+	modelID := fullID[slash+1:]
+	for _, cat := range provider.AllCatalogs() {
+		if cat.Alias != alias && cat.ID != alias {
+			continue
+		}
+		for _, m := range cat.Models {
+			if m.ID != modelID {
+				continue
+			}
+			kind := m.Kind
+			if kind == "" {
+				kind = "llm"
+			}
+			if requestedKind != "" && kind != requestedKind {
+				continue
+			}
+			return &modelInfoResponse{
+				ID:       cat.Alias + "/" + m.ID,
+				Name:     orDefault(m.Name, m.ID),
+				Kind:     kind,
+				OwnedBy:  cat.Alias,
+				Endpoint: kindEndpoint[kind],
+			}
+		}
+	}
+	return nil
+}
+
+func orDefault(s, fallback string) string {
+	if s == "" {
+		return fallback
+	}
+	return s
+}

@@ -101,10 +101,12 @@ vs Go stub (`v1_dashboard.go` returns "not available"):
 ## The dominant gap cluster — CLOSED
 
 **Server-side provider lifecycle** (token refresh + live-model resolvers +
-provider/model constants + capabilities) is ported. The only remaining
-lifecycle surface is #2703 Fix 2–5 (route-aware refresh pipeline, structured
-failure types, sticky selection, diagnostics) — tracked separately, not a
-cutover blocker. `/v1beta/models` (T032 / #38) is the last client-surface gap.
+provider/model constants + capabilities) is ported. The remaining lifecycle
+surface is #2703 Fix 2–5: **Fix 5 (diagnostics)**, **Fix 4 (sticky selection)**,
+and **Fix 3 (structured failure types + fallback loop)** are DONE (commits
+`2e035f2`, `8d57c09`, Fix 3); **Fix 2 (route-aware OAuth refresh pipeline)** is
+the last open slice, tracked separately, not a cutover blocker. `/v1beta/models`
+(T032 / #38) is the last client-surface gap.
 
 ## Recommended Worker batch (largest-safe-slice ordering)
 
@@ -128,8 +130,9 @@ The original audit deferred these as P2/niche; all have since landed:
 
 ## Still open
 
-- #2703 Fix 2–5 (route-aware refresh pipeline, structured failure types,
-  sticky selection, diagnostics) — tracked separately.
+- #2703 **Fix 2** (route-aware OAuth refresh pipeline — TokenRefresher takes
+  proxy opts, dedupRefresh + withCredentialRefreshLock, proactive + reactive
+  401/403 refresh-retry). Fix 3/4/5 are DONE.
 - Gemini-native TTS forward (raw-byte proxy to
   generativelanguage.googleapis.com with the credential fallback loop) —
   honest 501 in /v1beta POST; follow-up slice. Non-blocking (use /v1/audio/speech).
@@ -146,9 +149,10 @@ the T026–T033b batch:
 - **OpenAI client surface `/v1/*`** is **21 of 23 real endpoints** (see table
   above). The 2 remaining are both `/v1beta/models` (Gemini-native proxy,
   P1) — tracked as #38 / T032, not a cutover blocker.
-- The remaining lifecycle surface is **#2703 Fix 2–5** (route-aware refresh
-  pipeline, structured failure types, sticky selection, diagnostics) —
-  tracked separately, not blocking cutover.
+- The remaining lifecycle surface is **#2703 Fix 2** (route-aware OAuth
+  refresh pipeline). Fix 3 (structured failure types + fallback loop), Fix 4
+  (sticky round-robin), and Fix 5 (route diagnostics) are DONE — tracked
+  separately, not blocking cutover.
 
 The Go binary can now serve OAuth providers long-term and report its model
 catalog to clients. Open client-surface items: `/v1beta/models` (#38).

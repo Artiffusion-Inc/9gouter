@@ -21,6 +21,7 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/webfetch"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/accountfallback"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
 	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
@@ -533,77 +534,133 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	creds, err := h.resolveCredentials(ctx, modelInfo.Provider, modelInfo.Model)
-	if err != nil {
-		if errors.Is(err, ErrNoActiveCredentials) {
-			h.writeError(w, http.StatusServiceUnavailable, fmt.Sprintf("All active credentials unavailable for provider: %s", modelInfo.Provider))
+	stream := resolveStream(body, r.Header, modelInfo.Provider)
+
+	// Account fallback loop (decolua/9router #2703 Fix 3). Mirrors the JS
+	// chat.js while(true) loop: resolve credentials (skipping excluded/locked
+	// connections), run the chat pipeline, and on a non-2xx / error classify
+	// the failure. A proxy/relay outage (typed ProxyRouteError) fails hard
+	// against the current account without locking it; any fallback-worthy
+	// failure marks the connection unavailable for the model and rotates to
+	// the next account. The loop is bounded by the number of active
+	// connections for the provider.
+	//
+	// Streaming-success and non-streaming-success exit the loop immediately.
+	// Mid-stream fallback is not attempted (matches JS: once the upstream
+	// begins streaming, the response is committed); a streaming error after
+	// the headers are written is surfaced as-is.
+	excluded := map[string]struct{}{}
+	var lastErr error
+	var lastStatus int
+	for {
+		creds, err := h.resolveCredentialsWithOpts(ctx, modelInfo.Provider, modelInfo.Model, excluded, "")
+		if err != nil {
+			if errors.Is(err, ErrNoActiveCredentials) {
+				if len(excluded) == 0 {
+					// No credentials configured at all (not an exhausted loop).
+					h.writeError(w, http.StatusNotFound, fmt.Sprintf("No active credentials for provider: %s", modelInfo.Provider))
+					return
+				}
+				status := lastStatus
+				if status == 0 {
+					status = http.StatusServiceUnavailable
+				}
+				msg := "All accounts unavailable"
+				if lastErr != nil {
+					msg = lastErr.Error()
+				}
+				h.writeError(w, status, fmt.Sprintf("[%s/%s] %s", modelInfo.Provider, modelInfo.Model, msg))
+				return
+			}
+			h.writeError(w, http.StatusNotFound, fmt.Sprintf("No active credentials for provider: %s", modelInfo.Provider))
 			return
 		}
-		h.writeError(w, http.StatusNotFound, fmt.Sprintf("No active credentials for provider: %s", modelInfo.Provider))
-		return
-	}
 
-	stream := resolveStream(body, r.Header, modelInfo.Provider)
-	sseWriter := New(w, ctx)
-
-	req := ChatRequest{
-		Ctx:         ctx,
-		Body:        body,
-		Endpoint:    r.URL.Path,
-		Headers:     r.Header.Clone(),
-		ProviderID:  modelInfo.Provider,
-		Model:       modelInfo.Model,
-		Credentials: creds,
-		Stream:      stream,
-		APIKey:      apiKey,
-		ConnectionID: func() string {
-			if m := creds.ProviderSpecificData; m != nil {
-				if v, ok := m["_connectionId"].(string); ok {
-					return v
-				}
-			}
-			return ""
-		}(),
-		UserAgent: r.UserAgent(),
-	}
-
-	// Route-diagnostics log before the upstream call (decolua/9router #2703
-	// Fix 5). Mirrors the JS chatCore.js "PROXY | provider | model | conn= |
-	// pool= | url=" line and adds the structured phase/route/strictProxy/
-	// proxyPoolId fields the JS build never emitted. The route classification
-	// follows the resolved credentials' providerSpecificData: a vercel relay
-	// wins, then an enabled connection/env proxy, else direct.
-	h.logger.Info("route selected",
-		"phase", "inference",
-		"provider", modelInfo.Provider,
-		"model", modelInfo.Model,
-		"route", classifyRoute(creds.ProviderSpecificData),
-		"connectionId", req.ConnectionID,
-		"proxyPoolId", psdString(creds.ProviderSpecificData, "proxyPoolId"),
-		"strictProxy", psdBool(creds.ProviderSpecificData, "strictProxy"),
-	)
-
-	res, err := h.deps.Chat.Handle(ctx, req, w, sseWriter)
-	if err != nil && res.Err == nil {
-		res.Err = err
-	}
-	if res.Err != nil {
-		if !wroteResponse(w) {
-			status := res.StatusCode
-			if status == 0 {
-				status = http.StatusBadGateway
-			}
-			h.writeError(w, status, res.Err.Error())
+		sseWriter := New(w, ctx)
+		req := ChatRequest{
+			Ctx:         ctx,
+			Body:        body,
+			Endpoint:    r.URL.Path,
+			Headers:     r.Header.Clone(),
+			ProviderID:   modelInfo.Provider,
+			Model:       modelInfo.Model,
+			Credentials:  creds,
+			Stream:       stream,
+			APIKey:       apiKey,
+			ConnectionID: psdString(creds.ProviderSpecificData, "_connectionId"),
+			UserAgent:    r.UserAgent(),
 		}
-		return
-	}
 
-	if res.Streamed {
-		// SSE headers and terminator already handled by stream pipe.
-		return
-	}
+		// Route-diagnostics log before the upstream call (decolua/9router
+		// #2703 Fix 5). Mirrors the JS chatCore.js "PROXY | provider | model |
+		// conn= | pool= | url=" line plus the structured phase/route/
+		// strictProxy/proxyPoolId fields the JS build never emitted.
+		h.logger.Info("route selected",
+			"phase", "inference",
+			"provider", modelInfo.Provider,
+			"model", modelInfo.Model,
+			"route", classifyRoute(creds.ProviderSpecificData),
+			"connectionId", req.ConnectionID,
+			"proxyPoolId", psdString(creds.ProviderSpecificData, "proxyPoolId"),
+			"strictProxy", psdBool(creds.ProviderSpecificData, "strictProxy"),
+		)
 
-	// Non-streaming success: usecase already wrote the JSON body.
+		res, err := h.deps.Chat.Handle(ctx, req, w, sseWriter)
+		if err != nil && res.Err == nil {
+			res.Err = err
+		}
+
+		// Success path: streaming committed or non-streaming body written.
+		if res.Err == nil {
+			if res.Streamed {
+				// On success, clear the model lock for the account that just
+				// served the request (lazy recovery — Fix 3).
+				h.clearAccountErrorOnSuccess(ctx, req.ConnectionID, modelInfo.Model)
+				return
+			}
+			h.clearAccountErrorOnSuccess(ctx, req.ConnectionID, modelInfo.Model)
+			return
+		}
+
+		// Failure: classify and decide fallback vs hard-fail. A streaming
+		// response that already committed headers cannot be retried — surface
+		// the error as-is.
+		if res.Streamed {
+			// Headers/body already on the wire; nothing to retry. Log and stop.
+			h.logger.Warn("chat streaming error after commit",
+				"provider", modelInfo.Provider, "model", modelInfo.Model,
+				"connectionId", req.ConnectionID, "status", res.StatusCode, "error", res.Err)
+			return
+		}
+
+		fallback := h.classifyAndMark(ctx, req.ConnectionID, modelInfo.Provider, modelInfo.Model, res.StatusCode, res.Err)
+		if !fallback.shouldFallback {
+			// Hard-fail (e.g. proxy route outage — account is healthy). Surface
+			// the original error without rotating.
+			if !wroteResponse(w) {
+				status := res.StatusCode
+				if status == 0 {
+					status = http.StatusBadGateway
+				}
+				h.writeError(w, status, res.Err.Error())
+			}
+			return
+		}
+
+		// Rotate: exclude this connection and retry with the next.
+		h.logger.Warn("account fallback",
+			"provider", modelInfo.Provider, "model", modelInfo.Model,
+			"connectionId", req.ConnectionID, "status", res.StatusCode,
+			"cooldownMs", fallback.cooldownMs)
+		if req.ConnectionID != "" {
+			excluded[req.ConnectionID] = struct{}{}
+		}
+		lastErr = res.Err
+		lastStatus = res.StatusCode
+		// Reset response headers so the next attempt can write a fresh
+		// response (the failed attempt only touched w.Header(), not WriteHeader).
+		resetResponseHeaders(w)
+	}
 }
 
 func (h *v1Handler) requireAPIKey(ctx context.Context) (bool, error) {
@@ -1051,11 +1108,154 @@ func errorCode(status int) string {
 
 func boolPtr(v bool) *bool { return &v }
 
+// wroteResponse reports whether the response writer has already had its
+// headers/body committed to the wire (WriteHeader or Write called), so the
+// fallback loop knows it cannot retry. For a real http.ResponseWriter this is
+// always conservatively false (net/http exposes no "committed" signal and the
+// fallback loop only reaches this check on the non-streamed failure path,
+// where nothing has been written yet). For an *httptest.ResponseRecorder the
+// naive `rec.Code != 0` check is a false positive: NewRecorder initialises
+// Code to 200 before any WriteHeader call, so it would report "committed" for
+// a fresh recorder and cause the hard-fail writeError to be skipped (leaving
+// an empty 200). The real commit signals are a non-empty Body (writeError and
+// non-streaming success both write a body) or Flushed (the SSE writer flushes
+// on the first frame).
 func wroteResponse(w http.ResponseWriter) bool {
 	if rec, ok := w.(*httptest.ResponseRecorder); ok {
-		return rec.Code != 0
+		return rec.Body != nil && rec.Body.Len() > 0 || rec.Flushed
 	}
 	return false
+}
+
+// fallbackOutcome is the result of classifying one chat failure for the
+// account fallback loop (#2703 Fix 3).
+type fallbackOutcome struct {
+	shouldFallback bool
+	cooldownMs     int
+}
+
+// classifyAndMark classifies an upstream failure and, when fallback-worthy,
+// marks the connection unavailable for the model (modelLock_<model> +
+// testStatus/lastError/backoffLevel) via ConnectionRepo.ApplyConnectionPatch.
+// A typed ProxyRouteError (proxy/relay outage) returns shouldFallback=false
+// WITHOUT writing a lock — the acceptance criterion "a proxy outage does not
+// automatically lock a healthy account". The proxy package's FailureSource is
+// bridged into the accountfallback package's FailureSource here so the
+// classification logic stays provider-agnostic.
+func (h *v1Handler) classifyAndMark(ctx context.Context, connectionID, providerID, model string, status int, err error) fallbackOutcome {
+	if connectionID == "" || connectionID == "noauth" {
+		return fallbackOutcome{shouldFallback: false}
+	}
+
+	var override *accountfallback.FallbackDecision
+	if pe, ok := accountfallback.AsProxyRouteError(err); ok {
+		override = accountfallback.OverrideForSource(pe.Source)
+	} else if proxyFE, ok := asProxyFetchError(err); ok {
+		// Bridge proxy.FetchError (FailureSourceProxy/Relay) into the
+		// accountfallback typed source so a proxy outage does not lock the
+		// account even when the provider executor did not wrap it in a
+		// ProxyRouteError.
+		src := mapProxyFailureSource(proxyFE.Source)
+		if src == accountfallback.FailureSourceProxy || src == accountfallback.FailureSourceRelay {
+			override = &accountfallback.FallbackDecision{ShouldFallback: false, CooldownMs: 0}
+		}
+	}
+
+	// Read current backoff level from the connection data.
+	backoffLevel := h.readBackoffLevel(ctx, connectionID)
+	dec := accountfallback.CheckFallbackError(status, err.Error(), backoffLevel, override)
+	if !dec.ShouldFallback {
+		return fallbackOutcome{shouldFallback: false}
+	}
+	newLevel, changed := dec.NewBackoffLevelSet()
+	patch := accountfallback.MarkUnavailablePatch(model, status, err.Error(), dec.CooldownMs, newLevel, changed)
+	if _, perr := h.deps.ConnectionRepo.ApplyConnectionPatch(ctx, connectionID, patch); perr != nil {
+		h.logger.Warn("mark account unavailable failed", "connectionId", connectionID, "error", perr)
+	}
+	return fallbackOutcome{shouldFallback: true, cooldownMs: dec.CooldownMs}
+}
+
+// clearAccountErrorOnSuccess lazily clears the model lock and resets error
+// state for a connection that just served a successful request (Fix 3, ports
+// clearAccountError). Errors are non-fatal: a failed clear just leaves a
+// stale lock that will expire on its own.
+func (h *v1Handler) clearAccountErrorOnSuccess(ctx context.Context, connectionID, model string) {
+	if connectionID == "" || connectionID == "noauth" {
+		return
+	}
+	conn, err := h.deps.ConnectionRepo.GetByID(ctx, connectionID)
+	if err != nil || conn == nil {
+		return
+	}
+	var data map[string]any
+	_ = json.Unmarshal(conn.Data, &data)
+	patch := accountfallback.ClearAccountErrorPatch(data, model)
+	if patch == nil {
+		return
+	}
+	if _, perr := h.deps.ConnectionRepo.ApplyConnectionPatch(ctx, connectionID, patch); perr != nil {
+		h.logger.Warn("clear account error failed", "connectionId", connectionID, "error", perr)
+	}
+}
+
+// readBackoffLevel reads the connection's stored backoffLevel (default 0).
+func (h *v1Handler) readBackoffLevel(ctx context.Context, connectionID string) int {
+	conn, err := h.deps.ConnectionRepo.GetByID(ctx, connectionID)
+	if err != nil || conn == nil {
+		return 0
+	}
+	var data map[string]any
+	_ = json.Unmarshal(conn.Data, &data)
+	if v, ok := data["backoffLevel"].(float64); ok {
+		return int(v)
+	}
+	if v, ok := data["backoffLevel"].(int); ok {
+		return v
+	}
+	return 0
+}
+
+// resetResponseHeaders clears headers a failed attempt set on the response
+// writer so the next fallback attempt starts clean. SSE writer sets
+// Content-Type/Cache-Control/Connection/X-Accel-Buffering; a failed
+// non-streaming attempt sets Content-Type via writeError. We only reset when
+// nothing has been written to the wire yet.
+func resetResponseHeaders(w http.ResponseWriter) {
+	if wroteResponse(w) {
+		return
+	}
+	hdr := w.Header()
+	for _, k := range []string{"Content-Type", "Cache-Control", "Connection", "X-Accel-Buffering", "Access-Control-Allow-Origin"} {
+		hdr.Del(k)
+	}
+}
+
+// asProxyFetchError unwraps err to a *proxy.FetchError and reports its typed
+// FailureSource. Returns ok=false when the error is not a proxy fetch error.
+// Used by the fallback loop to decide whether a failure is a proxy/relay
+// outage (do not lock the account) vs a provider/account failure.
+func asProxyFetchError(err error) (*proxy.FetchError, bool) {
+	var fe *proxy.FetchError
+	if errors.As(err, &fe) {
+		return fe, true
+	}
+	return nil, false
+}
+
+// mapProxyFailureSource bridges proxy.FailureSource into
+// accountfallback.FailureSource so the classification package stays free of
+// the proxy package import (the proxy package is transport-layer).
+func mapProxyFailureSource(src proxy.FailureSource) accountfallback.FailureSource {
+	switch src {
+	case proxy.FailureSourceProxy:
+		return accountfallback.FailureSourceProxy
+	case proxy.FailureSourceRelay:
+		return accountfallback.FailureSourceRelay
+	case proxy.FailureSourceUpstream:
+		return accountfallback.FailureSourceUpstream
+	default:
+		return accountfallback.FailureSourceUnknown
+	}
 }
 
 // handleEmbeddings serves POST /v1/embeddings. It reuses the chat handler's

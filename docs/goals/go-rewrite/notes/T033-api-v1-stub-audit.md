@@ -193,6 +193,16 @@ Gemini-native) is ported:
   model id) is a raw-byte upstream proxy with a credential fallback loop —
   a separate slice; returns an honest 501 pointing at the follow-up for now
   (clients use `/v1/audio/speech` for TTS).
+- **Account fallback loop** (`#2703` Fix 3, landed after this audit): the Go
+  `/v1/chat/completions` handler now runs the JS `chat.js` while(true)
+  loop — resolve credentials (skipping excluded/locked connections), run the
+  pipeline, classify failures via the `accountfallback` package. A typed
+  `proxy.FetchError` / `ProxyRouteError` with `FailureSourceProxy`/`Relay` fails
+  hard against the current account WITHOUT locking it (the original JS bug);
+  a fallback-worthy failure (429/5xx/auth/quota) writes a per-model lock +
+  `testStatus=unavailable` and rotates. Sticky round-robin (Fix 4) and route
+  diagnostics (Fix 5) landed alongside. Fix 2 (route-aware OAuth refresh) is
+  the last open slice.
 
 Tests: 19 unit tests (`parseV1BetaModelAction`, `convertGeminiToInternal`,
 `isV1BetaGeminiNativeTTS`, `buildV1BetaUsageMetadata`, SSE/JSON converters) +

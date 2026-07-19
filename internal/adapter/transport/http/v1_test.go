@@ -18,6 +18,7 @@ import (
 	dbschema "github.com/Artiffusion-Inc/9router/internal/adapter/db"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/sqlite"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
 	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
 	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
 )
@@ -42,6 +43,32 @@ func (s *stubChatHandler) Handle(ctx context.Context, req ChatRequest, w http.Re
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"id":"chatcmpl-1","object":"chat.completion","model":"gpt-4","choices":[{"message":{"content":"hello"}}],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}`))
 	return ChatResult{StatusCode: http.StatusOK}, nil
+}
+
+// perConnChatHandler returns a different result per connectionId, used to
+// exercise the account fallback loop (#2703 Fix 3): a failing account should
+// be excluded and the request retried against the next account.
+type perConnChatHandler struct {
+	results map[string]ChatResult // connectionId → result
+	seen    []string
+}
+
+func (s *perConnChatHandler) Handle(ctx context.Context, req ChatRequest, w http.ResponseWriter, sse *Writer) (ChatResult, error) {
+	s.seen = append(s.seen, req.ConnectionID)
+	res, ok := s.results[req.ConnectionID]
+	if !ok {
+		return ChatResult{StatusCode: http.StatusBadGateway, Err: errors.New("no result configured")}, nil
+	}
+	if res.Err != nil {
+		return res, nil
+	}
+	if res.Streamed {
+		return res, nil
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(res.StatusCode)
+	_, _ = w.Write([]byte(`{"id":"ok","object":"chat.completion","model":"gpt-4","choices":[{"message":{"content":"ok"}}]}`))
+	return res, nil
 }
 
 func TestV1_MissingAPIKey(t *testing.T) {
@@ -549,7 +576,176 @@ func TestV1_ChatCompletions_StickyRoundRobin(t *testing.T) {
 	}
 }
 
-// TestV1_ChatCompletions_AllExcludedReturns503 verifies that when every active
+// TestV1_ChatCompletions_FallbackRotatesOn429 verifies the #2703 Fix 3
+// account fallback loop: when the first connection returns 429 (a fallback-
+// worthy error), the loop marks it unavailable and retries against the next
+// active connection. The second connection succeeds, so the client gets 200
+// and the handler visited both accounts in order.
+func TestV1_ChatCompletions_FallbackRotatesOn429(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+	mustCreateConnectionWithID(t, db, "openai-a", "openai", `{"apiKey":"sk-a","providerSpecificData":{"connectionProxyEnabled":false}}`)
+	mustCreateConnectionWithID(t, db, "openai-b", "openai", `{"apiKey":"sk-b","providerSpecificData":{"connectionProxyEnabled":false}}`)
+
+	chat := &perConnChatHandler{results: map[string]ChatResult{
+		"openai-a": {StatusCode: http.StatusTooManyRequests, Err: errors.New("rate limit exceeded")},
+		"openai-b": {StatusCode: http.StatusOK},
+	}}
+	deps := V1Deps{
+		APIKeysRepo:    repo.NewAPIKeyRepo(db),
+		SettingsRepo:   repo.NewSettingsRepo(db),
+		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ComboRepo:      repo.NewComboRepo(db),
+		AliasRepo:       repo.NewAliasRepo(db),
+		NodeRepo:        repo.NewNodeRepo(db),
+		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
+		Chat:           chat,
+		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	}
+
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d (fallback should reach the second account); body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if len(chat.seen) != 2 {
+		t.Fatalf("expected 2 attempts, got %d: %v", len(chat.seen), chat.seen)
+	}
+	if chat.seen[0] != "openai-a" || chat.seen[1] != "openai-b" {
+		t.Fatalf("expected a→b rotation, got %v", chat.seen)
+	}
+	// The failed account should now carry a modelLock_gpt-4 + unavailable state.
+	conn, err := deps.ConnectionRepo.GetByID(context.Background(), "openai-a")
+	if err != nil || conn == nil {
+		t.Fatalf("get conn-a: %v", err)
+	}
+	var data map[string]any
+	_ = json.Unmarshal(conn.Data, &data)
+	if _, ok := data["modelLock_gpt-4"]; !ok {
+		t.Fatalf("expected modelLock_gpt-4 on openai-a after 429, data=%v", data)
+	}
+	if ts, _ := data["testStatus"].(string); ts != "unavailable" {
+		t.Fatalf("testStatus = %q, want unavailable", ts)
+	}
+}
+
+// TestV1_ChatCompletions_FallbackAllFail503 verifies that when every account
+// fails with a fallback-worthy error, the loop exhausts and the client gets
+// the last attempt's status (mirrors the JS chat.js while(true) loop: on
+// ErrNoActiveCredentials it reuses the last non-2xx status, falling back to
+// 503 only when no status was recorded). Here both attempts return 429, so
+// the exhausted-loop response is 429, not 503.
+func TestV1_ChatCompletions_FallbackAllFail503(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+	mustCreateConnectionWithID(t, db, "openai-a", "openai", `{"apiKey":"sk-a","providerSpecificData":{"connectionProxyEnabled":false}}`)
+	mustCreateConnectionWithID(t, db, "openai-b", "openai", `{"apiKey":"sk-b","providerSpecificData":{"connectionProxyEnabled":false}}`)
+
+	chat := &perConnChatHandler{results: map[string]ChatResult{
+		"openai-a": {StatusCode: http.StatusTooManyRequests, Err: errors.New("rate limit exceeded")},
+		"openai-b": {StatusCode: http.StatusTooManyRequests, Err: errors.New("rate limit exceeded")},
+	}}
+	deps := V1Deps{
+		APIKeysRepo:    repo.NewAPIKeyRepo(db),
+		SettingsRepo:   repo.NewSettingsRepo(db),
+		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ComboRepo:      repo.NewComboRepo(db),
+		AliasRepo:       repo.NewAliasRepo(db),
+		NodeRepo:        repo.NewNodeRepo(db),
+		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
+		Chat:           chat,
+		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	}
+
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	// Last attempt returned 429, so the exhausted-loop response reuses that
+	// status (lastStatus || 503). A mixed-failure scenario would surface the
+	// final status; here both are 429.
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d (last attempt's status); body=%s", rec.Code, http.StatusTooManyRequests, rec.Body.String())
+	}
+	if len(chat.seen) != 2 {
+		t.Fatalf("expected 2 attempts, got %d: %v", len(chat.seen), chat.seen)
+	}
+}
+
+// TestV1_ChatCompletions_ProxyErrorDoesNotLockAccount verifies the #2703 Fix 3
+// acceptance criterion: a proxy route outage (typed proxy.FetchError with
+// FailureSourceProxy) must NOT lock the account and must NOT rotate — the
+// request fails hard against the current account, and the connection's data
+// stays clean (no modelLock, testStatus not unavailable).
+func TestV1_ChatCompletions_ProxyErrorDoesNotLockAccount(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+	mustCreateConnectionWithID(t, db, "openai-a", "openai", `{"apiKey":"sk-a","providerSpecificData":{"connectionProxyEnabled":true,"connectionProxyUrl":"http://127.0.0.1:1","strictProxy":false}}`)
+	mustCreateConnectionWithID(t, db, "openai-b", "openai", `{"apiKey":"sk-b","providerSpecificData":{"connectionProxyEnabled":false}}`)
+
+	chat := &perConnChatHandler{results: map[string]ChatResult{
+		"openai-a": {StatusCode: http.StatusBadGateway, Err: &proxy.FetchError{Err: errors.New("dial timeout"), Cause: "dial tcp: timeout", Source: proxy.FailureSourceProxy}},
+	}}
+	deps := V1Deps{
+		APIKeysRepo:    repo.NewAPIKeyRepo(db),
+		SettingsRepo:   repo.NewSettingsRepo(db),
+		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ComboRepo:      repo.NewComboRepo(db),
+		AliasRepo:       repo.NewAliasRepo(db),
+		NodeRepo:        repo.NewNodeRepo(db),
+		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
+		Chat:           chat,
+		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	}
+
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"model":"openai/gpt-4","messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	// Proxy outage → hard fail (502), no rotation.
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d (proxy outage fails hard); body=%s", rec.Code, http.StatusBadGateway, rec.Body.String())
+	}
+	if len(chat.seen) != 1 {
+		t.Fatalf("proxy outage must not rotate; got %d attempts: %v", len(chat.seen), chat.seen)
+	}
+	// openai-a must not be locked.
+	conn, err := deps.ConnectionRepo.GetByID(context.Background(), "openai-a")
+	if err != nil || conn == nil {
+		t.Fatalf("get conn-a: %v", err)
+	}
+	var data map[string]any
+	_ = json.Unmarshal(conn.Data, &data)
+	if _, ok := data["modelLock_gpt-4"]; ok {
+		t.Fatalf("proxy outage must not write a model lock, data=%v", data)
+	}
+	if ts, _ := data["testStatus"].(string); ts == "unavailable" {
+		t.Fatal("proxy outage must not mark account unavailable")
+	}
+}
 // connection is excluded by the fallback loop, resolveCredentials returns
 // ErrNoActiveCredentials and handleChat surfaces 503 instead of 404. This is
 // the transport hook Fix 3's fallback loop will rely on; wired here as part of

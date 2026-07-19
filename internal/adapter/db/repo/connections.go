@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
@@ -185,7 +186,47 @@ func (r *ConnectionRepo) Reorder(ctx context.Context, provider string) error {
 	return tx.Commit()
 }
 
-// UpdateUsageMeta merges lastUsedAt and consecutiveUseCount into a
+// ApplyConnectionPatch merges a flat-field patch into a connection's JSON
+// data blob. A nil value in the patch deletes the key (used by Fix 3 to clear
+// expired modelLock_* fields and reset error state); any other value
+// overwrites. It is a read-modify-write over `data` because the optional
+// fields (modelLock_*, lastError, backoffLevel, ...) live inside the JSON
+// blob, not as columns. No priority reorder. Returns the merged data so the
+// caller can refresh in-memory connection state without a second read.
+func (r *ConnectionRepo) ApplyConnectionPatch(ctx context.Context, id string, patch map[string]any) (map[string]any, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT data FROM providerConnections WHERE id = ?`, id)
+	var raw []byte
+	if err := row.Scan(&raw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("connections applyPatch: not found")
+		}
+		return nil, fmt.Errorf("connections applyPatch read: %w", err)
+	}
+	data := map[string]any{}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &data); err != nil {
+			return nil, fmt.Errorf("connections applyPatch parse: %w", err)
+		}
+	}
+	for k, v := range patch {
+		if v == nil {
+			delete(data, k)
+		} else {
+			data[k] = v
+		}
+	}
+	next, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("connections applyPatch marshal: %w", err)
+	}
+	_, err = r.db.ExecContext(ctx,
+		`UPDATE providerConnections SET data = ?, updatedAt = ? WHERE id = ?`,
+		string(next), formatTime(now()), id)
+	if err != nil {
+		return nil, fmt.Errorf("connections applyPatch write: %w", err)
+	}
+	return data, nil
+}
 // connection's JSON data blob without triggering a priority reorder. This is
 // the persistence side of sticky round-robin selection (decolua/9router #2703
 // Fix 4): every selection writes back the timestamp + use count so the next
@@ -246,6 +287,14 @@ func (r *ConnectionRepo) Cleanup(ctx context.Context) (int64, error) {
 		for _, f := range connectionOptionalFields {
 			if v, ok := data[f]; ok && v == nil {
 				delete(data, f)
+				dirty = true
+			}
+		}
+		// modelLock_* keys are dynamic (one per model); drop nil-valued ones
+		// too so a cleared lock does not linger as JSON null.
+		for k := range data {
+			if strings.HasPrefix(k, "modelLock_") && data[k] == nil {
+				delete(data, k)
 				dirty = true
 			}
 		}

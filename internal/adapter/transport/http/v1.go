@@ -19,6 +19,7 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/webfetch"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
 	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
 	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
@@ -58,6 +59,35 @@ type EmbeddingsRequest struct {
 
 // EmbeddingsResult carries the outcome back to the HTTP layer.
 type EmbeddingsResult struct {
+	StatusCode int
+	Err        error
+	Body       []byte
+}
+
+// WebFetchHandler is the boundary between the HTTP transport layer and the
+// web-fetch usecase (POST /v1/web/fetch). Implementations are provided by
+// wire.go (proxyfetch adapter).
+type WebFetchHandler interface {
+	Handle(ctx context.Context, req WebFetchRequest) (WebFetchResult, error)
+}
+
+// WebFetchRequest carries the parsed /v1/web/fetch request into the usecase.
+// For web fetch the provider IS the model, so ProviderID is resolved from the
+// request body's `provider` (or `model`) field directly — not via resolveModel.
+type WebFetchRequest struct {
+	Ctx          context.Context
+	ProviderID   string
+	Credentials  domainProv.Credentials
+	APIKey       string
+	ConnectionID string
+	Endpoint     string
+	UserAgent    string
+	// Params carries the parsed body fields (url, format, max_characters).
+	Params webfetch.Params
+}
+
+// WebFetchResult carries the outcome back to the HTTP layer.
+type WebFetchResult struct {
 	StatusCode int
 	Err        error
 	Body       []byte
@@ -111,6 +141,9 @@ type V1Deps struct {
 
 	// Embeddings is the injected embeddings usecase boundary (POST /v1/embeddings).
 	Embeddings EmbeddingsHandler
+
+	// WebFetch is the injected web-fetch usecase boundary (POST /v1/web/fetch).
+	WebFetch WebFetchHandler
 }
 
 // RegisterV1 mounts POST handlers for /v1/chat/completions, /v1/messages,
@@ -160,6 +193,14 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	mux.HandleFunc("GET /v1/audio/voices", func(w http.ResponseWriter, r *http.Request) {
 		api.HandleV1AudioVoices(w, r, mux.ServeHTTP)
 	})
+	// POST /v1/web/fetch — URL extraction (firecrawl/jina-reader/tavily/exa).
+	// Ports open-sse/handlers/fetch/index.js + src/sse/handlers/fetch.js:
+	// provider IS the model (body.provider || body.model), validate + SSRF
+	// guard the target URL, resolve credentials, dispatch through the
+	// proxyfetch usecase, return the normalized buildData JSON shape. No usage
+	// rows (the JS path does not persist usage; cost is in-band only). Combo
+	// expansion and account fallback are separate slices.
+	mux.HandleFunc("POST /v1/web/fetch", handler.handleWebFetch)
 }
 
 type v1Handler struct {

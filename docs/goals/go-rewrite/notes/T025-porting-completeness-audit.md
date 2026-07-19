@@ -67,7 +67,7 @@ vs Go stub (`v1_dashboard.go` returns "not available"):
 | POST /v1/responses/compact | ❌ | stub | **MISSING (P2)** |
 | GET /v1/responses | ❌ | — | **MISSING (P2)** |
 | POST /v1/search | ❌ | stub | **MISSING (P2)** |
-| POST /v1/web/fetch | ❌ | stub | **MISSING (P2)** |
+| POST /v1/web/fetch | ✅ | ported | adapter+usecase+handler+SSRF guard (T033b-2) |
 | POST /v1/api/chat | ❌ | stub | **MISSING (P2)** |
 | POST /v1/videos/generations | ❌ | stub | **MISSING (P2)** |
 | POST /v1/videos/edits | ❌ | stub | **MISSING (P2)** |
@@ -123,9 +123,9 @@ surface (route-aware refresh). One coherent subsystem, not scattered bugs.
 
 ## NOT in scope of this audit (deferred)
 
-- `/v1/audio/*`, `/v1/images/*`, `/v1/videos/*`, `/v1/search`, `/v1/web/fetch`,
+- `/v1/audio/*`, `/v1/images/*`, `/v1/videos/*`, `/v1/search`,
   `/v1/api/chat`, `/v1/responses/compact`, `GET /v1/responses` — P2, niche.
-  Port after P0/P1 stable.
+  Port after P0/P1 stable. (`/v1/web/fetch` is now ported — T033b-2.)
 - Dashboard `/api/*` stub-vs-real classification — needs T033 first.
 
 ## Conclusion for the board

@@ -37,6 +37,7 @@ import (
 	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxychat"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxyembeddings"
+	"github.com/Artiffusion-Inc/9router/internal/usecase/proxyfetch"
 )
 
 // App is the wired application. It exposes the HTTP server and the underlying
@@ -79,6 +80,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 
 	chatHandler := newProxyChatHandler(repos, proxyOpts, cfg, logger)
 	embeddingsHandler := newProxyEmbeddingsHandler(repos, proxyOpts, cfg, logger)
+	webFetchHandler := newProxyWebFetchHandler(cfg, logger)
 
 	mux := http.NewServeMux()
 	httptransport.RegisterV1(mux, httptransport.V1Deps{
@@ -95,6 +97,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Config:         cfg,
 		Chat:           chatHandler,
 		Embeddings:     embeddingsHandler,
+		WebFetch:       webFetchHandler,
 	})
 
 	sessionStore, err := auth.NewCookieStore(cfg.DashboardSessionSecret)
@@ -349,3 +352,39 @@ func (h *proxyEmbeddingsHandler) Handle(ctx context.Context, req httptransport.E
 
 // domainProvRegistry wraps the provider adapter registry for proxychat.
 func domainProvRegistry(id string) (proxychat.DomainProvider, error) { return provider.Lookup(id) }
+
+// proxyWebFetchHandler adapts proxyfetch.Handler to the
+// httptransport.WebFetchHandler interface. Lives in the composition root
+// (the only place allowed to know both packages). Unlike embeddings, web-fetch
+// does not persist usage rows (the legacy JS fetch path never called
+// saveRequestUsage), so it only needs config + logger.
+type proxyWebFetchHandler struct {
+	handler *proxyfetch.Handler
+}
+
+func newProxyWebFetchHandler(cfg config.Config, logger *slog.Logger) *proxyWebFetchHandler {
+	return &proxyWebFetchHandler{
+		handler: proxyfetch.New(proxyfetch.Dependencies{
+			Logger: &slogLogger{logger},
+			Config: cfg,
+		}),
+	}
+}
+
+func (h *proxyWebFetchHandler) Handle(ctx context.Context, req httptransport.WebFetchRequest) (httptransport.WebFetchResult, error) {
+	res := h.handler.Handle(ctx, proxyfetch.Request{
+		Ctx:          ctx,
+		ProviderID:   req.ProviderID,
+		Credentials:  req.Credentials,
+		APIKey:       req.APIKey,
+		ConnectionID: req.ConnectionID,
+		Endpoint:     req.Endpoint,
+		UserAgent:    req.UserAgent,
+		Params:       req.Params,
+	})
+	return httptransport.WebFetchResult{
+		StatusCode: res.StatusCode,
+		Err:        res.Err,
+		Body:       res.Body,
+	}, nil
+}

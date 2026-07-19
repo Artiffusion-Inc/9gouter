@@ -44,7 +44,7 @@ func RegisterV1Dashboard(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("POST /api/v1/videos/edits", h.notAvailable)
 	mux.HandleFunc("POST /api/v1/videos/extensions", h.notAvailable)
 	mux.HandleFunc("GET /api/v1/videos/{id}", h.notAvailable)
-	mux.HandleFunc("POST /api/v1/web/fetch", h.notAvailable)
+	mux.HandleFunc("POST /api/v1/web/fetch", h.passthrough("/v1/web/fetch"))
 }
 
 type v1DashboardHandler struct {

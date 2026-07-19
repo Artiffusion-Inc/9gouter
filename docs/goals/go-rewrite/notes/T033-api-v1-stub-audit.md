@@ -48,7 +48,7 @@ the cheap win in this audit.
 | `POST /api/v1/videos/edits` | video edit handlers | ❌ absent | video pipeline |
 | `POST /api/v1/videos/extensions` | video extension handlers | ❌ absent | video pipeline |
 | `GET /api/v1/videos/{id}` | video status/poll | ❌ absent | video pipeline |
-| `POST /api/v1/web/fetch` | web-fetch handlers | ❌ absent | webFetch service kind |
+| `POST /api/v1/web/fetch` | web-fetch handlers | ✅ passthrough | webFetch service kind (T033b-2 ported) |
 | `POST /api/v1/responses/compact` | responses compact variant | ❌ absent | responses sub-variant |
 
 These 14 require **new** `/v1/*` implementations first (each is a distinct
@@ -84,6 +84,10 @@ provider adapter + translator. Ordered roughly by dependency/leverage:
 3. **`/v1/search`** — Gemini `searchViaChat`; reuses the chat pipeline
    with a search-system-instruction wrapper.
 4. **`/v1/web/fetch`** — webFetch service kind; independent fetch+extract.
+   **PORTED (T033b-2):** `internal/adapter/provider/webfetch` (firecrawl/jina-reader/tavily/exa adapters),
+   `internal/usecase/proxyfetch` (Handler, buildResponseJSON mirroring JS buildData, no usage persistence),
+   `internal/adapter/transport/http/v1webfetch.go` (handler + SSRF guard `assertPublicURL`),
+   wiring in `internal/app/wire.go` (`newProxyWebFetchHandler`), dashboard passthrough. 12 handler tests + 11 adapter/helper tests + 5 usecase tests.
 5. **`/v1/audio/speech` (TTS)** — Gemini-tts + OpenAI TTS; needs provider
    tts adapters (JS has `gemini.js` TTS branch).
 6. **`/v1/audio/transcriptions` (STT)** — Gemini-stt + OpenAI STT.

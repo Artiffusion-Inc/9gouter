@@ -443,6 +443,18 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	// open-sse/handlers/search/index.js + callers.js + normalizers.js +
 	// chatSearch.js.
 	mux.HandleFunc("POST /v1/search", handler.handleSearch)
+
+	// /v1beta/models — Gemini-native surface, ports legacy JS
+	// src/app/api/v1beta/models/route.js (GET list) +
+	// src/app/api/v1beta/models/[...path]/route.js (POST generateContent /
+	// streamGenerateContent). GET returns the model catalog in Gemini shape;
+	// POST converts the Gemini request to the internal/OpenAI shape, re-
+	// dispatches through handleChat, and converts the OpenAI SSE/JSON response
+	// back to Gemini shape. The @google/genai SDK talks this surface directly.
+	// Gemini-native TTS forward (raw-byte upstream proxy) is a follow-up slice
+	// and returns an honest 501 for now (T032 follow-up).
+	mux.HandleFunc("GET /v1beta/models", handler.handleV1BetaModels)
+	mux.HandleFunc("POST /v1beta/models/{path...}", handler.handleV1BetaModelsPath)
 }
 
 type v1Handler struct {

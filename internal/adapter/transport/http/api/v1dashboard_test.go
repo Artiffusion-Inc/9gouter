@@ -183,3 +183,23 @@ func containsSubstr(haystack, needle string) bool {
 	}
 	return false
 }
+
+// TestV1Dashboard_Passthrough_V1BetaModelsPath verifies the catch-all
+// {path...} on POST /api/v1beta/models/{path...} is forwarded intact to the
+// public /v1/* proxy (T032). The GET list is served directly by
+// RegisterV1Beta and is not a passthrough.
+func TestV1Dashboard_Passthrough_V1BetaModelsPath(t *testing.T) {
+	rec := &dispatchRecorder{}
+	mux := newDashboardMux(t, rec.ServeHTTP)
+
+	req := httptest.NewRequest("POST", "/api/v1beta/models/gemini-2.0-flash:streamGenerateContent", strings.NewReader(`{}`))
+	rw := httptest.NewRecorder()
+	mux.ServeHTTP(rw, req)
+
+	if rec.gotPath != "/v1beta/models/gemini-2.0-flash:streamGenerateContent" {
+		t.Fatalf("dispatch path = %q, want /v1beta/models/gemini-2.0-flash:streamGenerateContent", rec.gotPath)
+	}
+	if rw.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rw.Code)
+	}
+}

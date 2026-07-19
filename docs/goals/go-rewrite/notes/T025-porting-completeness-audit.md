@@ -74,10 +74,10 @@ vs Go stub (`v1_dashboard.go` returns "not available"):
 | POST /v1/videos/extensions | ✅ | ported | xAI LRO raw-byte proxy (T033b-7) |
 | GET /v1/videos/{id} | ✅ | ported | xAI LRO poll, provider fixed to xai (T033b-7) |
 | GET /v1 (root) | — | root ok | ported (trivial) |
-| GET /v1beta/models | ❌ | — | **MISSING (P1, Gemini-compat) — tracked as #38 / T032** |
-| GET /v1beta/models/{path...} | ❌ | — | **MISSING (P1, Gemini-compat) — tracked as #38 / T032** |
+| GET /v1beta/models | ✅ | ported | Gemini-shaped catalog from provider.AllCatalogs (T032) |
+| POST /v1beta/models/{path...} | ✅ | ported | Gemini→OpenAI req transform → handleChat → OpenAI→Gemini SSE/JSON; TTS-forward honest 501 (T032) |
 
-**Client `/v1/*` summary: 21 of 23 real. 2 missing (both /v1beta/models, Gemini-native proxy — T032).**
+**Client `/v1/*` summary: 23 of 23 real. Last client-surface gap (#38 / T032) closed.**
 
 ## Services (lifecycle) — PORTED (audit updated post-T027b/T030b)
 
@@ -114,7 +114,7 @@ cutover blocker. `/v1beta/models` (T032 / #38) is the last client-surface gap.
 4. ~~T029 — GET /v1/models + /v1/models/{kind} + /v1/models/info~~ **DONE**.
 5. ~~T030 — Live-model resolvers~~ **DONE (T030b)**.
 6. ~~T031 — /v1/embeddings + /v1/messages/count_tokens~~ **DONE (T031b)**.
-7. **T032 — /v1beta/models** (Gemini-compat). Last client-surface gap → #38.
+7. ~~T032 — /v1beta/models~~ **DONE (Gemini-shaped GET list + POST generateContent/streamGenerateContent proxy; TTS-forward honest 501)**.
 8. ~~T033 — Stub audit~~ **DONE (T033-api-v1-stub-audit.md)**.
 
 ## Originally deferred — now ported (T031b/T033b)
@@ -128,12 +128,11 @@ The original audit deferred these as P2/niche; all have since landed:
 
 ## Still open
 
-- `/v1beta/models` + `/v1beta/models/{path...}` (Gemini-native proxy) → #38 / T032 (P1).
-- Dashboard `/api/*` stub-vs-real classification — done: see
-  `T033-api-v1-stub-audit.md` (all `/api/v1/*` flipped to passthrough as their
-  `/v1/*` counterparts landed).
 - #2703 Fix 2–5 (route-aware refresh pipeline, structured failure types,
   sticky selection, diagnostics) — tracked separately.
+- Gemini-native TTS forward (raw-byte proxy to
+  generativelanguage.googleapis.com with the credential fallback loop) —
+  honest 501 in /v1beta POST; follow-up slice. Non-blocking (use /v1/audio/speech).
 
 ## Conclusion for the board (updated post-port)
 

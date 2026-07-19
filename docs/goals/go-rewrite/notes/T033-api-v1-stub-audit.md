@@ -171,6 +171,35 @@ After each `/v1/*` lands, the matching `/api/v1/*` stub flips to passthrough
   Go rewrite's original layer plan. Embeddings (T031b) is the next bounded
   slice; the rest are larger and should be scoped individually, not batched.
 
+## T032 follow-up — /v1beta/models Gemini-native proxy (closed)
+
+The last client-surface gap from the T025 audit (`/v1beta/models`,
+Gemini-native) is ported:
+
+- **GET /v1beta/models** — Gemini-shaped catalog (`provider.AllCatalogs` →
+  `models/<alias>/<id>` for every provider, plus bare `models/<id>` with
+  generateContent+streamGenerateContent for gemini). Registered by
+  `httptransport.RegisterV1` (`http/v1beta.go`); the dashboard mirror
+  `GET /api/v1beta/models` is served directly by `api.RegisterV1Beta`
+  (`api/v1beta.go`).
+- **POST /v1beta/models/{path...}** — Gemini→OpenAI request transform →
+  `handleChat` → OpenAI→Gemini response transform (SSE for
+  `:streamGenerateContent`, JSON for `:generateContent`). Streaming intent is
+  read from the URL action suffix, not a body field. The OpenAI `[DONE]`
+  sentinel is dropped (Gemini SSE ends by stream close). Usage metadata +
+  modelVersion attach on the finish chunk; reasoning_content → thought parts.
+  Dashboard mirror `POST /api/v1beta/models/{path...}` is a passthrough.
+- **Gemini-native TTS forward** (audio response modality or a gemini tts
+  model id) is a raw-byte upstream proxy with a credential fallback loop —
+  a separate slice; returns an honest 501 pointing at the follow-up for now
+  (clients use `/v1/audio/speech` for TTS).
+
+Tests: 19 unit tests (`parseV1BetaModelAction`, `convertGeminiToInternal`,
+`isV1BetaGeminiNativeTTS`, `buildV1BetaUsageMetadata`, SSE/JSON converters) +
+4 HTTP handler tests (list, TTS-501, bad-path-400, non-streaming dispatch,
+streaming dispatch) + 1 dashboard passthrough test. Full `go test -race ./...`
+green.
+
 ## Decision
 
 This audit is read-only. No code changed. The actionable output is:

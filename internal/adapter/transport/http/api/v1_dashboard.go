@@ -49,6 +49,13 @@ func RegisterV1Dashboard(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("POST /api/v1/videos/extensions", h.passthrough("/v1/videos/extensions"))
 	mux.HandleFunc("GET /api/v1/videos/{id}", h.passthrough("/v1/videos/{id}"))
 	mux.HandleFunc("POST /api/v1/web/fetch", h.passthrough("/v1/web/fetch"))
+
+	// Gemini-native /v1beta/models POST proxy (T032). The GET list is served
+	// directly by RegisterV1Beta (api/v1beta.go) — this only adds the POST
+	// generateContent/streamGenerateContent passthrough to the public /v1/*
+	// proxy, mirroring legacy JS src/app/api/v1beta/models/[...path]/route.js.
+	// TTS-forward surfaces the /v1/* honest 501 through here.
+	mux.HandleFunc("POST /api/v1beta/models/{path...}", h.passthrough("/v1beta/models/{path...}"))
 }
 
 type v1DashboardHandler struct {
@@ -106,7 +113,14 @@ func substitutePathValues(path string, r *http.Request) string {
 		}
 		end += start
 		name := out[start+1 : end]
-		out = out[:start] + r.PathValue(name) + out[end+1:]
+		// Go ServeMux catch-all wildcard is written "{name...}" in the
+		// pattern but looked up by the bare "name" in PathValue. Strip the
+		// trailing "..." so the value resolves instead of returning empty.
+		val := r.PathValue(name)
+		if val == "" && strings.HasSuffix(name, "...") {
+			val = r.PathValue(strings.TrimSuffix(name, "..."))
+		}
+		out = out[:start] + val + out[end+1:]
 	}
 	return out
 }

@@ -189,6 +189,41 @@ type TtsResult struct {
 	ContentType string
 }
 
+// ImageHandler is the boundary between the HTTP transport layer and the
+// image-proxy usecase (POST /v1/images/generations). Implementations are
+// provided by wire.go (imageproxy adapter).
+type ImageHandler interface {
+	Handle(ctx context.Context, req ImageRequest) (ImageResult, error)
+}
+
+// ImageRequest carries a parsed image-generation call into the usecase.
+type ImageRequest struct {
+	Ctx            context.Context
+	ProviderID     string
+	Model          string
+	Prompt         string
+	N              int
+	Size           string
+	Quality        string
+	Style          string
+	ResponseFormat string // "url" | "b64_json" | "binary"
+	OutputFormat   string // "png" | "jpeg" | "webp"
+	Background     string
+	Credentials     domainProv.Credentials
+	UserAgent       string
+}
+
+// ImageResult carries the generated image response back to the HTTP layer.
+// For response_format=url/b64_json Body is the OpenAI {created,data:[…]} JSON
+// and ContentType is application/json; for response_format=binary Body is the
+// raw image bytes and ContentType is image/<format>.
+type ImageResult struct {
+	StatusCode  int
+	Err         error
+	Body        []byte
+	ContentType string
+}
+
 // ChatRequest carries the parsed HTTP request into the usecase.
 type ChatRequest struct {
 	Ctx          context.Context
@@ -252,6 +287,10 @@ type V1Deps struct {
 	// Tts is the injected text-to-speech usecase boundary
 	// (POST /v1/audio/speech).
 	Tts TtsHandler
+
+	// Image is the injected image-generation usecase boundary
+	// (POST /v1/images/generations).
+	Image ImageHandler
 }
 
 // RegisterV1 mounts POST handlers for /v1/chat/completions, /v1/messages,
@@ -343,6 +382,15 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	// deepgram). Ports legacy JS src/app/api/v1/audio/speech/route.js +
 	// open-sse/handlers/ttsCore.js + per-provider TTS adapters.
 	mux.HandleFunc("POST /v1/audio/speech", handler.handleAudioSpeech)
+
+	// POST /v1/images/generations — OpenAI image-generation-compatible. Parses
+	// the JSON body, resolves the provider from body.model (provider/model
+	// prefix or bare → openai fallback), dispatches to the imageproxy usecase
+	// by the provider's static image config (openai-compatible passthrough,
+	// gemini generateContent, codex Responses API + SSE). Ports legacy JS
+	// src/app/api/v1/images/generations/route.js + open-sse/handlers/
+	// imageGeneration.js + imageGenerationCore.js + imageProviders/*.
+	mux.HandleFunc("POST /v1/images/generations", handler.handleImagesGenerations)
 }
 
 type v1Handler struct {

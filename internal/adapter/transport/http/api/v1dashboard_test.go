@@ -80,9 +80,9 @@ func TestV1Dashboard_NotAvailable_ForUnimplemented(t *testing.T) {
 	rec := &dispatchRecorder{}
 	mux := newDashboardMux(t, rec.ServeHTTP)
 
-	// /api/v1/images/generations is still unimplemented — must NOT dispatch,
+	// /api/v1/search is still unimplemented — must NOT dispatch,
 	// must return the not-available stub.
-	req := httptest.NewRequest("POST", "/api/v1/images/generations", nil)
+	req := httptest.NewRequest("POST", "/api/v1/search", nil)
 	rw := httptest.NewRecorder()
 	mux.ServeHTTP(rw, req)
 

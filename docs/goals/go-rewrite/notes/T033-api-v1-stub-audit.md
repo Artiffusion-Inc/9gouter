@@ -42,7 +42,7 @@ the cheap win in this audit.
 | `POST /api/v1/audio/transcriptions` | STT handlers | ✅ passthrough | multipart STT (T033b-4 ported) |
 | `GET /api/v1/audio/voices` | TTS voices list | ❌ absent | static voice catalog |
 | `POST /api/v1/embeddings` | `src/app/api/v1/embeddings/route.js` → `embeddingsCore.js` | ❌ absent | tracked as T031b (chat-class pipeline) |
-| `POST /api/v1/images/generations` | image gen handlers | ❌ absent | Gemini/OpenAI image pipeline |
+| `POST /api/v1/images/generations` | image gen handlers | ✅ passthrough | image gen pipeline (T033b-6 ported) |
 | `POST /api/v1/search` | web-search handlers | ❌ absent | Gemini searchViaChat |
 | `POST /api/v1/videos/generations` | video gen handlers | ✅ passthrough | xAI LRO raw-byte proxy (T033b-7 ported) |
 | `POST /api/v1/videos/edits` | video edit handlers | ✅ passthrough | xAI LRO raw-byte proxy (T033b-7 ported) |
@@ -110,6 +110,19 @@ provider adapter + translator. Ordered roughly by dependency/leverage:
 7. **`/v1/audio/voices`** — static catalog, no upstream.
 8. **`/v1/images/generations`** — image gen; Gemini image models are in the
    catalog now (T032), but the generation pipeline is unported.
+   **PORTED (T033b-6):** `handleImagesGenerations` parses JSON body, response_format
+   precedence body→query→url, api-key gate, resolveImageProvider (provider/model
+   prefix only when first segment is a known image provider; bare model or
+   model without provider prefix → openai fallback), dispatches the `imageproxy`
+   usecase by static image config — openai-compatible passthrough (with xai
+   bodyFields whitelist), gemini (generateContent responseModalities
+   ["TEXT","IMAGE"] → candidates[].content.parts[].inlineData.data →
+   {b64_json}), codex (Responses API + tools:[image_generation] SSE parse →
+   {created, data:[{b64_json}]}). response_format=binary returns raw image
+   bytes (b64 decode; url→binary deferred 501). Echoes x-9router-connection-id.
+   15 usecase tests + 13 handler tests. Deferred (501): sdwebui, comfyui,
+   huggingface, fal-ai, black-forest-labs, stability-ai, runwayml,
+   cloudflare-ai, nanobanana, antigravity (polling/multipart/no-auth local).
 9. **`/v1/videos/*`** (generations, edits, extensions, GET status) — xAI LRO
    video pipeline. **PORTED (T033b-7):** `handleVideoCreate`/`handleVideoGet`
    raw-byte proxy to xAI with provider-prefix strip + idempotency-key

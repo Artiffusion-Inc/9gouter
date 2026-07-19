@@ -62,7 +62,7 @@ vs Go stub (`v1_dashboard.go` returns "not available"):
 | POST /v1/audio/speech | ✅ | ported | TTS: openai/gemini/elevenlabs/minimax/inworld/cartesia/playht/nvidia/deepgram (T033b-3) |
 | POST /v1/audio/transcriptions | ✅ | ported | multipart STT: openai/groq/deepgram/assemblyai/gemini (T033b-4) |
 | GET /v1/audio/voices | ❌ | stub | **MISSING (P2)** |
-| POST /v1/images/generations | ❌ | stub | **MISSING (P2)** |
+| POST /v1/images/generations | ✅ | ported | image gen: openai-compat/gemini/codex (T033b-6) |
 | POST /v1/messages/count_tokens | ❌ | stub | **MISSING (P1)** |
 | POST /v1/responses/compact | ❌ | stub | **MISSING (P2)** |
 | GET /v1/responses | ❌ | — | **MISSING (P2)** |
@@ -77,7 +77,7 @@ vs Go stub (`v1_dashboard.go` returns "not available"):
 | GET /v1beta/models | ❌ | — | **MISSING (P1, Gemini-compat)** |
 | GET /v1beta/models/{path...} | ❌ | — | **MISSING (P1, Gemini-compat)** |
 
-**Client `/v1/*` summary: 10 of 23 real. 13 missing (mostly stubs in dashboard proxy).**
+**Client `/v1/*` summary: 11 of 23 real. 12 missing (mostly stubs in dashboard proxy).**
 
 ## Services (lifecycle) — verified missing
 

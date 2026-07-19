@@ -41,6 +41,7 @@ import (
 	"github.com/Artiffusion-Inc/9router/internal/usecase/proxyfetch"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/sttproxy"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/ttsproxy"
+	"github.com/Artiffusion-Inc/9router/internal/usecase/imageproxy"
 	"github.com/Artiffusion-Inc/9router/internal/usecase/videoproxy"
 )
 
@@ -88,6 +89,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	videoHandler := newVideoProxyHandler(cfg, logger)
 	sttHandler := newSttHandler(cfg, logger)
 	ttsHandler := newTtsHandler(cfg, logger)
+	imageHandler := newImageProxyHandler(cfg, logger)
 
 	mux := http.NewServeMux()
 	httptransport.RegisterV1(mux, httptransport.V1Deps{
@@ -108,6 +110,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Video:          videoHandler,
 		Stt:            sttHandler,
 		Tts:            ttsHandler,
+		Image:          imageHandler,
 	})
 
 	sessionStore, err := auth.NewCookieStore(cfg.DashboardSessionSecret)
@@ -503,6 +506,48 @@ func (h *ttsHandler) Handle(ctx context.Context, req httptransport.TtsRequest) (
 		UserAgent:      req.UserAgent,
 	})
 	return httptransport.TtsResult{
+		StatusCode:  res.StatusCode,
+		Err:         res.Err,
+		Body:        res.Body,
+		ContentType: res.ContentType,
+	}, nil
+}
+
+// imageProxyHandler adapts imageproxy.Handler to the httptransport.ImageHandler
+// interface. Lives in the composition root (the only place allowed to know
+// both packages). Like TTS/STT, image generation does not persist usage rows
+// (the legacy JS image path never called saveRequestUsage), so it only needs
+// config + logger.
+type imageProxyHandler struct {
+	handler *imageproxy.Handler
+}
+
+func newImageProxyHandler(cfg config.Config, logger *slog.Logger) *imageProxyHandler {
+	return &imageProxyHandler{
+		handler: imageproxy.New(imageproxy.Dependencies{
+			Logger: &slogLogger{logger},
+			Config: cfg,
+		}),
+	}
+}
+
+func (h *imageProxyHandler) Handle(ctx context.Context, req httptransport.ImageRequest) (httptransport.ImageResult, error) {
+	res := h.handler.Handle(ctx, imageproxy.Request{
+		Ctx:            ctx,
+		ProviderID:     req.ProviderID,
+		Model:          req.Model,
+		Prompt:         req.Prompt,
+		N:              req.N,
+		Size:           req.Size,
+		Quality:        req.Quality,
+		Style:          req.Style,
+		ResponseFormat: req.ResponseFormat,
+		OutputFormat:   req.OutputFormat,
+		Background:     req.Background,
+		Credentials:    req.Credentials,
+		UserAgent:      req.UserAgent,
+	})
+	return httptransport.ImageResult{
 		StatusCode:  res.StatusCode,
 		Err:         res.Err,
 		Body:        res.Body,

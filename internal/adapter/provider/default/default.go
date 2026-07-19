@@ -448,7 +448,29 @@ func shouldInjectReasoning(msg map[string]any, scope string) bool {
 	return true
 }
 
+// applyModelReasoningInject applies the model/provider-level reasoning inject
+// rule when no static transport.reasoningInject is configured on the provider
+// (Config.ReasoningInject == nil). It mirrors the JS reasoningContentInjector:
+//   - a provider-level rule keyed on the provider id (the registry single
+//     source: PROVIDERS[provider].reasoningInject), then
+//   - a model-level rule matched by predicate against the model id.
+//
+// The provider key is the primary signal: the legacy Go code keyed only on the
+// upstream-model prefix ("kimi-"), which silently missed Kimi models whose
+// upstream id does not start with "kimi-" (e.g. an alias or a bare id like
+// "k2.5"). Keying on e.Provider fixes the silent strip reported in
+// decolua/9router #2690. The model-prefix fallback preserves the prior
+// behavior for providers routed through a generic executor without a kimi
+// provider id (deepseek model-name matching).
 func (e *DefaultExecutor) applyModelReasoningInject(model string, body map[string]any) map[string]any {
+	// Provider-level rules (registry single source). Mirrors the JS
+	// PROVIDERS[provider].reasoningInject transport field.
+	switch e.Provider {
+	case "kimi", "kimi-coding":
+		return e.injectReasoning(body, "toolCalls")
+	}
+	// Model-level rules: matched by predicate against the model id (fallback
+	// when no provider-level rule applies).
 	if strings.HasPrefix(model, "kimi-") {
 		return e.injectReasoning(body, "toolCalls")
 	}

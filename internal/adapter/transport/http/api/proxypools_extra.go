@@ -17,7 +17,7 @@ type proxyPoolsExtraHandler struct {
 
 func (h *proxyPoolsExtraHandler) test(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "id": id, "testStatus": "ok"})
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "id": id, "testStatus": "ok", "ok": true})
 }
 
 func (h *proxyPoolsExtraHandler) deploy(w http.ResponseWriter, r *http.Request) {

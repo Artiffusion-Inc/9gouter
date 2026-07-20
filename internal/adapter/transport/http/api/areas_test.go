@@ -108,8 +108,10 @@ func TestHeadroom_HappyPath(t *testing.T) {
 		req.Header.Set("Cookie", "auth_token="+ck)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s status = %d, want 200; body=%s", path, rec.Code, rec.Body.String())
+		// Headroom lifecycle requires the Headroom CLI binary installed; the
+		// handler returns 412 (precondition failed) when it is absent.
+		if rec.Code != http.StatusOK && rec.Code != http.StatusPreconditionFailed {
+			t.Fatalf("%s status = %d, want 200 or 412; body=%s", path, rec.Code, rec.Body.String())
 		}
 	}
 
@@ -229,8 +231,11 @@ func TestTunnel_HappyPath(t *testing.T) {
 		req.Header.Set("Cookie", "auth_token="+ck)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s status = %d, want 200; body=%s", path, rec.Code, rec.Body.String())
+		// Cloudflare tunnel + Tailscale orchestration is not implemented in
+		// the Go backend; the handlers return 501 with a clear message rather
+		// than a fake 200 stub.
+		if rec.Code != http.StatusOK && rec.Code != http.StatusNotImplemented {
+			t.Fatalf("%s status = %d, want 200 or 501; body=%s", path, rec.Code, rec.Body.String())
 		}
 	}
 }
@@ -300,8 +305,11 @@ func TestAuthOidc_HappyPath(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s status = %d, want 200; body=%s", path, rec.Code, rec.Body.String())
+		// OIDC endpoints return 503/400 when OIDC is not configured (no
+		// issuer/clientID/clientSecret) — a real, honest response instead of
+		// the prior 200 stub.
+		if rec.Code != http.StatusOK && rec.Code != http.StatusServiceUnavailable && rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d, want 200/400/503; body=%s", path, rec.Code, rec.Body.String())
 		}
 	}
 }

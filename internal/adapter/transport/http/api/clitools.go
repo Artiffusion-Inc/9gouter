@@ -93,6 +93,7 @@ func (h *cliToolsHandler) mitmStatus(w http.ResponseWriter, r *http.Request) {
 		"pid":               nil,
 		"certExists":        false,
 		"certTrusted":       false,
+		"dnsConfigured":     false,
 		"dnsStatus":         map[string]any{},
 		"hasCachedPassword": false,
 		"needsSudoPassword": false,

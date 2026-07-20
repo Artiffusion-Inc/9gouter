@@ -2,8 +2,12 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
 // RegisterOAuth mounts all OAuth helper routes.
@@ -41,7 +45,97 @@ func (h *oauthHandler) providerAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *oauthHandler) codexBulkImport(w http.ResponseWriter, r *http.Request) {
-	h.importTokens(w, r, "codex")
+	h.codexBulkImportAccounts(w, r)
+}
+
+// codexBulkImportAccounts implements POST /api/oauth/codex/bulk-import.
+//
+// Frontend contract (BulkImportCodexModal.js):
+//
+//	body: { accounts: [{ accessToken, refreshToken, idToken, email }, ...] }
+//
+//	resp: {
+//	  success: <int>  // count successfully added (0 if all failed),
+//	  failed:  <int>, // count that failed validation/persistence,
+//	  results: [{ index, ok: bool, error?: string, id?: string }, ...],
+//	}
+//
+// Each account becomes a new providerConnections row (provider="codex",
+// authType="oauth"). On persistence failure the row is skipped and the entry
+// is added to results with ok=false. The endpoint is intentionally permissive
+// (does NOT 4xx on partial failure) so the modal can render the per-row list.
+func (h *oauthHandler) codexBulkImportAccounts(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Accounts []map[string]any `json:"accounts"`
+	}
+	if err := parseJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+	if h.deps.Connections == nil {
+		writeError(w, http.StatusServiceUnavailable, "Connections repo unavailable")
+		return
+	}
+
+	results := make([]map[string]any, 0, len(body.Accounts))
+	success := 0
+	failed := 0
+	now := time.Now().UTC()
+	for i, raw := range body.Accounts {
+		if raw == nil {
+			results = append(results, map[string]any{"index": i, "ok": false, "error": "empty account"})
+			failed++
+			continue
+		}
+		accessToken, _ := raw["accessToken"].(string)
+		refreshToken, _ := raw["refreshToken"].(string)
+		idToken, _ := raw["idToken"].(string)
+		email, _ := raw["email"].(string)
+		if strings.TrimSpace(accessToken) == "" {
+			results = append(results, map[string]any{"index": i, "ok": false, "error": "accessToken is required"})
+			failed++
+			continue
+		}
+
+		data := map[string]any{
+			"accessToken":  accessToken,
+			"refreshToken": refreshToken,
+			"idToken":      idToken,
+			"email":        email,
+		}
+		dataJSON, err := json.Marshal(data)
+		if err != nil {
+			results = append(results, map[string]any{"index": i, "ok": false, "error": "failed to encode data: " + err.Error()})
+			failed++
+			continue
+		}
+
+		conn := settings.ProviderConnection{
+			ID:        fmt.Sprintf("codex-%d", now.UnixNano()+int64(i)),
+			Provider:  "codex",
+			AuthType:  "oauth",
+			Name:      email,
+			Email:     email,
+			Priority:  0,
+			IsActive:  true,
+			Data:      dataJSON,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		if err := h.deps.Connections.Create(r.Context(), conn); err != nil {
+			results = append(results, map[string]any{"index": i, "ok": false, "error": err.Error()})
+			failed++
+			continue
+		}
+		results = append(results, map[string]any{"index": i, "ok": true, "id": conn.ID})
+		success++
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": success,
+		"failed":  failed,
+		"results": results,
+	})
 }
 
 func (h *oauthHandler) codexImportToken(w http.ResponseWriter, r *http.Request) {

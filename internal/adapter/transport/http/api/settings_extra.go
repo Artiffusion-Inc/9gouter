@@ -3,6 +3,9 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"time"
+
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
 )
 
 // RegisterSettingsExtra mounts additional settings routes.
@@ -60,6 +63,56 @@ func (h *settingsExtraHandler) databaseImport(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }
 
+// proxyTestRequest is the request body for POST /api/settings/proxy-test.
+type proxyTestRequest struct {
+	ProxyURL string `json:"proxyUrl"`
+}
+
+// proxyTest performs a TCP reachability check against the supplied proxy URL
+// and reports the result. The frontend expects the contract
+//
+//	{ ok: bool, status: string, elapsedMs: int }
+//
+// `status` is a human-readable label ("ok" on success, the dial error string
+// on failure) and `elapsedMs` is the wall-clock duration of the probe.
 func (h *settingsExtraHandler) proxyTest(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "latencyMs": 0})
+	var req proxyTestRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ProxyURL == "" {
+		writeError(w, http.StatusBadRequest, "proxyUrl is required")
+		return
+	}
+
+	// Use the package's TCP fast-fail probe so the check is identical to
+	// the one used during real fetches. We give the probe a generous
+	// timeout (5s) so the user sees a clear success/failure rather than
+	// the 2s default.
+	opts := proxy.Options{
+		ProxyFastFailTimeout: 5 * time.Second,
+	}
+
+	start := time.Now()
+	err := proxy.FastFail(r.Context(), opts, req.ProxyURL)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":        true,
+			"status":    "ok",
+			"elapsedMs": elapsed.Milliseconds(),
+			// Keep `success`/`latencyMs` for any older clients that still
+			// read them; the frontend will switch to the new contract.
+			"success":   true,
+			"latencyMs": elapsed.Milliseconds(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":        false,
+		"status":    err.Error(),
+		"elapsedMs": elapsed.Milliseconds(),
+		"success":   false,
+		"latencyMs": elapsed.Milliseconds(),
+		"error":     err.Error(),
+	})
 }

@@ -40,12 +40,23 @@ func (h *pxpipeHandler) restart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "running": false})
 }
 
+// stats returns pxpipe compression stats. The dashboard reads
+// `stats.windows[id]`, `stats.timeline[]`, and `stats.recent[]` directly,
+// so the response must NOT wrap the payload in an extra object.
+// When no data is available we return the empty default shape so the
+// frontend's optional-chaining renders placeholders instead of crashing.
 func (h *pxpipeHandler) stats(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"stats": map[string]any{}})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"windows":  map[string]any{},
+		"timeline": []any{},
+		"recent":   []any{},
+	})
 }
 
+// logs returns the pxpipe install log text. The dashboard reads
+// `logs.installLog` (not `logs.logs`) and renders the placeholder when empty.
 func (h *pxpipeHandler) logs(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"logs": ""})
+	writeJSON(w, http.StatusOK, map[string]any{"installLog": ""})
 }
 
 func (h *pxpipeHandler) install(w http.ResponseWriter, r *http.Request) {

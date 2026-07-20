@@ -92,7 +92,29 @@ func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 4. SPA fallback: any non-API path gets index.html.
+	// 4. Next.js "shadow" page for unmatched dynamic segments. When
+	// output:export encounters a dynamic route (e.g. providers/[id]) with
+	// no generateStaticParams, it emits a <route>/_.html carrying the
+	// route's code-split chunks. A request like /dashboard/providers/123
+	// has no 123.html, so without this step we fall through to the root
+	// index.html (step 5) whose script tags only cover the home page — the
+	// provider page then renders without its JS ("thrown to dashboard
+	// without js"). Walk up the request path's ancestors and serve the
+	// deepest existing _.html.
+	if segs := strings.Split(candidate, "/"); len(segs) > 1 {
+		for i := len(segs) - 1; i > 0; i-- {
+			shadow := path.Join(append([]string{"dashboard_assets"}, segs[:i]...)...)
+			shadow = path.Join(shadow, "_.html")
+			if file, err := dashboardFS.Open(shadow); err == nil {
+				defer file.Close()
+				relPath := path.Join(path.Join(segs[:i]...), "_.html")
+				serveFile(w, r, relPath, file)
+				return
+			}
+		}
+	}
+
+	// 5. SPA fallback: any non-API path gets index.html.
 	fallback, err := dashboardFS.Open("dashboard_assets/index.html")
 	if err != nil {
 		h.log.Error("missing embedded dashboard index", "error", err)

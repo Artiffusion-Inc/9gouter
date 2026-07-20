@@ -180,6 +180,12 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	api.RegisterSettingsExtra(mux, apiDeps)
 	api.RegisterProxyPoolsExtra(mux, apiDeps)
 
+	// Static dashboard catch-all: serves the embedded Next.js static export
+	// for any path NOT claimed by /v1, /api, or /health above. Must be
+	// registered last so the ServeMux longest-prefix match keeps API routes
+	// taking precedence. (T018 wiring.)
+	mux.Handle("/", httptransport.NewStaticHandler(logger))
+
 	server := httptransport.NewServer(httptransport.Deps{
 		Config:  cfg,
 		Logger:  logger,

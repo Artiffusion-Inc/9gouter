@@ -1,0 +1,58 @@
+# VCS
+.git
+**/.git
+
+# Editor
+.vscode
+**/.vscode
+
+# Dependencies and build output
+node_modules
+.next
+out
+build
+dist
+coverage
+
+# Runtime data and logs
+data
+logs
+
+# Local env files (inject at runtime via --env-file or -e)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# CI
+.github
+
+# Lockfiles not needed (bun.lock is the source of truth, npm/yarn locks are redundant)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Docs & dev tooling not needed to build the image.
+gitbook
+
+# Legacy JS test/spec tree (pending cutover deletion T021). The Go binary is
+# the runtime; tests are not built in. NOTE: open-sse, cli, i18n, images stay
+# in the context — src/app imports them via the jsconfig "@" / "open-sse"
+# aliases, so excluding them breaks `bun run build`.
+tests
+skills
+
+# Shadow-diff harness + recorded traffic (cutover tooling, not runtime).
+tools/shadowdiff
+
+# Local dev artifacts
+*.tar
+*.zip
+/tmp

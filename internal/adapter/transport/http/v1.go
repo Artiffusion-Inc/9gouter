@@ -483,6 +483,15 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	// and returns an honest 501 for now (T032 follow-up).
 	mux.HandleFunc("GET /v1beta/models", handler.handleV1BetaModels)
 	mux.HandleFunc("POST /v1beta/models/{path...}", handler.handleV1BetaModelsPath)
+
+	// Catch-all for unregistered /v1/{path...} sub-routes. Without this,
+	// Go's ServeMux returns a bare 405 Method Not Allowed for mistyped or
+	// doubly-prefixed paths (e.g. POST /v1/v1/messages, which happens when
+	// a client sets ANTHROPIC_BASE_URL=http://host/v1 and the SDK appends
+	// /v1/messages). A 405 on an unknown path is confusing — it implies the
+	// method is wrong, not the URL. Serve an OpenAI-shaped 404 with the
+	// offending path so misconfiguration is diagnosable.
+	mux.HandleFunc("/v1/{rest...}", handler.handleV1NotFound)
 }
 
 type v1Handler struct {
@@ -1238,6 +1247,21 @@ func (h *v1Handler) writeError(w http.ResponseWriter, status int, message string
 	}
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+// handleV1NotFound serves an OpenAI-shaped 404 for unregistered /v1/{rest...}
+// sub-paths. Go's ServeMux otherwise returns a bare 405 for an unknown path
+// that shares a registered prefix (e.g. POST /v1/v1/messages), which reads as
+// "wrong method" rather than "wrong URL" and hides a misconfigured client base
+// URL. Echo the offending path so the operator can see the doubled prefix.
+func (h *v1Handler) handleV1NotFound(w http.ResponseWriter, r *http.Request) {
+	msg := "Unknown /v1 path: " + r.URL.Path
+	if strings.HasPrefix(r.URL.Path, "/v1/v1/") {
+		msg = "Doubled /v1 prefix in request path " + r.URL.Path +
+			" — set the client base URL to the host root (e.g. http://host:20128)" +
+			" without a trailing /v1; the SDK appends /v1/... itself."
+	}
+	h.writeError(w, http.StatusNotFound, msg)
 }
 
 func extractAPIKey(r *http.Request) string {

@@ -47,30 +47,51 @@ func (h *staticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try to serve the exact file first, then a cleaned path with trailing slash
-	// index, then fall back to index.html for client-side routing.
+	// Resolve the static-export file for the cleaned path. Next.js static
+	// export lays out each route as <route>.html (prerendered page) plus a
+	// <route>/ directory holding nested routes and prerender data — but NOT a
+	// <route>/index.html for every route. So resolution order is:
+	//   1. exact file (asset paths like _next/static/...)
+	//   2. <route>/index.html (when the export produced one)
+	//   3. <route>.html (prerendered page for the route itself)
+	//   4. SPA fallback index.html (client-side routing)
+	// A bare directory candidate (e.g. "/dashboard") must never be served as
+	// a file — it resolves via step 2/3 instead, otherwise the browser
+	// downloads an octet-stream directory entry.
 	candidate := strings.TrimPrefix(clean, "/")
 	if candidate == "" {
 		candidate = "index.html"
 	}
 
-	file, err := dashboardFS.Open(path.Join("dashboard_assets", candidate))
-	if err == nil {
-		defer file.Close()
-		serveFile(w, r, candidate, file)
-		return
+	// 1. Exact file — but skip it if it is a directory (fall through to 2/3).
+	if file, err := dashboardFS.Open(path.Join("dashboard_assets", candidate)); err == nil {
+		if info, statErr := file.Stat(); statErr == nil && !info.IsDir() {
+			defer file.Close()
+			serveFile(w, r, candidate, file)
+			return
+		}
+		file.Close()
 	}
 
-	// Try directory index.
+	// 2. Directory index: <route>/index.html.
 	indexPath := path.Join("dashboard_assets", candidate, "index.html")
-	file, err = dashboardFS.Open(indexPath)
-	if err == nil {
+	if file, err := dashboardFS.Open(indexPath); err == nil {
 		defer file.Close()
 		serveFile(w, r, path.Join(candidate, "index.html"), file)
 		return
 	}
 
-	// SPA fallback: any non-API path gets index.html.
+	// 3. Prerendered page: <route>.html. Skip the root (handled by step 1).
+	if candidate != "index.html" {
+		pagePath := path.Join("dashboard_assets", candidate+".html")
+		if file, err := dashboardFS.Open(pagePath); err == nil {
+			defer file.Close()
+			serveFile(w, r, candidate+".html", file)
+			return
+		}
+	}
+
+	// 4. SPA fallback: any non-API path gets index.html.
 	fallback, err := dashboardFS.Open("dashboard_assets/index.html")
 	if err != nil {
 		h.log.Error("missing embedded dashboard index", "error", err)

@@ -19,6 +19,19 @@ jobs:
           go-version: "1.26"
           cache: true
 
+      # Build the Next.js dashboard static export so the //go:embed
+      # all:dashboard_assets pattern in internal/adapter/transport/http has
+      # real files to embed. Mirrors Containerfile stage 1.
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: "1.3"
+
+      - name: Install dashboard deps
+        run: bun install --frozen-lockfile
+
+      - name: Build dashboard static export
+        run: bash scripts/build-dashboard.sh
+
       - name: Run Go tests with race detector
         run: go test -race ./...
 

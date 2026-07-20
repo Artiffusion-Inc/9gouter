@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useNotificationStore } from "@/store/notificationStore";
 import Sidebar from "../Sidebar";
@@ -33,9 +33,56 @@ function getToastStyle(type) {
 
 export default function DashboardLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [allowed, setAllowed] = useState(false);
   const pathname = usePathname();
   const notifications = useNotificationStore((state) => state.notifications);
   const removeNotification = useNotificationStore((state) => state.removeNotification);
+
+  // Client-side auth guard. Next.js `output:export` cannot use middleware, so
+  // the dashboard layout gates rendering itself: fetch /api/auth/status and
+  // bounce to /login when login is required and no session is present.
+  useEffect(() => {
+    let cancelled = false;
+    async function checkAuth() {
+      try {
+        const res = await fetch("/api/auth/status", { cache: "no-store" });
+        if (!res.ok) {
+          if (!cancelled) {
+            setAllowed(false);
+            setAuthChecked(true);
+          }
+          return;
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        const requireLogin = data?.requireLogin !== false;
+        const authenticated = data?.authenticated === true;
+        if (requireLogin && !authenticated) {
+          const redirect = encodeURIComponent(
+            typeof window !== "undefined" ? window.location.pathname + window.location.search : "/dashboard",
+          );
+          window.location.assign(`/login?redirect=${redirect}`);
+          return;
+        }
+        setAllowed(true);
+        setAuthChecked(true);
+      } catch {
+        if (!cancelled) {
+          setAllowed(false);
+          setAuthChecked(true);
+        }
+      }
+    }
+    checkAuth();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!authChecked || !allowed) {
+    return <div className="flex h-screen w-full bg-bg" aria-busy="true" />;
+  }
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-bg">

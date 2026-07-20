@@ -7,6 +7,7 @@ import (
 
 	adapterauth "github.com/Artiffusion-Inc/9gouter/internal/adapter/auth"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	domainauth "github.com/Artiffusion-Inc/9gouter/internal/domain/auth"
 	usecaseauth "github.com/Artiffusion-Inc/9gouter/internal/usecase/auth"
 )
 
@@ -95,8 +96,10 @@ func (h *authHandler) status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sess, _ := h.deps.SessionStore.Get(r)
+	authenticated := sess != nil
 	writeJSON(w, http.StatusOK, map[string]any{
 		"requireLogin":   requireLogin,
+		"authenticated":  authenticated,
 		"authMode":       "password",
 		"oidcConfigured": false,
 		"oidcLoginLabel": "Sign in with OIDC",
@@ -132,9 +135,15 @@ func (h *authHandler) oidcTest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "OIDC test stubbed in Go build"})
 }
 
-func displayName(sess any) string {
-	if s, ok := sess.(interface{ Name() string }); ok {
-		return s.Name()
+func displayName(sess *domainauth.Session) string {
+	if sess == nil {
+		return ""
+	}
+	if sess.Principal.Name != "" {
+		return sess.Principal.Name
+	}
+	if sess.Principal.Email != "" {
+		return sess.Principal.Email
 	}
 	return "Password user"
 }

@@ -16,6 +16,19 @@ export default function LoginPage() {
   const [mustChange, setMustChange] = useState(false);
   const [newPassword, setNewPassword] = useState("");
 
+  // Resolve a safe post-login destination from the ?redirect= query param.
+  // Only allow same-origin absolute paths (must start with "/"), reject any
+  // scheme-relative or absolute URL to prevent open-redirect.
+  function safeRedirect() {
+    if (typeof window === "undefined") return "/dashboard";
+    const params = new URLSearchParams(window.location.search);
+    const target = params.get("redirect");
+    if (target && target.startsWith("/") && !target.startsWith("//")) {
+      return target;
+    }
+    return "/dashboard";
+  }
+
   // Countdown for rate-limit
   useEffect(() => {
     if (retryAfter <= 0) return;
@@ -37,8 +50,9 @@ export default function LoginPage() {
 
         if (res.ok) {
           const data = await res.json();
-          if (data.requireLogin === false) {
-            window.location.assign("/dashboard");
+          if (data.requireLogin === false || data.authenticated === true) {
+            const next = safeRedirect();
+            window.location.assign(next);
             return;
           }
           setHasPassword(!!data.hasPassword);
@@ -76,7 +90,8 @@ export default function LoginPage() {
           setMustChange(true);
           return;
         }
-        window.location.assign("/dashboard");
+        const next = safeRedirect();
+        window.location.assign(next);
       } else {
         const data = await res.json();
         setError(data.error || "Invalid password");
@@ -102,7 +117,7 @@ export default function LoginPage() {
         body: JSON.stringify({ currentPassword: password, newPassword }),
       });
       if (res.ok) {
-        window.location.assign("/dashboard");
+        window.location.assign(safeRedirect());
       } else {
         const data = await res.json();
         setError(data.error || "Failed to set password");

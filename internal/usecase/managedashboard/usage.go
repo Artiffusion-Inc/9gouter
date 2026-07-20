@@ -27,46 +27,127 @@ func (s *UsageService) Stats(ctx context.Context, period string) (usage.Aggregat
 	return s.Repo.Aggregates(ctx, period)
 }
 
-// Chart returns per-day usage totals suitable for a chart.
-func (s *UsageService) Chart(ctx context.Context, period string) (map[string]any, error) {
+// Chart returns per-bucket usage totals as an array of records
+// [{label, tokens, cost}, ...], mirroring the legacy JS getChartData() so the
+// dashboard UsageChart component (which calls data.some(d => d.tokens>0 || d.cost>0))
+// receives the array it expects. Returning {labels,requests,costs,tokens} column
+// arrays here broke the UI: data.some crashed with "t.some is not a function",
+// taking down the dashboard render tree (including the Import Backup button).
+//
+// Valid periods mirror legacy: today (24 hourly buckets), 24h (24 hourly
+// buckets rolling), 7d / 30d / 60d (N daily buckets from usageHistory).
+func (s *UsageService) Chart(ctx context.Context, period string) ([]map[string]any, error) {
+	switch period {
+	case "today", "24h":
+		return s.chartHourly(ctx, period)
+	default:
+		// 7d / 30d / 60d / unknown → daily buckets.
+		bucketCount := 7
+		switch period {
+		case "30d":
+			bucketCount = 30
+		case "60d":
+			bucketCount = 60
+		}
+		return s.chartDaily(ctx, bucketCount)
+	}
+}
+
+// chartHourly builds `count` hourly buckets. "today" starts at local midnight;
+// "24h" rolls back count hours from now. Each bucket aggregates
+// prompt+completion tokens and cost over the hour window.
+func (s *UsageService) chartHourly(ctx context.Context, period string) ([]map[string]any, error) {
+	const bucketCount = 24
+	const bucketMs int64 = 3600 * 1000
+	now := time.Now()
+
+	var startTime time.Time
+	if period == "today" {
+		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		startTime = startOfDay
+	} else {
+		startTime = now.Add(-time.Duration(bucketCount) * time.Hour)
+	}
+	endTime := startTime.Add(time.Duration(bucketCount) * time.Hour)
+
 	records, err := s.Repo.Query(ctx, usage.Query{
-		StartDate: startForPeriod(period),
-		Limit:     10000,
+		StartDate: startTime,
+		Limit:     100000,
 	})
 	if err != nil {
 		return nil, err
 	}
-	days := map[string]usage.Counter{}
+
+	buckets := make([]map[string]any, bucketCount)
+	for i := 0; i < bucketCount; i++ {
+		t := startTime.Add(time.Duration(i) * time.Hour)
+		label := t.Format("15:04")
+		buckets[i] = map[string]any{"label": label, "tokens": 0, "cost": 0.0}
+	}
+	for _, rec := range records {
+		ts := rec.Timestamp.In(now.Location())
+		if ts.Before(startTime) {
+			continue
+		}
+		if period == "today" && !ts.Before(endTime) {
+			continue
+		}
+		if period == "24h" && ts.After(now) {
+			continue
+		}
+		idx := int(ts.Sub(startTime) / time.Hour)
+		if idx < 0 || idx >= bucketCount {
+			continue
+		}
+		tok, _ := buckets[idx]["tokens"].(int)
+		cost, _ := buckets[idx]["cost"].(float64)
+		buckets[idx]["tokens"] = tok + rec.PromptTokens + rec.CompletionTokens
+		buckets[idx]["cost"] = cost + rec.Cost
+	}
+	return buckets, nil
+}
+
+// chartDaily builds N daily buckets ending today, aggregating tokens and
+// cost from usage records. Mirrors legacy getChartData's 7d/30d/60d branch.
+func (s *UsageService) chartDaily(ctx context.Context, bucketCount int) ([]map[string]any, error) {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	startDate := today.AddDate(0, 0, -(bucketCount - 1))
+
+	records, err := s.Repo.Query(ctx, usage.Query{
+		StartDate: startDate,
+		Limit:     100000,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	byDay := map[string]usage.Counter{}
 	for _, rec := range records {
 		key := rec.Timestamp.UTC().Format("2006-01-02")
-		addCounter(&days, key, usage.Counter{
-			Requests:         1,
-			PromptTokens:     rec.PromptTokens,
-			CompletionTokens: rec.CompletionTokens,
-			Cost:             rec.Cost,
+		c := byDay[key]
+		c.Requests++
+		c.PromptTokens += rec.PromptTokens
+		c.CompletionTokens += rec.CompletionTokens
+		c.Cost += rec.Cost
+		byDay[key] = c
+	}
+
+	out := make([]map[string]any, 0, bucketCount)
+	for i := 0; i < bucketCount; i++ {
+		d := startDate.AddDate(0, 0, i)
+		key := d.UTC().Format("2006-01-02")
+		label := d.Format("Jan 2")
+		c := byDay[key]
+		out = append(out, map[string]any{
+			"label":  label,
+			"tokens": c.PromptTokens + c.CompletionTokens,
+			"cost":   c.Cost,
 		})
 	}
-	labels := make([]string, 0, len(days))
-	for k := range days {
-		labels = append(labels, k)
-	}
-	sort.Strings(labels)
-	requests := make([]int, 0, len(labels))
-	costs := make([]float64, 0, len(labels))
-	tokens := make([]int, 0, len(labels))
-	for _, label := range labels {
-		c := days[label]
-		requests = append(requests, c.Requests)
-		costs = append(costs, c.Cost)
-		tokens = append(tokens, c.PromptTokens+c.CompletionTokens)
-	}
-	return map[string]any{
-		"labels":   labels,
-		"requests": requests,
-		"costs":    costs,
-		"tokens":   tokens,
-	}, nil
+	return out, nil
 }
+
 
 // RecentLogs returns recent formatted log lines.
 func (s *UsageService) RecentLogs(ctx context.Context, limit int) ([]string, error) {
@@ -96,30 +177,6 @@ func (s *UsageService) DistinctProviders(ctx context.Context) ([]map[string]stri
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i]["id"] < out[j]["id"] })
 	return out, nil
-}
-
-func startForPeriod(period string) time.Time {
-	switch period {
-	case "today", "24h":
-		return time.Now().UTC().Add(-24 * time.Hour)
-	case "7d":
-		return time.Now().UTC().AddDate(0, 0, -7)
-	case "30d":
-		return time.Now().UTC().AddDate(0, 0, -30)
-	case "60d":
-		return time.Now().UTC().AddDate(0, 0, -60)
-	default:
-		return time.Time{}
-	}
-}
-
-func addCounter(m *map[string]usage.Counter, key string, add usage.Counter) {
-	c := (*m)[key]
-	c.Requests += add.Requests
-	c.PromptTokens += add.PromptTokens
-	c.CompletionTokens += add.CompletionTokens
-	c.Cost += add.Cost
-	(*m)[key] = c
 }
 
 var _ = fmt.Sprintf

@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"path"
+	"regexp"
 	"strings"
 )
 
@@ -122,6 +123,12 @@ func serveFile(w http.ResponseWriter, r *http.Request, relPath string, file fs.F
 	// Apply long cache headers for fingerprinted Next.js assets.
 	if isFingerprintedAsset(relPath) {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else if strings.HasSuffix(relPath, ".html") {
+		// HTML documents must never be cached long: they reference the
+		// fingerprinted chunks whose hashes change on every rebuild, so a
+		// stale HTML page loads stale chunks. Send no-store so the browser
+		// always revalidates after a deploy/rebuild.
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 	}
 
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -133,10 +140,19 @@ func serveFile(w http.ResponseWriter, r *http.Request, relPath string, file fs.F
 	_ = copyBytes(w, file, info.Size())
 }
 
+// isFingerprintedAsset reports whether relPath is a Next.js content-hashed
+// asset eligible for long-term immutable caching. Next.js fingerprints the
+// hash into the basename (e.g. "page-134d984102d883ee.js", "style-a1b2c3.css",
+// "media/e4af272ccee01ff0-s.p.woff"), NOT into the extension. So we look for a
+// ≥8-char hex run in the basename. The previous check scanned path.Ext for hex
+// digits, but ".js"/".css"/".woff" contain no hex — so the immutable cache
+// header was never applied and browsers kept stale chunks across rebuilds.
 func isFingerprintedAsset(relPath string) bool {
 	base := path.Base(relPath)
-	return strings.Contains(base, "-") && strings.ContainsAny(path.Ext(base), "0123456789abcdef")
+	return path.Ext(base) != "" && fingerprintHexRe.MatchString(base)
 }
+
+var fingerprintHexRe = regexp.MustCompile(`[0-9a-f]{8,}`)
 
 func copyBytes(w io.Writer, src io.Reader, size int64) error {
 	if size > 0 {

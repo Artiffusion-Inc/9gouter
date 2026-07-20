@@ -122,7 +122,7 @@ pipeline into Go. Fix 1 (strictProxy propagation) landed earlier.
 
 - `tools/shadowdiff/` — reverse-proxy shadow-diff harness (fans out to the Go backend, diffs status/headers/normalized SSE/usage). Mismatches logged to `tools/shadowdiff/mismatches.jsonl`.
 - `docs/cutover-runbook.md` — pre-flight, go-live, rollback, monitoring, deletion criteria.
-- `Dockerfile` — multi-stage: Bun static export → Go `CGO_ENABLED=0` static build → distroless.
+- `Containerfile` — multi-stage: Bun static export → Go `CGO_ENABLED=0` static build → distroless. Image is published to GHCR only (`ghcr.io/artiffusion/9gouter`) by `.github/workflows/container-publish.yml`; Dockerfile/Docker Hub are not used.
 
 ## Legacy JS Backend (branch `legacy/js-backend`)
 
@@ -175,7 +175,7 @@ scripts/build-dashboard.sh      # bun build → cp out/ into dashboard_assets
 go test -race ./...
 ```
 
-`internal/adapter/transport/http/dashboard_assets/.gitkeep` is committed so a clean clone compiles; the real export is gitignored and produced by `scripts/build-dashboard.sh` (or the Dockerfile's first stage).
+`internal/adapter/transport/http/dashboard_assets/.gitkeep` is committed so a clean clone compiles; the real export is gitignored and produced by `scripts/build-dashboard.sh` (or the Containerfile's first stage).
 
 ## Upstream Sync
 
@@ -191,13 +191,16 @@ git push --tags
 
 Legacy JS conflicts land on `legacy/js-backend` in `runtimeConfig.js` (env-var patch) and `streamHandler.js` (error SSE patch).
 
-## Docker Build
+## Container Build
 
+- **Build file**: `Containerfile` (no `Dockerfile`; podman/docker both work)
+- **Ignore**: `.containerignore` (no `.dockerignore`)
+- **Compose**: `container-compose.yml` → port 20127, volume `9gouter-data`, `.env` file
+- **CI workflow**: `.github/workflows/container-publish.yml`
 - **Trigger**: push tag `v*` or manual `workflow_dispatch`
-- **Images**: `ghcr.io/artiffusion/9gouter:latest` + `artiffusion/9gouter:latest`
+- **Registry**: GHCR only — `ghcr.io/artiffusion/9gouter:<version>` + `:latest`. No Docker Hub.
 - **Platforms**: linux/amd64, linux/arm64
-- **Secrets needed**: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses `GITHUB_TOKEN`)
-- **Compose**: `docker-compose.yml` → port 20127, volume `9gouter-data`, `.env` file
+- **Auth**: GHCR uses `GITHUB_TOKEN` (no extra secrets needed)
 
 ## Tech Stack
 

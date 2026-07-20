@@ -96,15 +96,16 @@ func TestStaticHandlerMethodNotAllowed(t *testing.T) {
 }
 
 func TestStaticHandlerAssetCache(t *testing.T) {
-	// The placeholder index.html is not fingerprinted; verify the cache header
-	// helper does not add Cache-Control for plain index.html.
+	// The placeholder index.html is not fingerprinted; HTML documents get
+	// "no-cache, must-revalidate" so a rebuild's new chunk hashes are always
+	// revalidated. Fingerprinted assets get immutable caching instead.
 	handler := NewStaticHandler(slog.Default())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Header().Get("Cache-Control") != "" {
-		t.Errorf("Cache-Control should be empty for index.html, got %q", rec.Header().Get("Cache-Control"))
+	if got := rec.Header().Get("Cache-Control"); got != "no-cache, must-revalidate" {
+		t.Errorf("Cache-Control for index.html = %q, want %q", got, "no-cache, must-revalidate")
 	}
 }
 

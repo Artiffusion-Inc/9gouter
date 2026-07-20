@@ -1,5 +1,7 @@
-name: Build and Push Docker Image
+name: Build and Push Container Image
 
+# Builds the distroless multi-arch (amd64+arm64) container image and pushes
+# it to GHCR only. Triggered by a version tag (v*) or manual dispatch.
 on:
   push:
     tags:
@@ -26,7 +28,7 @@ jobs:
       - name: Cross-compile for linux/arm64
         run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o 9gouter-linux-arm64 ./cmd/9gouter
 
-  docker-build-and-push:
+  container-build-and-push:
     needs: go-test-build
     runs-on: ubuntu-latest
     permissions:
@@ -48,19 +50,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ghcr.io/${{ steps.ghcr.outputs.owner }}/9gouter
-            artiffusion/9gouter
+          images: ghcr.io/${{ steps.ghcr.outputs.owner }}/9gouter
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest
@@ -69,11 +63,12 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Containerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=ghcr.io/${{ steps.ghcr.outputs.owner }}/9gouter:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ steps.ghcr.outputs.owner }}:buildcache,mode=max
+          cache-to: type=registry,ref=ghcr.io/${{ steps.ghcr.outputs.owner }}/9gouter:buildcache,mode=max
           platforms: linux/amd64,linux/arm64
           provenance: false
           sbom: false

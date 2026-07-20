@@ -9,7 +9,6 @@
   
   [![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
   [![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
-  [![Docker Pulls](https://img.shields.io/docker/pulls/artiffusion/9gouter.svg?logo=docker&label=Docker%20pulls)](https://hub.docker.com/r/artiffusion/9gouter)
   [![GHCR](https://img.shields.io/badge/GHCR-artiffusion%2F9gouter-blue?logo=github)](https://github.com/Artiffusion-Inc/9gouter/pkgs/container/9gouter)
   [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/Artiffusion-Inc/9gouter/blob/main/LICENSE)
 
@@ -1165,10 +1164,9 @@ pm2 startup
 
 ### Docker
 
-Published images (multi-platform `linux/amd64` + `linux/arm64`):
+Published image (multi-platform `linux/amd64` + `linux/arm64`), GHCR only:
 
-- Docker Hub: [`Artiffusion-Inc/9gouter`](https://hub.docker.com/r/artiffusion/9gouter)
-- GHCR: [`ghcr.io/Artiffusion-Inc/9gouter`](https://github.com/Artiffusion-Inc/9gouter/pkgs/container/9gouter)
+- GHCR: [`ghcr.io/artiffusion/9gouter`](https://github.com/Artiffusion-Inc/9gouter/pkgs/container/9gouter)
 
 **Quick start (use published image):**
 
@@ -1178,7 +1176,7 @@ docker run -d \
   -p 20128:20128 \
   -v "$HOME/.9gouter:/app/data" \
   -e DATA_DIR=/app/data \
-  Artiffusion-Inc/9gouter:latest
+  ghcr.io/artiffusion/9gouter:latest
 ```
 
 → Open http://localhost:20128
@@ -1187,8 +1185,8 @@ docker run -d \
 
 ```bash
 git clone https://github.com/Artiffusion-Inc/9gouter.git
-cd 9gouter/app
-docker build -t 9gouter .
+cd 9gouter
+docker build -t 9gouter -f Containerfile .
 docker run -d --name 9gouter -p 20128:20128 \
   -v "$HOME/.9gouter:/app/data" -e DATA_DIR=/app/data 9gouter
 ```
@@ -1204,7 +1202,7 @@ docker run -d --name 9gouter -p 20128:20128 \
 docker logs -f 9gouter
 docker restart 9gouter
 docker stop 9gouter && docker rm 9gouter
-docker pull Artiffusion-Inc/9gouter:latest   # update to latest
+docker pull ghcr.io/artiffusion/9gouter:latest   # update to latest
 ```
 
 **Data persistence:** `$HOME/.9gouter/db/data.sqlite` on host ↔ `/app/data/db/data.sqlite` in container.

@@ -1,6 +1,6 @@
 # Docker
 
-Run 9Gouter in a container. Published image: [`Artiffusion-Inc/9gouter`](https://hub.docker.com/r/Artiffusion-Inc/9gouter) — multi-platform `linux/amd64` + `linux/arm64`.
+Run 9Gouter in a container. Published image (GHCR only): [`ghcr.io/artiffusion/9gouter`](https://github.com/Artiffusion-Inc/9gouter/pkgs/container/9gouter) — multi-platform `linux/amd64` + `linux/arm64`.
 
 ---
 
@@ -14,7 +14,7 @@ docker run -d \
   -v "$HOME/.9gouter:/app/data" \
   -e DATA_DIR=/app/data \
   --name 9gouter \
-  Artiffusion-Inc/9gouter:latest
+  ghcr.io/artiffusion/9gouter:latest
 ```
 
 App listens on port `20128`. Open: http://localhost:20128
@@ -61,7 +61,7 @@ docker run -d \
   -e HOSTNAME=0.0.0.0 \
   -e DEBUG=true \
   --name 9gouter \
-  Artiffusion-Inc/9gouter:latest
+  ghcr.io/artiffusion/9gouter:latest
 ```
 
 ## Optional Headroom sidecar
@@ -71,7 +71,7 @@ The 9Gouter image does not bundle Python or Headroom. To use Headroom in Docker,
 ```yaml
 services:
   9gouter:
-    image: Artiffusion-Inc/9gouter:latest
+    image: ghcr.io/artiffusion/9gouter:latest
     ports:
       - "20128:20128"
     volumes:
@@ -95,7 +95,7 @@ If Headroom runs on the Docker host instead of as a sidecar, use `http://host.do
 ## Update to latest
 
 ```bash
-docker pull Artiffusion-Inc/9gouter:latest
+docker pull ghcr.io/artiffusion/9gouter:latest
 docker rm -f 9gouter
 # re-run the quick start command
 ```
@@ -107,9 +107,9 @@ docker rm -f 9gouter
 ## Build image locally (test)
 
 ```bash
-cd app && docker build -t 9gouter .
+podman build -t 9gouter -f Containerfile .
 
-docker run --rm -p 20128:20128 \
+podman run --rm -p 20128:20128 \
   -v "$HOME/.9gouter:/app/data" \
   -e DATA_DIR=/app/data \
   9gouter
@@ -118,8 +118,7 @@ docker run --rm -p 20128:20128 \
 ## Publish (automatic via CI)
 
 Push a git tag `v*` → GitHub Actions builds multi-platform (amd64+arm64) and pushes to:
-- `ghcr.io/Artiffusion-Inc/9gouter:v{version}` + `:latest`
-- `Artiffusion-Inc/9gouter:v{version}` + `:latest`
+- `ghcr.io/artiffusion/9gouter:v{version}` + `:latest`
 
 ```bash
 # Use scripts/release.js (recommended)
@@ -129,4 +128,4 @@ node scripts/release.js "Release title" "Notes"
 git tag v0.4.x && git push origin v0.4.x
 ```
 
-Workflow: `app/.github/workflows/docker-publish.yml`
+Workflow: `.github/workflows/container-publish.yml`

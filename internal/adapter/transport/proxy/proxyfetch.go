@@ -27,7 +27,7 @@ type ProxyFetchOptions struct {
 	NoProxy string
 	// Logger receives structured route-diagnostics lines (phase=... route=...
 	// fallbackToDirect=... failureSource=...). When nil, diagnostics are
-	// silently dropped. Ports decolua/9gouter #2703 Fix 5.
+	// silently dropped. Ports decolua/9router #2703 Fix 5.
 	Logger *slog.Logger
 }
 

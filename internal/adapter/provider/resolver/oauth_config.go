@@ -7,7 +7,7 @@ import "time"
 // trackRefreshAt}) and open-sse/config/appConstants.js (TOKEN_EXPIRY_BUFFER_MS,
 // REFRESH_LEAD_MS). The JS build derived REFRESH_LEAD_MS from the registry; the
 // Go rewrite has no such registry, so the values are inlined here as a small
-// table keyed by provider id. decolua/9gouter #2703 Fix 2c.
+// table keyed by provider id. decolua/9router #2703 Fix 2c.
 
 // tokenExpiryBufferMs is the default refresh lead when a provider does not
 // declare its own refreshLeadMs. Mirrors JS TOKEN_EXPIRY_BUFFER_MS (5 min).

@@ -11,7 +11,7 @@ import (
 // This file ports the JS token-refresh coalescing from
 // open-sse/services/oauthCredentialManager.js (withCredentialRefreshLock —
 // per-key inflight promise reuse) and open-sse/services/tokenRefresh/dedup.js
-// (dedupRefresh — inflight + 10s successful-result cache). decolua/9gouter
+// (dedupRefresh — inflight + 10s successful-result cache). decolua/9router
 // #2703 Fix 2b. Without it, a burst of chat requests on a freshly-expired
 // token each trigger a separate refresh, racing the upstream token endpoint;
 // with it the first caller refreshes and the rest reuse either the in-flight

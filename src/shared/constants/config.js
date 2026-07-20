@@ -9,8 +9,7 @@ export const APP_CONFIG = {
 
 // GitHub configuration
 export const GITHUB_CONFIG = {
-  changelogUrl: "https://raw.githubusercontent.com/decolua/9gouter/refs/heads/master/CHANGELOG.md",
-  donateUrl: "https://9gouter.com/api/donate",
+  changelogUrl: "https://raw.githubusercontent.com/Artiffusion-Inc/9gouter/main/CHANGELOG.md",
 };
 
 // Updater configuration

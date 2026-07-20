@@ -66,7 +66,7 @@ func finishReason(m map[string]any) string {
 }
 
 // TestFinalChunkCarriesContent is the regression test for upstream issue
-// decolua/9gouter #2694: when the upstream delivers the final content in the
+// decolua/9router #2694: when the upstream delivers the final content in the
 // SAME chunk as "done": true (e.g. {"message":{"content":"!"},"done":true}),
 // the translator must not drop it. Before the fix the done branch returned an
 // empty delta immediately, cutting off the last token.

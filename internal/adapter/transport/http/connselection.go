@@ -18,7 +18,7 @@ var ErrNoActiveCredentials = errors.New("all active credentials excluded")
 
 // connectionUsage is the sticky-round-robin state read from a connection's
 // JSON data blob. Ports the JS `lastUsedAt` + `consecutiveUseCount` fields
-// consumed by getProviderCredentials (decolua/9gouter #2703 Fix 4).
+// consumed by getProviderCredentials (decolua/9router #2703 Fix 4).
 type connectionUsage struct {
 	lastUsedAt          time.Time
 	lastUsedAtPresent   bool
@@ -47,7 +47,7 @@ func readConnectionUsage(c settings.ProviderConnection) connectionUsage {
 }
 
 // pickStickyRoundRobin implements the JS getProviderCredentials
-// round-robin branch (decolua/9gouter #2703 Fix 4):
+// round-robin branch (decolua/9router #2703 Fix 4):
 //
 //   - Sort available connections by lastUsedAt descending (most-recent first);
 //     never-used connections sort by priority as a tiebreaker (JS falls back

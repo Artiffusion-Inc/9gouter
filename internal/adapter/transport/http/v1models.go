@@ -16,7 +16,7 @@ import (
 
 // GET /v1/models — OpenAI-compatible model catalog.
 //
-// This is the static MVP for upstream issue decolua/9gouter #2702
+// This is the static MVP for upstream issue decolua/9router #2702
 // (Endpoint /v1/models not list all the models). It mirrors the
 // no-live-resolver branch of the JS buildModelsList in
 // src/app/api/v1/models/route.js:

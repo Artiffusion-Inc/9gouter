@@ -8,11 +8,11 @@
   
   **将所有 AI 编程工具（Claude Code、Cursor、Antigravity、Copilot、Codex、Gemini、OpenCode、Cline、OpenClaw...）连接到 40+ AI 提供商和 100+ 模型。**
   
-  [![npm](https://img.shields.io/npm/v/9gouter.svg)](https://www.npmjs.com/package/9gouter)
-  [![Downloads](https://img.shields.io/npm/dm/9gouter.svg)](https://www.npmjs.com/package/9gouter)
-  [![License](https://img.shields.io/npm/l/9gouter.svg)](https://github.com/decolua/9gouter/blob/main/LICENSE)
+  [![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
+  [![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
+  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/Artiffusion-Inc/9gouter/blob/main/LICENSE)
 
-  <a href="https://trendshift.io/repositories/22628" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22628" alt="decolua%2F9gouter | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+  <a href="https://trendshift.io/repositories/22628" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22628" alt="Artiffusion-Inc%2F9gouter | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
   
   [🚀 快速开始](#-快速开始) • [💡 功能特点](#-主要功能) • [📖 设置指南](#-设置指南) • [🌐 网站](https://9gouter.com)
 
@@ -173,7 +173,7 @@ PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run 
 
 </div>
 
-> 🎬 **制作了关于 9Gouter 的视频？** 提交 [Pull Request](https://github.com/decolua/9gouter/pulls)，将你的视频添加到此部分 — 我们会合并它！
+> 🎬 **制作了关于 9Gouter 的视频？** 提交 [Pull Request](https://github.com/Artiffusion-Inc/9gouter/pulls)，将你的视频添加到此部分 — 我们会合并它！
 
 ---
 
@@ -1018,7 +1018,7 @@ Model：cc/claude-opus-4-7
 
 ```bash
 # 克隆并安装
-git clone https://github.com/decolua/9gouter.git
+git clone https://github.com/Artiffusion-Inc/9gouter.git
 cd 9gouter
 npm install
 npm run build
@@ -1263,8 +1263,8 @@ Authorization: Bearer your-api-key
 ## 📧 支持
 
 - **网站**：[9gouter.com](https://9gouter.com)
-- **GitHub**：[github.com/decolua/9gouter](https://github.com/decolua/9gouter)
-- **问题**：[github.com/decolua/9gouter/issues](https://github.com/decolua/9gouter/issues)
+- **GitHub**：[github.com/Artiffusion-Inc/9gouter](https://github.com/Artiffusion-Inc/9gouter)
+- **问题**：[github.com/Artiffusion-Inc/9gouter/issues](https://github.com/Artiffusion-Inc/9gouter/issues)
 
 ---
 
@@ -1272,13 +1272,13 @@ Authorization: Bearer your-api-key
 
 感谢所有帮助改进 9Gouter 的贡献者！
 
-[![Contributors](https://contrib.rocks/image?repo=decolua/9gouter&max=150&columns=15&anon=1&v=20260309)](https://github.com/decolua/9gouter/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=Artiffusion-Inc/9gouter&max=150&columns=15&anon=1&v=20260309)](https://github.com/Artiffusion-Inc/9gouter/graphs/contributors)
 
 ---
 
 ## 📊 Star 图表
 
-[![Star Chart](https://starchart.cc/decolua/9gouter.svg?variant=adaptive)](https://starchart.cc/decolua/9gouter)
+[![Star Chart](https://starchart.cc/Artiffusion-Inc/9gouter.svg?variant=adaptive)](https://starchart.cc/Artiffusion-Inc/9gouter)
 
 
 

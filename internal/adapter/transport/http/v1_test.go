@@ -344,7 +344,7 @@ func mustCreateConnectionWithID(t *testing.T, db *sql.DB, id, provider, data str
 }
 
 // TestV1_ResolveCredentialsPropagatesStrictProxy is the integration regression
-// test for decolua/9gouter #2703 Fix 1: when a connection references a proxy
+// test for decolua/9router #2703 Fix 1: when a connection references a proxy
 // pool with strictProxy=true, that strict flag plus the pool's proxyUrl must
 // be resolved into Credentials.ProviderSpecificData so the provider executor's
 // ProxyAwareFetch receives them per-request. Before the fix, strictProxy was

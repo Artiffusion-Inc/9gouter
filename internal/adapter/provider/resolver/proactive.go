@@ -10,7 +10,7 @@ import (
 // This file ports the proactive refresh orchestration from
 // open-sse/services/oauthCredentialManager.js (withCredentialRefreshLock →
 // shouldRefreshCredentials → refresh → mergeRefreshedCredentials → persist).
-// decolua/9gouter #2703 Fix 2c.
+// decolua/9router #2703 Fix 2c.
 //
 // The orchestration lives in the resolver package (not the transport layer)
 // so the dedup (resolver.SharedRefreshDedup) and the merge helpers are reused

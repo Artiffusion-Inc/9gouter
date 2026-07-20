@@ -7,13 +7,13 @@
   
   **Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 40+ AI Providers & 100+ Models.**
   
-  [![npm](https://img.shields.io/npm/v/9gouter.svg)](https://www.npmjs.com/package/9gouter)
-  [![Downloads](https://img.shields.io/npm/dm/9gouter.svg)](https://www.npmjs.com/package/9gouter)
-  [![Docker Pulls](https://img.shields.io/docker/pulls/decolua/9gouter.svg?logo=docker&label=Docker%20pulls)](https://hub.docker.com/r/decolua/9gouter)
-  [![GHCR](https://img.shields.io/badge/GHCR-decolua%2F9gouter-blue?logo=github)](https://github.com/decolua/9gouter/pkgs/container/9gouter)
-  [![License](https://img.shields.io/npm/l/9gouter.svg)](https://github.com/decolua/9gouter/blob/main/LICENSE)
+  [![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
+  [![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
+  [![Docker Pulls](https://img.shields.io/docker/pulls/artiffusion/9gouter.svg?logo=docker&label=Docker%20pulls)](https://hub.docker.com/r/artiffusion/9gouter)
+  [![GHCR](https://img.shields.io/badge/GHCR-artiffusion%2F9gouter-blue?logo=github)](https://github.com/Artiffusion-Inc/9gouter/pkgs/container/9gouter)
+  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/Artiffusion-Inc/9gouter/blob/main/LICENSE)
 
-<a href="https://trendshift.io/repositories/22628" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22628" alt="decolua%2F9gouter | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/22628" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22628" alt="Artiffusion-Inc%2F9gouter | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 [🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [📖 Setup](#-setup-guide) • [🌐 Website](https://9gouter.com)
 
@@ -220,7 +220,7 @@ Default URLs:
 
 </div>
 
-> 🎬 **Made a video about 9Gouter?** Submit a [Pull Request](https://github.com/decolua/9gouter/pulls) adding your video to this section — we'll merge it!
+> 🎬 **Made a video about 9Gouter?** Submit a [Pull Request](https://github.com/Artiffusion-Inc/9gouter/pulls) adding your video to this section — we'll merge it!
 
 ---
 
@@ -1136,7 +1136,7 @@ Model: cc/claude-opus-4-7
 
 ```bash
 # Clone and install
-git clone https://github.com/decolua/9gouter.git
+git clone https://github.com/Artiffusion-Inc/9gouter.git
 cd 9gouter
 npm install
 npm run build
@@ -1167,8 +1167,8 @@ pm2 startup
 
 Published images (multi-platform `linux/amd64` + `linux/arm64`):
 
-- Docker Hub: [`decolua/9gouter`](https://hub.docker.com/r/decolua/9gouter)
-- GHCR: [`ghcr.io/decolua/9gouter`](https://github.com/decolua/9gouter/pkgs/container/9gouter)
+- Docker Hub: [`Artiffusion-Inc/9gouter`](https://hub.docker.com/r/artiffusion/9gouter)
+- GHCR: [`ghcr.io/Artiffusion-Inc/9gouter`](https://github.com/Artiffusion-Inc/9gouter/pkgs/container/9gouter)
 
 **Quick start (use published image):**
 
@@ -1178,7 +1178,7 @@ docker run -d \
   -p 20128:20128 \
   -v "$HOME/.9gouter:/app/data" \
   -e DATA_DIR=/app/data \
-  decolua/9gouter:latest
+  Artiffusion-Inc/9gouter:latest
 ```
 
 → Open http://localhost:20128
@@ -1186,7 +1186,7 @@ docker run -d \
 **Build from source (dev):**
 
 ```bash
-git clone https://github.com/decolua/9gouter.git
+git clone https://github.com/Artiffusion-Inc/9gouter.git
 cd 9gouter/app
 docker build -t 9gouter .
 docker run -d --name 9gouter -p 20128:20128 \
@@ -1204,7 +1204,7 @@ docker run -d --name 9gouter -p 20128:20128 \
 docker logs -f 9gouter
 docker restart 9gouter
 docker stop 9gouter && docker rm 9gouter
-docker pull decolua/9gouter:latest   # update to latest
+docker pull Artiffusion-Inc/9gouter:latest   # update to latest
 ```
 
 **Data persistence:** `$HOME/.9gouter/db/data.sqlite` on host ↔ `/app/data/db/data.sqlite` in container.
@@ -1406,8 +1406,8 @@ Authorization: Bearer your-api-key
 ## 📧 Support
 
 - **Website**: [9gouter.com](https://9gouter.com)
-- **GitHub**: [github.com/decolua/9gouter](https://github.com/decolua/9gouter)
-- **Issues**: [github.com/decolua/9gouter/issues](https://github.com/decolua/9gouter/issues)
+- **GitHub**: [github.com/Artiffusion-Inc/9gouter](https://github.com/Artiffusion-Inc/9gouter)
+- **Issues**: [github.com/Artiffusion-Inc/9gouter/issues](https://github.com/Artiffusion-Inc/9gouter/issues)
 
 ---
 
@@ -1415,13 +1415,13 @@ Authorization: Bearer your-api-key
 
 Thanks to all contributors who helped make 9Gouter better!
 
-[![Contributors](https://contrib.rocks/image?repo=decolua/9gouter&max=150&columns=15&anon=1&v=20260309)](https://github.com/decolua/9gouter/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=Artiffusion-Inc/9gouter&max=150&columns=15&anon=1&v=20260309)](https://github.com/Artiffusion-Inc/9gouter/graphs/contributors)
 
 ---
 
 ## 📊 Star Chart
 
-[![Star Chart](https://starchart.cc/decolua/9gouter.svg?variant=adaptive)](https://starchart.cc/decolua/9gouter)
+[![Star Chart](https://starchart.cc/Artiffusion-Inc/9gouter.svg?variant=adaptive)](https://starchart.cc/Artiffusion-Inc/9gouter)
 
 ## 🔀 Forks
 

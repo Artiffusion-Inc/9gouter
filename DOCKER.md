@@ -1,6 +1,6 @@
 # Docker
 
-Run 9Gouter in a container. Published image: [`decolua/9gouter`](https://hub.docker.com/r/decolua/9gouter) — multi-platform `linux/amd64` + `linux/arm64`.
+Run 9Gouter in a container. Published image: [`Artiffusion-Inc/9gouter`](https://hub.docker.com/r/Artiffusion-Inc/9gouter) — multi-platform `linux/amd64` + `linux/arm64`.
 
 ---
 
@@ -14,7 +14,7 @@ docker run -d \
   -v "$HOME/.9gouter:/app/data" \
   -e DATA_DIR=/app/data \
   --name 9gouter \
-  decolua/9gouter:latest
+  Artiffusion-Inc/9gouter:latest
 ```
 
 App listens on port `20128`. Open: http://localhost:20128
@@ -61,7 +61,7 @@ docker run -d \
   -e HOSTNAME=0.0.0.0 \
   -e DEBUG=true \
   --name 9gouter \
-  decolua/9gouter:latest
+  Artiffusion-Inc/9gouter:latest
 ```
 
 ## Optional Headroom sidecar
@@ -71,7 +71,7 @@ The 9Gouter image does not bundle Python or Headroom. To use Headroom in Docker,
 ```yaml
 services:
   9gouter:
-    image: decolua/9gouter:latest
+    image: Artiffusion-Inc/9gouter:latest
     ports:
       - "20128:20128"
     volumes:
@@ -95,7 +95,7 @@ If Headroom runs on the Docker host instead of as a sidecar, use `http://host.do
 ## Update to latest
 
 ```bash
-docker pull decolua/9gouter:latest
+docker pull Artiffusion-Inc/9gouter:latest
 docker rm -f 9gouter
 # re-run the quick start command
 ```
@@ -118,8 +118,8 @@ docker run --rm -p 20128:20128 \
 ## Publish (automatic via CI)
 
 Push a git tag `v*` → GitHub Actions builds multi-platform (amd64+arm64) and pushes to:
-- `ghcr.io/decolua/9gouter:v{version}` + `:latest`
-- `decolua/9gouter:v{version}` + `:latest`
+- `ghcr.io/Artiffusion-Inc/9gouter:v{version}` + `:latest`
+- `Artiffusion-Inc/9gouter:v{version}` + `:latest`
 
 ```bash
 # Use scripts/release.js (recommended)

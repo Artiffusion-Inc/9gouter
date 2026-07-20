@@ -459,7 +459,7 @@ func shouldInjectReasoning(msg map[string]any, scope string) bool {
 // upstream-model prefix ("kimi-"), which silently missed Kimi models whose
 // upstream id does not start with "kimi-" (e.g. an alias or a bare id like
 // "k2.5"). Keying on e.Provider fixes the silent strip reported in
-// decolua/9gouter #2690. The model-prefix fallback preserves the prior
+// decolua/9router #2690. The model-prefix fallback preserves the prior
 // behavior for providers routed through a generic executor without a kimi
 // provider id (deepseek model-name matching).
 func (e *DefaultExecutor) applyModelReasoningInject(model string, body map[string]any) map[string]any {

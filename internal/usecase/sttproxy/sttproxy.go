@@ -9,7 +9,7 @@
 // NOT in this MVP slice (separate slices, mirroring the video/fetch scope):
 // the multi-account fallback rotation loop (excludeConnectionIds), usage
 // persistence (the legacy STT path never persisted usage), and on-401 token
-// refresh. x-9router-connection-id is NOT returned by STT (the JS handler does
+// refresh. x-9gouter-connection-id is NOT returned by STT (the JS handler does
 // not echo it — unlike video). The provider is resolved at the handler from
 // body.model (provider/model prefix) and passed in as ProviderID.
 package sttproxy
@@ -28,9 +28,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/stt"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/stt"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // Logger is a minimal log sink.

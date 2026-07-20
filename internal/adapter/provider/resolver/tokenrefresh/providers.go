@@ -18,7 +18,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
 )
 
 // OAuth2 endpoint + client constants — copied verbatim from the JS registry

@@ -29,7 +29,7 @@ func Synthesize(body []byte) (string, error) {
 
 	id, _ := parsed["id"].(string)
 	if id == "" {
-		id = "chatcmpl-9router-sse"
+		id = "chatcmpl-9gouter-sse"
 	}
 	createdF, _ := parsed["created"].(float64)
 	created := int64(createdF)

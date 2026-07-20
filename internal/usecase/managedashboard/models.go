@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
 )
 
 // ModelService exposes alias, custom model, and disabled model operations.

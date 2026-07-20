@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/webfetch"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/webfetch"
 )
 
 // handleWebFetch implements POST /v1/web/fetch. It ports the legacy JS

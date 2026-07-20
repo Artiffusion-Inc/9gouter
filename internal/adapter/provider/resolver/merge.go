@@ -3,12 +3,12 @@ package resolver
 import (
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // This file ports the proactive-refresh decision (shouldRefreshCredentials)
 // and the refresh-result merge (mergeRefreshedCredentials) from
-// open-sse/services/oauthCredentialManager.js. decolua/9router #2703 Fix 2c.
+// open-sse/services/oauthCredentialManager.js. decolua/9gouter #2703 Fix 2c.
 //
 // The credential material here lives on a connection record's JSON data blob
 // (accessToken / refreshToken / expiresAt / idToken / projectId /

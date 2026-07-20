@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
 func TestAPIKeyRepo_RoundTrip(t *testing.T) {

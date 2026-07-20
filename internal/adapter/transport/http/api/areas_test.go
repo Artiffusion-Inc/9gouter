@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	adapterauth "github.com/Artiffusion-Inc/9router/internal/adapter/auth"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
+	adapterauth "github.com/Artiffusion-Inc/9gouter/internal/adapter/auth"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
 )
 
 // Auth checks for all remaining area groups.

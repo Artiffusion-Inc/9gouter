@@ -8,7 +8,7 @@ package managedashboard
 import (
 	"context"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
 // ComboService delegates to the combo repository. It exists so handlers depend

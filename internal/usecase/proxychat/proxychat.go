@@ -14,17 +14,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	reg "github.com/Artiffusion-Inc/9router/internal/adapter/provider"
-	httpstream "github.com/Artiffusion-Inc/9router/internal/adapter/transport/http"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
-	"github.com/Artiffusion-Inc/9router/internal/domain/format"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
-	"github.com/Artiffusion-Inc/9router/internal/domain/usage"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	reg "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
+	httpstream "github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/usage"
 )
 
 // TokenSaverConfig holds the runtime token-saver switches. All stages are gated
-// by the X-9Router-Token-Saver request header (config.TOKEN_SAVER_HEADER).
+// by the X-9Gouter-Token-Saver request header (config.TOKEN_SAVER_HEADER).
 type TokenSaverConfig struct {
 	RtkEnabled              bool
 	HeadroomEnabled         bool
@@ -166,7 +166,7 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	// "ollama/gemma3:4b" in the body and the upstream 404s with "model not found".
 	bodyMap["model"] = req.Model
 
-	// Token-saver pipeline, gated by X-9Router-Token-Saver header.
+	// Token-saver pipeline, gated by X-9Gouter-Token-Saver header.
 	tokenSaverEnabled := isTokenSaverEnabled(req.Headers, h.deps.Config)
 	var headroomStats *headroomResult
 	var pxpipeSummary string
@@ -460,7 +460,7 @@ func isTokenSaverEnabled(headers http.Header, cfg config.Config) bool {
 	}
 	headerName := config.TOKEN_SAVER_HEADER
 	if headerName == "" {
-		headerName = "x-9router-token-saver"
+		headerName = "x-9gouter-token-saver"
 	}
 	v := strings.ToLower(headers.Get(headerName))
 	return v != "off"

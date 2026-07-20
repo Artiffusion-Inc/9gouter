@@ -64,7 +64,7 @@ package-lock.json
 
 
 # Go build artifacts
-/9router
+/9gouter
 *.test
 
 #Ignore vscode AI rules

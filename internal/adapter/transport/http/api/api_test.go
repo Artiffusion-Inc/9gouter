@@ -13,17 +13,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/auth"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	dbschema "github.com/Artiffusion-Inc/9router/internal/adapter/db"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/sqlite"
-	domainauth "github.com/Artiffusion-Inc/9router/internal/domain/auth"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/auth"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	dbschema "github.com/Artiffusion-Inc/9gouter/internal/adapter/db"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/sqlite"
+	domainauth "github.com/Artiffusion-Inc/9gouter/internal/domain/auth"
 )
 
 func mustOpenDB(t *testing.T) *sql.DB {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "9router-api-test-*")
+	dir, err := os.MkdirTemp("", "9gouter-api-test-*")
 	if err != nil {
 		t.Fatalf("temp dir: %v", err)
 	}

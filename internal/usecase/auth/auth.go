@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/auth"
-	domainauth "github.com/Artiffusion-Inc/9router/internal/domain/auth"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/auth"
+	domainauth "github.com/Artiffusion-Inc/9gouter/internal/domain/auth"
 )
 
 var (

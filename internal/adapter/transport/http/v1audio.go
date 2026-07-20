@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	sttprov "github.com/Artiffusion-Inc/9router/internal/adapter/provider/stt"
+	sttprov "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/stt"
 )
 
 // sttMaxUploadBytes caps the in-memory multipart parse budget and the file
@@ -21,7 +21,7 @@ const sttMaxUploadBytes int64 = 128 << 20
 // (provider/model prefix → strip; bare model → first provider with an STT
 // config + active connection), then dispatch to the sttproxy usecase.
 //
-// Unlike video, STT does not echo an x-9router-connection-id header (the JS
+// Unlike video, STT does not echo an x-9gouter-connection-id header (the JS
 // handler does not). The body limit is governed by the proxy
 // ProxyClientMaxBodySize (128mb default), matching the legacy
 // NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE.
@@ -126,7 +126,7 @@ func (h *v1Handler) handleAudioTranscriptions(w http.ResponseWriter, r *http.Req
 
 // writeSttResult writes the upstream transcription response to the client with
 // the upstream Content-Type and CORS, mirroring the JS jsonResponse / passthrough
-// helpers. STT does not emit x-9router-connection-id.
+// helpers. STT does not emit x-9gouter-connection-id.
 func (h *v1Handler) writeSttResult(w http.ResponseWriter, res SttResult) {
 	if res.Err != nil {
 		status := res.StatusCode

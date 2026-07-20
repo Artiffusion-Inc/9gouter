@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/sqlite"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/sqlite"
 )
 
 func testDB(t *testing.T) *sql.DB {

@@ -37,7 +37,7 @@ func (h *versionHandler) get(w http.ResponseWriter, r *http.Request) {
 func (h *versionHandler) update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": false,
-		"message": "Update is only available in production build (9router CLI)",
+		"message": "Update is only available in production build (9gouter CLI)",
 	})
 }
 

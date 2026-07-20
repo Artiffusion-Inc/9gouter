@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
 func TestNodeRepo_RoundTrip(t *testing.T) {

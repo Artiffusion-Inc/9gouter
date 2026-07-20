@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
-	"github.com/Artiffusion-Inc/9router/internal/domain/format"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
 )
 
 func TestRegistryRegistersOpenAIToClaude(t *testing.T) {

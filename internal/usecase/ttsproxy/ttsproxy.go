@@ -13,7 +13,7 @@
 // body.model (provider/voice prefix or bare → first TTS-capable provider).
 //
 // NOT in this slice (separate slices): account fallback rotation, on-401
-// token refresh, combo expansion, usage persistence. x-9router-connection-id
+// token refresh, combo expansion, usage persistence. x-9gouter-connection-id
 // is NOT returned by TTS (the JS handler does not).
 package ttsproxy
 
@@ -30,9 +30,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/tts"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/tts"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // Logger is a minimal log sink.

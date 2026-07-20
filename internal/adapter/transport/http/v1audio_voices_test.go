@@ -8,9 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http/api"
 )
 
 // TestV1AudioVoices_FullMux verifies the /v1/audio/voices route is registered

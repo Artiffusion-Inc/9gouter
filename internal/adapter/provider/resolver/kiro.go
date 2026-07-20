@@ -12,13 +12,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 	"github.com/google/uuid"
 )
 
 // kiroResolver fetches the live model catalog from AWS CodeWhisperer's
 // ListAvailableModels endpoint for an authenticated Kiro connection, then
-// expands each upstream model into 9router-shaped variants
+// expands each upstream model into 9gouter-shaped variants
 // (-thinking, -agentic, -thinking-agentic). Mirrors open-sse/services/
 // kiroModels.js. The -thinking/-agentic suffixes do not exist on the Kiro
 // upstream; the openai-to-kiro translator strips them before the request

@@ -23,14 +23,14 @@ func TestStaticHandler(t *testing.T) {
 			name:         "root serves index.html",
 			path:         "/",
 			wantStatus:   http.StatusOK,
-			wantContains: "9Router - AI Infrastructure Management",
+			wantContains: "9Gouter - AI Infrastructure Management",
 			wantCT:       "text/html; charset=utf-8",
 		},
 		{
 			name:         "unknown non-API path falls back to index.html",
 			path:         "/dashboard/keys",
 			wantStatus:   http.StatusOK,
-			wantContains: "9Router - AI Infrastructure Management",
+			wantContains: "9Gouter - AI Infrastructure Management",
 			wantCT:       "text/html; charset=utf-8",
 		},
 		{

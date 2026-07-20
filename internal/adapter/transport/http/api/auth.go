@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	adapterauth "github.com/Artiffusion-Inc/9router/internal/adapter/auth"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	usecaseauth "github.com/Artiffusion-Inc/9router/internal/usecase/auth"
+	adapterauth "github.com/Artiffusion-Inc/9gouter/internal/adapter/auth"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	usecaseauth "github.com/Artiffusion-Inc/9gouter/internal/usecase/auth"
 )
 
 // RegisterAuth mounts the public auth routes on mux.

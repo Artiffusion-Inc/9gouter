@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // ErrQoderCosyNotPorted signals that the Qoder live model resolver is not yet

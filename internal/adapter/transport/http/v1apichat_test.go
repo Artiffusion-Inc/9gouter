@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http/api"
 )
 
 // sseStubChatHandler writes a canned OpenAI SSE stream into the SSE writer,

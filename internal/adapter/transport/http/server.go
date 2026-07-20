@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
 )
 
 // Deps holds dependencies required to build the HTTP server.

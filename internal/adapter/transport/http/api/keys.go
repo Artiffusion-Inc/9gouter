@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
 // RegisterKeys mounts API-key management routes.

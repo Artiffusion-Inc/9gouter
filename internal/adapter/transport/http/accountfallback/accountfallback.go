@@ -2,7 +2,7 @@
 // and per-model lock logic from open-sse/config/errorConfig.js +
 // open-sse/services/accountFallback.js + src/sse/services/auth.js
 // (markAccountUnavailable / clearAccountError). It is the pure-logic core of
-// decolua/9router #2703 Fix 3 (structured failure types): a failure is
+// decolua/9gouter #2703 Fix 3 (structured failure types): a failure is
 // classified into a fallback decision plus a cooldown, and proxy/relay
 // outages are distinguished from provider/account failures so a proxy
 // outage does not lock a healthy account.

@@ -13,17 +13,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/claude"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/commandcode"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/gemini"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/kiro"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/ollama"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/openai"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/translator/shared"
-	"github.com/Artiffusion-Inc/9router/internal/domain/format"
-	domain "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/claude"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/commandcode"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/gemini"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/kiro"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/ollama"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/openai"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/shared"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
+	domain "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 //go:embed fixtures/*.snap

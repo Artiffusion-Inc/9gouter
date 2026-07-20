@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/base"
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/base"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 const mimoMarker = "You are MiMoCode, an interactive CLI tool that helps users with software engineering tasks."

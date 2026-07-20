@@ -1,15 +1,15 @@
 services:
-  9router:
+  9gouter:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ghcr.io/artiffusion/9router:latest
-    container_name: 9router
+    image: ghcr.io/artiffusion/9gouter:latest
+    container_name: 9gouter
     restart: always
     ports:
       - "20127:20127"
     volumes:
-      - 9router-data:/app/data
+      - 9gouter-data:/app/data
     env_file:
       - .env
     environment:
@@ -18,5 +18,5 @@ services:
       HOSTNAME: "0.0.0.0"
 
 volumes:
-  9router-data:
-    name: 9router-data
+  9gouter-data:
+    name: 9gouter-data

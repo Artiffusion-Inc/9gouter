@@ -189,7 +189,7 @@ func (f *Fallback) testCandidate(ctx context.Context, proxyURL, targetURL string
 	if err != nil {
 		return false
 	}
-	req.Header.Set("User-Agent", "9router/1.0")
+	req.Header.Set("User-Agent", "9gouter/1.0")
 	resp, err := client.Do(req)
 	if err != nil {
 		return false

@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
 )
 
 // ErrVertexNotPorted signals vertex refresh (RS256 JWT) is not yet ported.

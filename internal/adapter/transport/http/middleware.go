@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	domainauth "github.com/Artiffusion-Inc/9router/internal/domain/auth"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
+	domainauth "github.com/Artiffusion-Inc/9gouter/internal/domain/auth"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http/api"
 )
 
 // Middleware is an HTTP middleware function.

@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
-	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
 // v1beta implements the Gemini-native /v1beta/models surface, porting legacy
@@ -182,7 +182,7 @@ func (h *v1Handler) handleV1BetaModelsPath(w http.ResponseWriter, r *http.Reques
 	//
 	// MVP scope: the raw-byte forward + exclude-set rotation over active
 	// connections. The JS path also called markAccountUnavailable to persist
-	// a per-account error state (decolua/9router #2703 Fix 3 structured
+	// a per-account error state (decolua/9gouter #2703 Fix 3 structured
 	// failures) — that DB-level account-marking is a follow-up slice tracked
 	// under #2703; here we rotate on every retriable failure and return the
 	// last error without persisting account state.

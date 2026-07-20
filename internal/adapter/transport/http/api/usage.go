@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
-	"github.com/Artiffusion-Inc/9router/internal/domain/usage"
-	"github.com/Artiffusion-Inc/9router/internal/usecase/managedashboard"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/usage"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/managedashboard"
 )
 
 // RegisterUsage mounts usage/read-only analytics routes.

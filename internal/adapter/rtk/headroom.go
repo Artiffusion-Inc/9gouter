@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/format"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
 )
 
 // HeadroomStats mirrors the data returned by the Headroom /v1/compress endpoint.

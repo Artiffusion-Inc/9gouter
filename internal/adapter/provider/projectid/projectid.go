@@ -2,7 +2,7 @@
 // caches the real Google Cloud Code project ID bound to an authenticated
 // Antigravity / Gemini CLI account, so requests to those providers carry the
 // user's actual project rather than a random one (which Google's anti-abuse
-// system flags). decolua/9router #2703 Fix 2e.
+// system flags). decolua/9gouter #2703 Fix 2e.
 //
 // The flow mirrors the JS service 1:1:
 //

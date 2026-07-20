@@ -19,9 +19,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/webfetch"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/webfetch"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // Request is the input to Handle.

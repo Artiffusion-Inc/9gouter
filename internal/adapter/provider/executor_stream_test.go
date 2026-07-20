@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/base"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
-	domain "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/base"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
+	domain "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // streamTestCase drives a canned upstream server through a single provider.

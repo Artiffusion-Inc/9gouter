@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
 // ConnectionRepo provides persistence for provider connections, ported from
@@ -228,7 +228,7 @@ func (r *ConnectionRepo) ApplyConnectionPatch(ctx context.Context, id string, pa
 	return data, nil
 }
 // connection's JSON data blob without triggering a priority reorder. This is
-// the persistence side of sticky round-robin selection (decolua/9router #2703
+// the persistence side of sticky round-robin selection (decolua/9gouter #2703
 // Fix 4): every selection writes back the timestamp + use count so the next
 // request can decide stay-vs-rotate. It is a read-modify-write over `data`
 // because lastUsedAt/consecutiveUseCount live inside the JSON blob alongside

@@ -19,7 +19,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
 )
 
 // kiroRefreshEndpoint constants — from open-sse/providers/registry/kiro.js

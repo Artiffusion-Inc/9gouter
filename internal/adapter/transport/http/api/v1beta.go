@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
 )
 
 // RegisterV1Beta mounts the Gemini-compatible v1beta models endpoint.

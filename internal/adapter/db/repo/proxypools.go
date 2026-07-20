@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
 // ProxyPoolRepo provides persistence for proxy pools, ported from proxyPoolsRepo.js.

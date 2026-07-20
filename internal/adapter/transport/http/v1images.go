@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	imageprov "github.com/Artiffusion-Inc/9router/internal/adapter/provider/image"
+	imageprov "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/image"
 )
 
 // imageMaxBodyBytes caps the JSON request body read for
@@ -36,9 +36,9 @@ type imagesRequestBody struct {
 // dispatch to the imageproxy usecase.
 //
 // response_format precedence: body → ?response_format= query → "url". The
-// "binary" value is a 9router-internal flag (not an OpenAI field) that returns
+// "binary" value is a 9gouter-internal flag (not an OpenAI field) that returns
 // raw image bytes; output_format then selects the Content-Type (png/jpeg/webp,
-// default png). Like chat, image gen echoes x-9router-connection-id so the
+// default png). Like chat, image gen echoes x-9gouter-connection-id so the
 // dashboard can pin the connection.
 func (h *v1Handler) handleImagesGenerations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -132,7 +132,7 @@ func (h *v1Handler) handleImagesGenerations(w http.ResponseWriter, r *http.Reque
 }
 
 // writeImageResult writes the generated image response to the client with the
-// usecase-supplied Content-Type, CORS, and x-9router-connection-id (mirroring
+// usecase-supplied Content-Type, CORS, and x-9gouter-connection-id (mirroring
 // the JS image handler, which echoes the connection pin).
 func (h *v1Handler) writeImageResult(w http.ResponseWriter, res ImageResult, connID any) {
 	if res.Err != nil {
@@ -148,7 +148,7 @@ func (h *v1Handler) writeImageResult(w http.ResponseWriter, res ImageResult, con
 	}
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if id, ok := connID.(string); ok && id != "" {
-		w.Header().Set("x-9router-connection-id", id)
+		w.Header().Set("x-9gouter-connection-id", id)
 	}
 	if res.StatusCode == 0 {
 		res.StatusCode = http.StatusOK

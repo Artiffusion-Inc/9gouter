@@ -11,11 +11,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/webfetch"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/webfetch"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http/api"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // stubWebFetchHandler records the last request and returns a canned result.

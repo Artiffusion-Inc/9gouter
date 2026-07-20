@@ -10,7 +10,7 @@ import (
 
 type Config struct {
 	Port   int    `envconfig:"PORT" default:"20127"`
-	DBPath string `envconfig:"DB_PATH" default:"./data/9router.db"`
+	DBPath string `envconfig:"DB_PATH" default:"./data/9gouter.db"`
 
 	// Timeouts (ported from runtimeConfig.js, defaults match current compose).
 	// NOTE: envconfig parses time.Duration via time.ParseDuration, so defaults
@@ -36,7 +36,7 @@ type Config struct {
 	SocksHandshakeTimeout        DurationMs `envconfig:"SOCKS_HANDSHAKE_TIMEOUT_MS" default:"10000"`
 
 	// Token-saver header name. Default matches open-sse/config/runtimeConfig.js.
-	TokenSaverHeader string `envconfig:"TOKEN_SAVER_HEADER" default:"x-9router-token-saver"`
+	TokenSaverHeader string `envconfig:"TOKEN_SAVER_HEADER" default:"x-9gouter-token-saver"`
 
 	// Auth
 	DashboardPasswordHash   string `envconfig:"DASHBOARD_PASSWORD_HASH"`
@@ -49,7 +49,7 @@ type Config struct {
 
 // TOKEN_SAVER_HEADER is the canonical lower-case request header name used by
 // proxychat to gate the token-saver pipeline.
-const TOKEN_SAVER_HEADER = "x-9router-token-saver"
+const TOKEN_SAVER_HEADER = "x-9gouter-token-saver"
 
 // DurationMs is an envconfig.Setter that accepts either a bare integer
 // (milliseconds, matching the JS *_MS env names) or a Go duration string

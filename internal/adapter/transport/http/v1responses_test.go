@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
 )
 
 // newResponsesHandler wires a v1Handler with a stub chat handler and an active

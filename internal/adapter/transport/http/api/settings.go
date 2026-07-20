@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/Artiffusion-Inc/9router/internal/usecase/managedashboard"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/managedashboard"
 )
 
 // RegisterSettings mounts settings management routes.

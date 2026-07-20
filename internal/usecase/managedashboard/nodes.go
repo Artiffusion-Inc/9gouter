@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
-	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
 var httpValidateTimeout = 10 * time.Second
@@ -73,14 +73,14 @@ func (s *NodeService) Create(ctx context.Context, r NodeCreateRequest) (*setting
 		if apiType != "chat" && apiType != "responses" {
 			return nil, fmt.Errorf("invalid OpenAI compatible API type")
 		}
-		id = fmt.Sprintf("9router-openai-compatible-%s-%s", apiType, generateShortID())
+		id = fmt.Sprintf("9gouter-openai-compatible-%s-%s", apiType, generateShortID())
 		data["apiType"] = apiType
 		data["baseUrl"] = strings.TrimSpace(stringsOr(r.BaseURL, "https://api.openai.com/v1"))
 	case "custom-embedding":
-		id = fmt.Sprintf("9router-custom-embedding-%s", generateShortID())
+		id = fmt.Sprintf("9gouter-custom-embedding-%s", generateShortID())
 		data["baseUrl"] = sanitizeEmbeddingBaseURL(r.BaseURL)
 	case "anthropic-compatible":
-		id = fmt.Sprintf("9router-anthropic-compatible-%s", generateShortID())
+		id = fmt.Sprintf("9gouter-anthropic-compatible-%s", generateShortID())
 		data["baseUrl"] = sanitizeAnthropicBaseURL(r.BaseURL)
 	default:
 		return nil, fmt.Errorf("invalid provider node type")

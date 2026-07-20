@@ -4,9 +4,9 @@ package codebuddyexec
 import (
 	"encoding/json"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/base"
-	defexec "github.com/Artiffusion-Inc/9router/internal/adapter/provider/default"
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/base"
+	defexec "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/default"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // Executor extends DefaultExecutor with CodeBuddy-specific request transforms.

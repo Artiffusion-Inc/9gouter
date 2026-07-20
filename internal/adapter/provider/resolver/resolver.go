@@ -1,6 +1,6 @@
 // Package resolver ports the per-provider live-model resolvers from
 // open-sse/services/*Models.js. Each resolver fetches the live model catalog
-// for an authenticated connection and expands it into 9router-shaped model
+// for an authenticated connection and expands it into 9gouter-shaped model
 // entries (with synthetic -thinking / -agentic variants where the provider
 // supports them). Resolvers are read-only side-channels used by GET /v1/models
 // to keep the catalog fresh without a static catalog.
@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // ResolvedModel is one catalog entry produced by a live resolver. It mirrors
@@ -31,7 +31,7 @@ type ResolvedModel struct {
 	// Capabilities is nil for providers that do not synthesize variants.
 	Capabilities *Capabilities
 	// UpstreamModelID is the raw upstream model id before variant expansion
-	// (the -thinking/-agentic suffixes are 9router fictions; the translator
+	// (the -thinking/-agentic suffixes are 9gouter fictions; the translator
 	// strips them before the request leaves the process).
 	UpstreamModelID string
 }

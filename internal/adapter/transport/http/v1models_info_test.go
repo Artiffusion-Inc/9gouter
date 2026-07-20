@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
 )
 
 // newModelsInfoHandler wires a v1Handler with minimal deps for handleModelsInfo

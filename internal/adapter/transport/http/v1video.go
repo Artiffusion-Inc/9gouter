@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strings"
 
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
-	videoproxy "github.com/Artiffusion-Inc/9router/internal/usecase/videoproxy"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
+	videoproxy "github.com/Artiffusion-Inc/9gouter/internal/usecase/videoproxy"
 )
 
 // handleVideoCreate implements POST /v1/videos/{generations|edits|extensions}.
@@ -151,7 +151,7 @@ func (h *v1Handler) handleVideoGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeVideoResult writes the raw upstream response to the client with the
-// upstream Content-Type and the x-9router-connection-id header (so the client
+// upstream Content-Type and the x-9gouter-connection-id header (so the client
 // can echo it on subsequent GET polls to pin the account).
 func (h *v1Handler) writeVideoResult(w http.ResponseWriter, res VideoProxyResult) {
 	if res.Err != nil {
@@ -167,7 +167,7 @@ func (h *v1Handler) writeVideoResult(w http.ResponseWriter, res VideoProxyResult
 	}
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if res.ConnectionID != "" {
-		w.Header().Set("x-9router-connection-id", res.ConnectionID)
+		w.Header().Set("x-9gouter-connection-id", res.ConnectionID)
 	}
 	if res.StatusCode == 0 {
 		res.StatusCode = http.StatusOK

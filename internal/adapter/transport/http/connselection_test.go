@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
 func connWith(id string, priority int, lastUsedAt *time.Time, consecutive int) settings.ProviderConnection {

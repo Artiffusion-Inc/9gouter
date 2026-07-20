@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/base"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
-	"github.com/Artiffusion-Inc/9router/internal/domain/format"
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/base"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // Executor extends BaseExecutor for CommandCode NDJSON upstreams.

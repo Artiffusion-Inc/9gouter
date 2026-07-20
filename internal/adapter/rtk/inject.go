@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/format"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
 )
 
 const systemPromptSep = "\n\n"

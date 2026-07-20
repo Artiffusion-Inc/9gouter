@@ -21,7 +21,7 @@
 // from body.model (provider/model prefix or bare → openai fallback).
 //
 // NOT in this slice (separate slices): combo expansion, account-fallback
-// rotation, on-401 token refresh, usage persistence, x-9router-connection-id
+// rotation, on-401 token refresh, usage persistence, x-9gouter-connection-id
 // forwarding (the JS handler does echo it for pinning; deferred here).
 package imageproxy
 
@@ -37,9 +37,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/image"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/image"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // Logger is a minimal log sink.

@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // copilotResolver fetches the live model catalog from GitHub Copilot's

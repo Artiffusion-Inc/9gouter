@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
 )
 
 // refreshRecorder captures the inbound request and replies with a canned

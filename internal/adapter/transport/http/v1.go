@@ -17,17 +17,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver/tokenrefresh"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/webfetch"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/accountfallback"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
-	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver/tokenrefresh"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/webfetch"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http/accountfallback"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http/api"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
 // ChatHandler is the boundary between the HTTP transport layer and the chat
@@ -391,7 +391,7 @@ func RegisterV1(mux *http.ServeMux, deps V1Deps) {
 	// token refresh are separate slices.
 	mux.HandleFunc("POST /v1/embeddings", handler.handleEmbeddings)
 	// GET /v1/models — OpenAI-compatible model catalog. Static MVP (issue
-	// decolua/9router #2702): combos + per-provider static catalogs (only for
+	// decolua/9gouter #2702): combos + per-provider static catalogs (only for
 	// providers with an active connection) + custom models + aliases, minus
 	// disabled, filtered by service kind. Live-model resolvers and
 	// compatible-fetch are not yet ported — providers without a static catalog
@@ -562,7 +562,7 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	stream := resolveStream(body, r.Header, modelInfo.Provider)
 
-	// Account fallback loop (decolua/9router #2703 Fix 3). Mirrors the JS
+	// Account fallback loop (decolua/9gouter #2703 Fix 3). Mirrors the JS
 	// chat.js while(true) loop: resolve credentials (skipping excluded/locked
 	// connections), run the chat pipeline, and on a non-2xx / error classify
 	// the failure. A proxy/relay outage (typed ProxyRouteError) fails hard
@@ -585,7 +585,7 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 	// back to the next connection (which exclude+rotate handles below).
 	refreshedConns := map[string]struct{}{}
 	for {
-		// Reactive 401/403 retry (decolua/9router #2703 Fix 2d): when the
+		// Reactive 401/403 retry (decolua/9gouter #2703 Fix 2d): when the
 		// previous attempt failed with a 401/403, refresh the connection's
 		// credentials once and retry on the SAME connection (preferred pin)
 		// before falling back to the next. preferredConnectionID is set only
@@ -644,7 +644,7 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 			UserAgent:    r.UserAgent(),
 		}
 
-		// Route-diagnostics log before the upstream call (decolua/9router
+		// Route-diagnostics log before the upstream call (decolua/9gouter
 		// #2703 Fix 5). Mirrors the JS chatCore.js "PROXY | provider | model |
 		// conn= | pool= | url=" line plus the structured phase/route/
 		// strictProxy/proxyPoolId fields the JS build never emitted.
@@ -823,7 +823,7 @@ func (h *v1Handler) resolveCredentials(ctx context.Context, providerID, model st
 }
 
 // resolveCredentialsWithOpts resolves the connection to use for a provider,
-// honouring sticky round-robin selection (decolua/9router #2703 Fix 4):
+// honouring sticky round-robin selection (decolua/9gouter #2703 Fix 4):
 //
 //   - excludedIDs: connection IDs already tried and failed in this request's
 //     fallback loop (Fix 3). Skipped during selection; if every active
@@ -924,7 +924,7 @@ func (h *v1Handler) resolveCredentialsWithOpts(ctx context.Context, providerID, 
 		}
 	}
 
-	// Resolve per-connection route affinity (decolua/9router #2703 Fix 1).
+	// Resolve per-connection route affinity (decolua/9gouter #2703 Fix 1).
 	// When a connection has a proxyPoolId, look up the pool and copy its
 	// strictProxy + proxyUrl + noProxy into providerSpecificData so the
 	// provider executor's ProxyAwareFetch sees the strict flag per-request.
@@ -932,7 +932,7 @@ func (h *v1Handler) resolveCredentialsWithOpts(ctx context.Context, providerID, 
 	// strict route must never fall back to the host's direct IP.
 	h.resolveConnectionProxyConfig(ctx, creds.ProviderSpecificData)
 
-	// Proactive OAuth refresh (decolua/9router #2703 Fix 2c): when the access
+	// Proactive OAuth refresh (decolua/9gouter #2703 Fix 2c): when the access
 	// token is near expiry (within the provider's refresh lead) or stale past
 	// the provider's maxRefreshAgeMs, exchange it before serving the request
 	// so the upstream call does not 401 on a dead token. The refresh HTTP call

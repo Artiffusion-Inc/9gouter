@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/base"
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/base"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // setHeaderExact assigns a header preserving the exact key casing, bypassing
@@ -64,17 +64,17 @@ func (e *DefaultExecutor) clineHeaders(h http.Header, creds provider.Credentials
 	}
 	setHeaderExact(h, "HTTP-Referer", "https://cline.bot")
 	setHeaderExact(h, "X-Title", "Cline")
-	setHeaderExact(h, "User-Agent", fmt.Sprintf("9Router/%s", AppVersion))
+	setHeaderExact(h, "User-Agent", fmt.Sprintf("9Gouter/%s", AppVersion))
 	setHeaderExact(h, "X-PLATFORM", runtime.GOOS)
 	setHeaderExact(h, "X-PLATFORM-VERSION", "v24.18.0")
-	setHeaderExact(h, "X-CLIENT-TYPE", "9router")
+	setHeaderExact(h, "X-CLIENT-TYPE", "9gouter")
 	setHeaderExact(h, "X-CLIENT-VERSION", AppVersion)
 	setHeaderExact(h, "X-CORE-VERSION", AppVersion)
 	setHeaderExact(h, "X-IS-MULTIROOT", "false")
 }
 
 func (e *DefaultExecutor) kimiHeaders(h http.Header, creds provider.Credentials) {
-	setHeaderExact(h, "X-Msh-Platform", "9router")
+	setHeaderExact(h, "X-Msh-Platform", "9gouter")
 	setHeaderExact(h, "X-Msh-Version", "2.1.2")
 	setHeaderExact(h, "X-Msh-Device-Model", fmt.Sprintf("%s %s", runtime.GOOS, runtime.GOARCH))
 	setHeaderExact(h, "X-Msh-Device-Id", fmt.Sprintf("kimi-%d", time.Now().UnixMilli()))
@@ -459,7 +459,7 @@ func shouldInjectReasoning(msg map[string]any, scope string) bool {
 // upstream-model prefix ("kimi-"), which silently missed Kimi models whose
 // upstream id does not start with "kimi-" (e.g. an alias or a bare id like
 // "k2.5"). Keying on e.Provider fixes the silent strip reported in
-// decolua/9router #2690. The model-prefix fallback preserves the prior
+// decolua/9gouter #2690. The model-prefix fallback preserves the prior
 // behavior for providers routed through a generic executor without a kimi
 // provider id (deepseek model-name matching).
 func (e *DefaultExecutor) applyModelReasoningInject(model string, body map[string]any) map[string]any {

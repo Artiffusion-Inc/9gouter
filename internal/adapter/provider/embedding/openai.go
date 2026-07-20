@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	reg "github.com/Artiffusion-Inc/9router/internal/adapter/provider"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	reg "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // openAICompatEmbedURLs is the explicit per-provider embeddings base URL map

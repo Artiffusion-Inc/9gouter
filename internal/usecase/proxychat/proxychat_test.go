@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	httpstream "github.com/Artiffusion-Inc/9router/internal/adapter/transport/http"
-	"github.com/Artiffusion-Inc/9router/internal/domain/format"
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
-	"github.com/Artiffusion-Inc/9router/internal/domain/usage"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	httpstream "github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/usage"
 )
 
 // inMemoryUsageRepo is a minimal usage.Repo for tests.
@@ -266,7 +266,7 @@ func TestHandle_TokenSaverHeaderOff(t *testing.T) {
 	})
 
 	headers := http.Header{}
-	headers.Set("x-9router-token-saver", "off")
+	headers.Set("x-9gouter-token-saver", "off")
 	rec := httptest.NewRecorder()
 	req := Request{
 		Ctx:        context.Background(),

@@ -28,7 +28,7 @@ import (
 	"net/url"
 	"strings"
 
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // Params carries the parsed /v1/web/fetch request fields an adapter needs.

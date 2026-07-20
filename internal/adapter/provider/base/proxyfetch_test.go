@@ -3,8 +3,8 @@ package base
 import (
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // TestProxyFetchOptsFromCredsEmptyPassthrough verifies that credentials without
@@ -26,7 +26,7 @@ func TestProxyFetchOptsFromCredsEmptyPassthrough(t *testing.T) {
 }
 
 // TestProxyFetchOptsFromCredsResolvesConnectionFields is the core regression
-// test for decolua/9router #2703 Fix 1: the connection's resolved proxy fields
+// test for decolua/9gouter #2703 Fix 1: the connection's resolved proxy fields
 // — including strictProxy resolved from the connection's proxyPoolId — must
 // reach ProxyFetchOptions so a strict route never falls back to the host's
 // direct IP. Before the fix, doFetch sent the empty executor-level

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	searchprov "github.com/Artiffusion-Inc/9router/internal/adapter/provider/search"
+	searchprov "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/search"
 )
 
 // searchMaxBodyBytes caps the JSON request body read for /v1/search. Search

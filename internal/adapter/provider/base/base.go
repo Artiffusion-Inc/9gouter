@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // Shared defaults from open-sse/providers/shared.js.
@@ -187,7 +187,7 @@ type BaseExecutor struct {
 	ProxyFetchOpts proxy.ProxyFetchOptions
 	Fallback *proxy.Fallback
 	// Logger receives route-diagnostics lines emitted by ProxyAwareFetch on a
-	// proxy fallback (decolua/9router #2703 Fix 5). When nil, doFetch falls
+	// proxy fallback (decolua/9gouter #2703 Fix 5). When nil, doFetch falls
 	// back to slog.Default() so a proxy-to-direct fallback is never silent.
 	Logger *slog.Logger
 }
@@ -554,7 +554,7 @@ func (e *BaseExecutor) Execute(ctx context.Context, req provider.ExecRequest) (p
 
 // proxyFetchOptsFromCreds resolves per-connection proxy options from the
 // credentials' providerSpecificData. This closes the route-affinity gap from
-// decolua/9router #2703 (Fix 1): the connection's resolved proxy fields,
+// decolua/9gouter #2703 (Fix 1): the connection's resolved proxy fields,
 // including strictProxy, must reach ProxyAwareFetch so a strict route never
 // falls back to the host's direct IP. Without this, doFetch sent the empty
 // executor-level ProxyFetchOpts and strict mode was silently ignored for

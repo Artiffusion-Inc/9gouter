@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
 )
 
 // Family directive values.

@@ -100,7 +100,7 @@ func truncate(s string, max int) string {
 // FailureSource categorises where an upstream fetch error originated, so
 // callers (account-selection / fallback logic) can decide whether a failure
 // should lock the account or only mark the route unhealthy. Ports the intent
-// of decolua/9router #2703 Fix 5 (Diagnostics) — distinct from the JS build,
+// of decolua/9gouter #2703 Fix 5 (Diagnostics) — distinct from the JS build,
 // which only ever produced a flattened string. The typed value lets
 // checkFallbackError treat a proxy/relay outage (FailureSourceProxy /
 // FailureSourceRelay) as shouldFallback:false so a healthy account is not

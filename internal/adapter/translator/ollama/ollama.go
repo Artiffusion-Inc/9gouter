@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/translator/shared"
-	"github.com/Artiffusion-Inc/9router/internal/domain/format"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/shared"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
 )
 
 func init() {
@@ -72,7 +72,7 @@ func ollamaToOpenAIResponse(chunk map[string]any, state map[string]any) []map[st
 	// final content/thinking in the SAME chunk as "done": true (e.g.
 	// {"message":{"content":"!"},"done":true}). Returning an empty delta on
 	// done would drop that final token. This mirrors the upstream fix for
-	// decolua/9router issue #2694 (final-chunk content cutoff).
+	// decolua/9gouter issue #2694 (final-chunk content cutoff).
 	message, _ := chunk["message"].(map[string]any)
 	content, _ := message["content"].(string)
 	thinking, _ := message["thinking"].(string)

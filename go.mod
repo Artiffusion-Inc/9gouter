@@ -1,4 +1,4 @@
-module github.com/Artiffusion-Inc/9router
+module github.com/Artiffusion-Inc/9gouter
 
 go 1.26.5
 

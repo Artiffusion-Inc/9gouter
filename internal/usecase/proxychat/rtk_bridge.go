@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/rtk"
-	"github.com/Artiffusion-Inc/9router/internal/domain/format"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/rtk"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
 )
 
 // runRtk runs the RTK compressMessages stage when enabled.

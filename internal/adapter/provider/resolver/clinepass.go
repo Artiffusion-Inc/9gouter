@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // clinepassResolver fetches the live model catalog from Cline's
@@ -23,7 +23,7 @@ type clinepassResolver struct {
 	cache    *Cache
 	client   *http.Client
 	baseURL  string // override for tests; empty = production endpoint
-	appVer   string // 9router app version for X-CLIENT-VERSION headers
+	appVer   string // 9gouter app version for X-CLIENT-VERSION headers
 }
 
 const (
@@ -96,9 +96,9 @@ func (r *clinepassResolver) setHeaders(req *http.Request, token string, isAPIKey
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("HTTP-Referer", "https://cline.bot")
 	req.Header.Set("X-Title", "Cline")
-	req.Header.Set("User-Agent", "9Router/"+r.appVer)
+	req.Header.Set("User-Agent", "9Gouter/"+r.appVer)
 	req.Header.Set("X-PLATFORM", "linux")
-	req.Header.Set("X-CLIENT-TYPE", "9router")
+	req.Header.Set("X-CLIENT-TYPE", "9gouter")
 	req.Header.Set("X-CLIENT-VERSION", r.appVer)
 	req.Header.Set("X-CORE-VERSION", r.appVer)
 	req.Header.Set("X-IS-MULTIROOT", "false")

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // grokCliResolver fetches the live model catalog from grok.com's CLI proxy

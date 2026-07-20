@@ -9,9 +9,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/embedding"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/embedding"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // mockAdapter captures the inputs BuildURL/BuildHeaders/BuildBody receive and
@@ -87,7 +87,7 @@ func TestHandle_Success(t *testing.T) {
 		ProviderID:  "openai",
 		Model:       "text-embedding-3-small",
 		Credentials: domainProv.Credentials{APIKey: "sk-test"},
-		UserAgent:   "9router-test/1.0",
+		UserAgent:   "9gouter-test/1.0",
 	})
 
 	if res.StatusCode != http.StatusOK {

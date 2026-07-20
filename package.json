@@ -1,7 +1,7 @@
 {
-  "name": "9router-app",
+  "name": "9gouter-app",
   "version": "0.5.35",
-  "description": "9Router web dashboard",
+  "description": "9Gouter web dashboard",
   "private": true,
   "scripts": {
     "dev": "next dev --port 20127",

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 func creds(apiKey string) domainProv.Credentials {

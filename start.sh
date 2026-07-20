@@ -1,4 +1,4 @@
-docker stop 9router
-docker rm 9router
-docker build -t 9router .
-docker run -d --name 9router -p 20128:20128 --env-file .env -v 9router-data:/app/data 9router
+docker stop 9gouter
+docker rm 9gouter
+docker build -t 9gouter .
+docker run -d --name 9gouter -p 20128:20128 --env-file .env -v 9gouter-data:/app/data 9gouter

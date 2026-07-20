@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	domainauth "github.com/Artiffusion-Inc/9router/internal/domain/auth"
+	domainauth "github.com/Artiffusion-Inc/9gouter/internal/domain/auth"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 )

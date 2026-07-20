@@ -3,7 +3,7 @@ package defaultexec
 import (
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/base"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/base"
 )
 
 // bodyWithAssistantToolCall builds a request body with one assistant message

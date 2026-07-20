@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
-	"github.com/Artiffusion-Inc/9router/internal/usecase/managedashboard"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/managedashboard"
 )
 
 // RegisterProviders mounts provider connection management routes.

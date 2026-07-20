@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> **Fork of [decolua/9router](https://github.com/decolua/9router)** with custom patches. Sync upstream periodically.
+> **Fork of [decolua/9gouter](https://github.com/decolua/9gouter)** with custom patches. Sync upstream periodically.
 
 ## Current State: Go Rewrite (branch `main`)
 
@@ -16,15 +16,15 @@ The `main` branch is the **Go rewrite** — a single static binary serving the O
 > into the binary via `scripts/build-dashboard.sh`; the rest of `src/` is
 > dead legacy pending deletion.
 
-- **Single binary**: `cmd/9router` → listens on `:20127`
-- **Storage**: SQLite via `modernc.org/sqlite` (pure Go, CGO_ENABLED=0), default `./data/9router.db` (`DB_PATH`)
+- **Single binary**: `cmd/9gouter` → listens on `:20127`
+- **Storage**: SQLite via `modernc.org/sqlite` (pure Go, CGO_ENABLED=0), default `./data/9gouter.db` (`DB_PATH`)
 - **Dashboard**: Next.js `output:export` static build, embedded into the binary via `//go:embed all:dashboard_assets` and served by `internal/adapter/transport/http/static.go` with SPA fallback
 - **Clean architecture**: `internal/{domain, usecase, adapter}` + composition root `internal/app/wire.go`
 
 ### Architecture
 
 ```
-cmd/9router/                      ← entrypoint: config.Load → app.Wire → http.Server
+cmd/9gouter/                      ← entrypoint: config.Load → app.Wire → http.Server
 internal/
   adapter/
     config/                      ← envconfig Config + DurationMs setter (timeouts)
@@ -48,7 +48,7 @@ internal/
 |------|-------|
 | Config / env vars / timeouts | `internal/adapter/config/config.go` |
 | Composition root / wiring | `internal/app/wire.go` |
-| Entrypoint | `cmd/9router/main.go` |
+| Entrypoint | `cmd/9gouter/main.go` |
 | DB schema / migrations | `internal/adapter/db/migrations/`, `internal/adapter/db/schema.go` |
 | Repositories | `internal/adapter/db/repo/*.go` |
 | Provider adapters | `internal/adapter/provider/<name>/` |
@@ -68,7 +68,7 @@ Defined in `internal/adapter/config/config.go` via `envconfig`. Timeout fields u
 
 ```
 PORT=20127
-DB_PATH=./data/9router.db
+DB_PATH=./data/9gouter.db
 DASHBOARD_PASSWORD_HASH=         # bcrypt hash; backup settings.password is one
 DASHBOARD_SESSION_SECRET=change-me
 SESSION_SECRET=change-me
@@ -103,7 +103,7 @@ Payload shape (`api.BackupPayload`): `settings, providerConnections, providerNod
 
 ### #2703 Fix Status (route-aware proxy + account selection)
 
-The `decolua/9router` #2703 fix series ports the JS account-selection + proxy
+The `decolua/9gouter` #2703 fix series ports the JS account-selection + proxy
 pipeline into Go. Fix 1 (strictProxy propagation) landed earlier.
 
 | Fix | What | Status |
@@ -165,8 +165,8 @@ On stream stall/abort, chat/completions clients receive a structured error SSE e
 
 ```bash
 # Go binary (dashboard assets must be present for embed — see .gitkeep fallback)
-CGO_ENABLED=0 go build -o /tmp/9router ./cmd/9router
-DB_PATH=./data/9router.db /tmp/9router
+CGO_ENABLED=0 go build -o /tmp/9gouter ./cmd/9gouter
+DB_PATH=./data/9gouter.db /tmp/9gouter
 
 # Dashboard static export → internal/adapter/transport/http/dashboard_assets/
 scripts/build-dashboard.sh      # bun build → cp out/ into dashboard_assets
@@ -180,7 +180,7 @@ go test -race ./...
 ## Upstream Sync
 
 ```bash
-cd ~/Github/9router
+cd ~/Github/9gouter
 git fetch upstream
 git merge upstream/main --no-edit
 # Resolve conflicts, then:
@@ -194,10 +194,10 @@ Legacy JS conflicts land on `legacy/js-backend` in `runtimeConfig.js` (env-var p
 ## Docker Build
 
 - **Trigger**: push tag `v*` or manual `workflow_dispatch`
-- **Images**: `ghcr.io/artiffusion/9router:latest` + `artiffusion/9router:latest`
+- **Images**: `ghcr.io/artiffusion/9gouter:latest` + `artiffusion/9gouter:latest`
 - **Platforms**: linux/amd64, linux/arm64
 - **Secrets needed**: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN` (GHCR uses `GITHUB_TOKEN`)
-- **Compose**: `docker-compose.yml` → port 20127, volume `9router-data`, `.env` file
+- **Compose**: `docker-compose.yml` → port 20127, volume `9gouter-data`, `.env` file
 
 ## Tech Stack
 

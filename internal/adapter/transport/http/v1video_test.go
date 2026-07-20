@@ -10,10 +10,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http/api"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // stubVideoHandler records the last request and returns a canned result.
@@ -100,8 +100,8 @@ func TestV1Video_Create_Generations(t *testing.T) {
 	if rec.Header().Get("Content-Type") != "application/json" {
 		t.Errorf("Content-Type = %q", rec.Header().Get("Content-Type"))
 	}
-	if rec.Header().Get("x-9router-connection-id") == "" {
-		t.Errorf("missing x-9router-connection-id header")
+	if rec.Header().Get("x-9gouter-connection-id") == "" {
+		t.Errorf("missing x-9gouter-connection-id header")
 	}
 }
 

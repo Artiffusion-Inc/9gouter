@@ -139,7 +139,7 @@ provider adapter + translator. Ordered roughly by dependency/leverage:
    ["TEXT","IMAGE"] → candidates[].content.parts[].inlineData.data →
    {b64_json}), codex (Responses API + tools:[image_generation] SSE parse →
    {created, data:[{b64_json}]}). response_format=binary returns raw image
-   bytes (b64 decode; url→binary deferred 501). Echoes x-9router-connection-id.
+   bytes (b64 decode; url→binary deferred 501). Echoes x-9gouter-connection-id.
    15 usecase tests + 13 handler tests. Deferred (501): sdwebui, comfyui,
    huggingface, fal-ai, black-forest-labs, stability-ai, runwayml,
    cloudflare-ai, nanobanana, antigravity (polling/multipart/no-auth local).

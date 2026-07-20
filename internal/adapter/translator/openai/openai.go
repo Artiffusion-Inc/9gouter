@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/translator/shared"
-	"github.com/Artiffusion-Inc/9router/internal/domain/format"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/shared"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
 )
 
 // Default token limits matching open-sse/config/runtimeConfig.js.

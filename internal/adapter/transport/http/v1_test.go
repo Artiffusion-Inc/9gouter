@@ -14,13 +14,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	dbschema "github.com/Artiffusion-Inc/9router/internal/adapter/db"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/sqlite"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
-	"github.com/Artiffusion-Inc/9router/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	dbschema "github.com/Artiffusion-Inc/9gouter/internal/adapter/db"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/sqlite"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
 // stubChatHandler is a usecase stand-in that records the request and returns
@@ -305,7 +305,7 @@ func TestV1_ChatCompletions_PropagatesCredentials(t *testing.T) {
 
 func mustOpenDB(t *testing.T) *sql.DB {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "9router-v1-test-*")
+	dir, err := os.MkdirTemp("", "9gouter-v1-test-*")
 	if err != nil {
 		t.Fatalf("temp dir: %v", err)
 	}
@@ -344,7 +344,7 @@ func mustCreateConnectionWithID(t *testing.T, db *sql.DB, id, provider, data str
 }
 
 // TestV1_ResolveCredentialsPropagatesStrictProxy is the integration regression
-// test for decolua/9router #2703 Fix 1: when a connection references a proxy
+// test for decolua/9gouter #2703 Fix 1: when a connection references a proxy
 // pool with strictProxy=true, that strict flag plus the pool's proxyUrl must
 // be resolved into Credentials.ProviderSpecificData so the provider executor's
 // ProxyAwareFetch receives them per-request. Before the fix, strictProxy was

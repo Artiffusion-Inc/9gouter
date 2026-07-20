@@ -1,4 +1,4 @@
-// Package app is the composition root for the 9Router Go rewrite.
+// Package app is the composition root for the 9Gouter Go rewrite.
 // It wires together the SQLite database, repositories, provider registry,
 // proxychat usecase, HTTP transport, and server lifecycle.
 package app
@@ -13,38 +13,38 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Artiffusion-Inc/9router/internal/adapter/auth"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/config"
-	dbschema "github.com/Artiffusion-Inc/9router/internal/adapter/db"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/migrations"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/repo"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/db/sqlite"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/projectid"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver/tokenrefresh"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/translator"
-	httptransport "github.com/Artiffusion-Inc/9router/internal/adapter/transport/http"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/http/api"
-	"github.com/Artiffusion-Inc/9router/internal/adapter/transport/proxy"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/auth"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	dbschema "github.com/Artiffusion-Inc/9gouter/internal/adapter/db"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/migrations"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/sqlite"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/projectid"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver/tokenrefresh"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
+	httptransport "github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http/api"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
 
 	// Side-effect import: triggers RegisterRequest/RegisterResponse in every
 	// translator subpackage so the registry is populated in the final binary.
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/register"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/register"
 	// Side-effect import: registers live-model resolvers (kiro, ...) in the
 	// resolver registry so /v1/models can fetch live catalogs. Each resolver's
 	// init() calls resolver.Register. Wire overrides the kiro registration
 	// below with a real KiroRefresher (the init() default uses the stub).
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/provider/resolver"
-	domainProv "github.com/Artiffusion-Inc/9router/internal/domain/provider"
-	"github.com/Artiffusion-Inc/9router/internal/usecase/proxychat"
-	"github.com/Artiffusion-Inc/9router/internal/usecase/proxyembeddings"
-	"github.com/Artiffusion-Inc/9router/internal/usecase/proxyfetch"
-	"github.com/Artiffusion-Inc/9router/internal/usecase/sttproxy"
-	"github.com/Artiffusion-Inc/9router/internal/usecase/ttsproxy"
-	"github.com/Artiffusion-Inc/9router/internal/usecase/imageproxy"
-	"github.com/Artiffusion-Inc/9router/internal/usecase/searchproxy"
-	"github.com/Artiffusion-Inc/9router/internal/usecase/videoproxy"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
+	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/proxychat"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/proxyembeddings"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/proxyfetch"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/sttproxy"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/ttsproxy"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/imageproxy"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/searchproxy"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/videoproxy"
 )
 
 // App is the wired application. It exposes the HTTP server and the underlying
@@ -209,7 +209,7 @@ func (a *App) Close() error {
 
 func openDB(dbPath string, logger *slog.Logger) (*sql.DB, error) {
 	if dbPath == "" {
-		dbPath = "./data/9router.db"
+		dbPath = "./data/9gouter.db"
 	}
 	if dbPath != ":memory:" {
 		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {

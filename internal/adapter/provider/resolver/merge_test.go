@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
 // TestShouldRefreshCredentials_NotNearExpiry returns false when the access

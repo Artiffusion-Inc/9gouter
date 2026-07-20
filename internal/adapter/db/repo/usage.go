@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Artiffusion-Inc/9router/internal/domain/usage"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/usage"
 )
 
 // UsageRepo persists usage rows, ported from usageRepo.js.

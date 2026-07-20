@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/Artiffusion-Inc/9router/internal/usecase/managedashboard"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/managedashboard"
 )
 
 // RegisterPricing mounts pricing management routes.

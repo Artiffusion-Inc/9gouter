@@ -8,7 +8,7 @@ import ApiKeySelect from "./ApiKeySelect";
 import { matchKnownEndpoint } from "./cliEndpointMatch";
 
 const ENDPOINT = "/api/cli-tools/grok-build-settings";
-const MODEL_SLOT = "9router";
+const MODEL_SLOT = "9gouter";
 
 export default function GrokBuildToolCard({
   tool,
@@ -117,7 +117,7 @@ export default function GrokBuildToolCard({
     try {
       const keyToUse = selectedApiKey?.trim()
         || (apiKeys?.length > 0 ? apiKeys[0].key : null)
-        || (!cloudEnabled ? "sk_9router" : null);
+        || (!cloudEnabled ? "sk_9gouter" : null);
 
       const res = await fetch(ENDPOINT, {
         method: "POST",
@@ -170,7 +170,7 @@ export default function GrokBuildToolCard({
   const getManualConfigs = () => {
     const keyToUse = (selectedApiKey && selectedApiKey.trim())
       ? selectedApiKey
-      : (!cloudEnabled ? "sk_9router" : "<API_KEY_FROM_DASHBOARD>");
+      : (!cloudEnabled ? "sk_9gouter" : "<API_KEY_FROM_DASHBOARD>");
 
     const modelId = selectedModel || "provider/model-id";
     const tomlContent = `[models]
@@ -179,8 +179,8 @@ default = "${MODEL_SLOT}"
 [model.${MODEL_SLOT}]
 model = "${modelId}"
 base_url = "${getEffectiveBaseUrl()}"
-name = "9Router"
-description = "Routed via 9Router gateway"
+name = "9Gouter"
+description = "Routed via 9Gouter gateway"
 api_backend = "chat_completions"
 api_key = "${keyToUse}"
 `;
@@ -236,7 +236,7 @@ api_key = "${keyToUse}"
                     <p className="font-medium text-yellow-600 dark:text-yellow-400">Grok Build not detected locally</p>
                     <p className="text-sm text-text-muted mt-1">Install:</p>
                     <code className="block mt-2 p-2 bg-black/20 rounded text-xs font-mono">curl -fsSL https://x.ai/cli/install.sh | bash</code>
-                    <p className="text-sm text-text-muted mt-2">Manual configuration is still available if 9router is deployed on a remote server.</p>
+                    <p className="text-sm text-text-muted mt-2">Manual configuration is still available if 9gouter is deployed on a remote server.</p>
                   </div>
                 </div>
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 pl-0 sm:pl-9">
@@ -354,7 +354,7 @@ api_key = "${keyToUse}"
                 <Button variant="primary" size="sm" onClick={handleApply} disabled={!selectedModel} loading={applying} className="w-full sm:w-auto">
                   <span className="material-symbols-outlined text-[14px] mr-1">save</span>Apply
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleReset} disabled={!grokStatus?.has9Router} loading={restoring} className="w-full sm:w-auto">
+                <Button variant="outline" size="sm" onClick={handleReset} disabled={!grokStatus?.has9Gouter} loading={restoring} className="w-full sm:w-auto">
                   <span className="material-symbols-outlined text-[14px] mr-1">restore</span>Reset
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setShowManualConfigModal(true)} className="w-full sm:w-auto">

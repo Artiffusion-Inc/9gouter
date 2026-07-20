@@ -36,7 +36,7 @@ ENV GOOS=linux
 ENV GOARCH=amd64
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN go build -ldflags='-s -w -extldflags=-static' -o /out/9router ./cmd/9router
+RUN go build -ldflags='-s -w -extldflags=-static' -o /out/9gouter ./cmd/9gouter
 
 # Stage 3: minimal distroless runtime image.
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -48,7 +48,7 @@ ENV DATA_DIR=/app/data
 ENV PORT=20127
 ENV HOSTNAME=0.0.0.0
 
-COPY --from=builder --chown=nonroot:nonroot /out/9router /app/9router
+COPY --from=builder --chown=nonroot:nonroot /out/9gouter /app/9gouter
 
 USER nonroot:nonroot
 
@@ -56,4 +56,4 @@ EXPOSE 20127
 
 VOLUME ["/app/data"]
 
-ENTRYPOINT ["/app/9router"]
+ENTRYPOINT ["/app/9gouter"]

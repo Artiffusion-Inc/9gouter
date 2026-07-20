@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	ttsprov "github.com/Artiffusion-Inc/9router/internal/adapter/provider/tts"
+	ttsprov "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/tts"
 )
 
 // ttsMaxBodyBytes caps the JSON request body read for /v1/audio/speech. TTS
@@ -32,7 +32,7 @@ type ttsRequestBody struct {
 //
 // response_format is taken from the JSON body, falling back to the
 // ?response_format= query param, then "mp3" (raw binary) — matching the JS
-// handler precedence. Like STT, TTS does not echo x-9router-connection-id.
+// handler precedence. Like STT, TTS does not echo x-9gouter-connection-id.
 func (h *v1Handler) handleAudioSpeech(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -122,7 +122,7 @@ func (h *v1Handler) handleAudioSpeech(w http.ResponseWriter, r *http.Request) {
 
 // writeTtsResult writes the synthesized audio response to the client with the
 // usecase-supplied Content-Type and CORS, mirroring the JS passthrough helper.
-// TTS does not emit x-9router-connection-id.
+// TTS does not emit x-9gouter-connection-id.
 func (h *v1Handler) writeTtsResult(w http.ResponseWriter, res TtsResult) {
 	if res.Err != nil {
 		status := res.StatusCode

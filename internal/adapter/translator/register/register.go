@@ -7,17 +7,17 @@
 // the subpackages and trigger their own init(), masking the production gap.
 //
 // Import this package from the composition root (internal/app) so the
-// registrations are linked into cmd/9router.
+// registrations are linked into cmd/9gouter.
 package register
 
 import (
 	// Register every translator pair. Blank imports are intentional.
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/claude"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/commandcode"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/cursor"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/codex"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/gemini"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/kiro"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/ollama"
-	_ "github.com/Artiffusion-Inc/9router/internal/adapter/translator/openai"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/claude"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/commandcode"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/cursor"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/codex"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/gemini"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/kiro"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/ollama"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/openai"
 )

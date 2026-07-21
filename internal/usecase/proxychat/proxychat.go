@@ -18,6 +18,7 @@ import (
 	reg "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
 	httpstream "github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/shared"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
 	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/usage"
@@ -254,7 +255,18 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 		h.saveUsage(ctx, req, providerID, start, 0, 0, "error", nil, nil)
 		return h.errorResult(status, fmt.Sprintf("upstream error: %v", err), start)
 	}
-	defer resp.Response.Body.Close()
+	// closeAndDone closes the upstream body and then releases the fetch
+	// context that owns its lifetime (resp.Done). Order matters: the body
+	// must be closed before the fetch context is cancelled, otherwise a
+	// streaming read races against context cancellation (the ollama NDJSON
+	// 90s hang). It is used as a deferred cleanup for every return path.
+	closeAndDone := func() {
+		resp.Response.Body.Close()
+		if resp.Done != nil {
+			resp.Done()
+		}
+	}
+	defer closeAndDone()
 
 	if resp.Response.StatusCode/100 != 2 {
 		// provider returned non-2xx
@@ -519,17 +531,484 @@ func tokenCount(body map[string]any, keys ...string) int {
 }
 
 func translateNonStreamingResponse(body map[string]any, sourceFormat, targetFormat format.Format) map[string]any {
-	// Minimal port of nonStreamingHandler.js translateNonStreamingResponse.
-	// For the OpenAI→OpenAI passthrough common case return as-is. Additional
-	// format-specific translations are out of scope for this slice and will be
-	// extended in Task 14/15 wiring.
+	// Port of nonStreamingHandler.js translateNonStreamingResponse.
+	// In the Go pipeline sourceFormat = the CLIENT wire format (what the
+	// caller sent, usually OpenAI) and targetFormat = the UPSTREAM wire
+	// format (what the provider speaks, e.g. Ollama). The non-stream
+	// upstream reply is in targetFormat; we must convert it back to
+	// sourceFormat for the client. When the two match, return as-is.
 	if sourceFormat == targetFormat {
 		return body
 	}
-	if targetFormat == format.Openai {
+
+	// Ollama upstream → OpenAI client: ollama's non-stream chat reply uses
+	// {message:{content,...}, done, done_reason, eval_count} — NOT the
+	// OpenAI {choices:[{message}]} shape. Convert so OpenAI clients (and the
+	// dashboard model-test probe) see a real choices array. Ports
+	// ollamaBodyToOpenAI from open-sse/translator/response/ollama-to-openai.js.
+	if targetFormat == format.Ollama && sourceFormat == format.Openai {
+		return ollamaBodyToOpenAI(body)
+	}
+
+	// Claude upstream → OpenAI client: claude's non-stream reply is
+	// {content:[{type:"text"|"thinking"|"tool_use",...}], stop_reason, usage}.
+	// Convert to OpenAI {choices:[{message}]} so OpenAI clients (and the
+	// dashboard model-test probe) see a real choices array. Ports the
+	// claude branch of nonStreamingHandler.js translateNonStreamingResponse.
+	if (targetFormat == format.Claude || targetFormat == format.Kiro) && sourceFormat == format.Openai {
+		if translated := claudeBodyToOpenAI(body); translated != nil {
+			return translated
+		}
+	}
+
+	// Gemini/Antigravity upstream → OpenAI client: gemini's non-stream reply
+	// is {candidates:[{content:{parts:[...]}, finishReason}], usageMetadata}.
+	// Convert to OpenAI {choices:[{message}]}. Ports the gemini branch of
+	// nonStreamingHandler.js translateNonStreamingResponse.
+	if (targetFormat == format.Gemini || targetFormat == format.GeminiCli || targetFormat == format.Antigravity || targetFormat == format.Vertex) && sourceFormat == format.Openai {
+		if translated := geminiBodyToOpenAI(body); translated != nil {
+			return translated
+		}
+	}
+
+	// Default passthrough (Claude/Gemini/Kiro non-stream translation is
+	// handled by the streaming pipe for stream:true requests; non-stream for
+	// those formats is a follow-up). At minimum return the body so OpenAI
+	// clients that already got an OpenAI-shaped upstream body keep working.
+	if sourceFormat == format.Openai {
 		return body
 	}
 	return body
+}
+
+// ollamaBodyToOpenAI converts a single Ollama non-streaming chat response body
+// into an OpenAI chat.completion object. Mirrors the legacy
+// ollamaBodyToOpenAI() so non-stream clients (including the dashboard
+// /api/models/test probe, which inspects parsed.choices) get a real choices
+// array instead of the Ollama-native message/eval_count shape.
+func ollamaBodyToOpenAI(body map[string]any) map[string]any {
+	if body == nil {
+		return nil
+	}
+	message, _ := body["message"].(map[string]any)
+	content, _ := message["content"].(string)
+	thinking, _ := message["thinking"].(string)
+	rawToolCalls, _ := message["tool_calls"].([]any)
+
+	out := map[string]any{
+		"role": "assistant",
+	}
+	hasContent := false
+	if content != "" {
+		out["content"] = content
+		hasContent = true
+	}
+	if thinking != "" {
+		out["reasoning_content"] = thinking
+	}
+	if len(rawToolCalls) > 0 {
+		out["tool_calls"] = convertOllamaToolCallsNonStream(rawToolCalls)
+		hasContent = true
+	}
+	if !hasContent && len(rawToolCalls) == 0 {
+		out["content"] = ""
+	}
+
+	finishReason := shared.ToOpenAIFinish(fmt.Sprint(body["done_reason"]), "ollama")
+	if len(rawToolCalls) > 0 {
+		finishReason = "tool_calls"
+	}
+
+	model, _ := body["model"].(string)
+	if model == "" {
+		model = "ollama"
+	}
+	created := int(time.Now().Unix())
+
+	result := map[string]any{
+		"id":      "chatcmpl-" + shared.FallbackChatID(),
+		"object":  "chat.completion",
+		"created": created,
+		"model":   model,
+		"choices": []map[string]any{
+			{
+				"index":         0,
+				"message":       out,
+				"finish_reason": finishReason,
+			},
+		},
+	}
+	if usage := shared.ToOpenAIUsage(body, "ollama"); usage != nil {
+		result["usage"] = usage
+	}
+	return result
+}
+
+// convertOllamaToolCallsNonStream normalizes Ollama tool_calls into the OpenAI
+// shape for a non-streaming completion message. (The streaming variant lives
+// in the ollama translator package; this is the message-level counterpart.)
+func convertOllamaToolCallsNonStream(raw []any) []map[string]any {
+	out := make([]map[string]any, 0, len(raw))
+	for i, rawTC := range raw {
+		tc, ok := rawTC.(map[string]any)
+		if !ok {
+			continue
+		}
+		fn, _ := tc["function"].(map[string]any)
+		if fn == nil {
+			fn = map[string]any{}
+		}
+		name, _ := fn["name"].(string)
+		args := fn["arguments"]
+		argsStr := ""
+		switch a := args.(type) {
+		case string:
+			argsStr = a
+		case map[string]any:
+			b, _ := json.Marshal(a)
+			argsStr = string(b)
+		default:
+			b, _ := json.Marshal(args)
+			argsStr = string(b)
+		}
+		if argsStr == "" || argsStr == "null" {
+			argsStr = "{}"
+		}
+		tcID, _ := tc["id"].(string)
+		if tcID == "" {
+			tcID = fmt.Sprintf("call_%d_%d", i, time.Now().UnixMilli())
+		}
+		out = append(out, map[string]any{
+			"id":   tcID,
+			"type": "function",
+			"function": map[string]any{
+				"name":      name,
+				"arguments": argsStr,
+			},
+		})
+	}
+	return out
+}
+
+// claudeBodyToOpenAI converts a single Claude/Kiro non-streaming response body
+// into an OpenAI chat.completion object. Mirrors the claude branch of legacy
+// nonStreamingHandler.js translateNonStreamingResponse. Claude replies with
+// {content:[{type:"text"|"thinking"|"tool_use"}], stop_reason, usage:{input_tokens,output_tokens}}.
+// Returns nil if the body is already OpenAI-shaped (has choices) — some
+// providers reply OpenAI-native even when the request was translated to Claude.
+func claudeBodyToOpenAI(body map[string]any) map[string]any {
+	if body == nil {
+		return nil
+	}
+	// Already OpenAI-shaped (e.g. xiaomi-tokenplan replies OpenAI even for
+	// claude-format requests) — leave as-is.
+	if _, ok := body["choices"]; ok {
+		return nil
+	}
+	// content present but not an array → likely a different non-Claude format.
+	if c, ok := body["content"]; ok && !isArray(c) {
+		return nil
+	}
+
+	var textContent, thinkingContent string
+	var toolCalls []map[string]any
+
+	if blocks, ok := body["content"].([]any); ok {
+		for _, b := range blocks {
+			block, ok := b.(map[string]any)
+			if !ok {
+				continue
+			}
+			switch block["type"] {
+			case "text":
+				raw, _ := block["text"].(string)
+				textContent += stripCodeFence(raw)
+			case "thinking":
+				t, _ := block["thinking"].(string)
+				thinkingContent += t
+			case "tool_use":
+				id, _ := block["id"].(string)
+				if id == "" {
+					id = fmt.Sprintf("toolu_%d_%d", time.Now().UnixMilli(), len(toolCalls))
+				}
+				name, _ := block["name"].(string)
+				argsStr := "{}"
+				if input := block["input"]; input != nil {
+					if s, ok := input.(string); ok {
+						argsStr = s
+					} else {
+						bb, _ := json.Marshal(input)
+						argsStr = string(bb)
+					}
+				}
+				toolCalls = append(toolCalls, map[string]any{
+					"id":   id,
+					"type": "function",
+					"function": map[string]any{
+						"name":      name,
+						"arguments": argsStr,
+					},
+				})
+			}
+		}
+	}
+
+	message := map[string]any{"role": "assistant"}
+	if textContent != "" {
+		message["content"] = textContent
+	}
+	if thinkingContent != "" {
+		message["reasoning_content"] = thinkingContent
+	}
+	if len(toolCalls) > 0 {
+		message["tool_calls"] = toolCalls
+	}
+	if _, ok := message["content"]; !ok && len(toolCalls) == 0 {
+		message["content"] = ""
+	}
+
+	finishReason, _ := body["stop_reason"].(string)
+	finishReason = shared.ToOpenAIFinish(finishReason, "claude")
+	if len(toolCalls) > 0 {
+		finishReason = "tool_calls"
+	}
+
+	model, _ := body["model"].(string)
+	if model == "" {
+		model = "claude"
+	}
+	id, _ := body["id"].(string)
+	if id == "" {
+		id = shared.FallbackChatID()
+	} else {
+		id = strings.TrimPrefix(id, "chatcmpl-")
+	}
+
+	result := map[string]any{
+		"id":      "chatcmpl-" + id,
+		"object":  "chat.completion",
+		"created": int(time.Now().Unix()),
+		"model":   model,
+		"choices": []map[string]any{
+			{
+				"index":         0,
+				"message":       message,
+				"finish_reason": finishReason,
+			},
+		},
+	}
+	if usage, ok := body["usage"].(map[string]any); ok {
+		input, _ := usage["input_tokens"].(float64)
+		output, _ := usage["output_tokens"].(float64)
+		pi, po := int(input), int(output)
+		result["usage"] = map[string]any{
+			"prompt_tokens":     pi,
+			"completion_tokens": po,
+			"total_tokens":      pi + po,
+		}
+	}
+	return result
+}
+
+// geminiBodyToOpenAI converts a single Gemini/Antigravity/Vertex non-streaming
+// response body into an OpenAI chat.completion object. Mirrors the gemini branch
+// of legacy nonStreamingHandler.js translateNonStreamingResponse. Gemini replies
+// with {candidates:[{content:{parts:[...]}, finishReason}], usageMetadata}.
+// Returns nil if the body has no candidates (leave as-is for non-gemini shapes).
+func geminiBodyToOpenAI(body map[string]any) map[string]any {
+	if body == nil {
+		return nil
+	}
+	// The response may be wrapped in {response: {...}} (Vertex/Antigravity).
+	resp := body
+	if inner, ok := body["response"].(map[string]any); ok {
+		resp = inner
+	}
+	candidates, ok := resp["candidates"].([]any)
+	if !ok || len(candidates) == 0 {
+		return nil
+	}
+	candidate, ok := candidates[0].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	var textContent, reasoningContent string
+	var toolCalls []map[string]any
+
+	if content, ok := candidate["content"].(map[string]any); ok {
+		if parts, ok := content["parts"].([]any); ok {
+			for _, p := range parts {
+				part, ok := p.(map[string]any)
+				if !ok {
+					continue
+				}
+				if thought, _ := part["thought"].(bool); thought {
+					if t, ok := part["text"].(string); ok {
+						reasoningContent += t
+					}
+					continue
+				}
+				if t, ok := part["text"].(string); ok {
+					textContent += t
+				}
+				if fc, ok := part["functionCall"].(map[string]any); ok {
+					name, _ := fc["name"].(string)
+					args := fc["args"]
+					argsStr := "{}"
+					if args != nil {
+						b, _ := json.Marshal(args)
+						argsStr = string(b)
+					}
+					toolCalls = append(toolCalls, map[string]any{
+						"id":   fmt.Sprintf("call_%s_%d_%d", name, time.Now().UnixMilli(), len(toolCalls)),
+						"type": "function",
+						"function": map[string]any{
+							"name":      name,
+							"arguments": argsStr,
+						},
+					})
+				}
+				// Inline image data from image-generation models.
+				if inline := partMap(part, "inlineData", "inline_data"); inline != nil {
+					if data, _ := inline["data"].(string); data != "" {
+						mime, _ := firstString(inline, "mimeType", "mime_type").(string)
+						if mime == "" {
+							mime = "image/png"
+						}
+						textContent += "\n![image](data:" + mime + ";base64," + data + ")\n"
+					}
+				}
+			}
+		}
+	}
+
+	message := map[string]any{"role": "assistant"}
+	if textContent != "" {
+		message["content"] = textContent
+	}
+	if reasoningContent != "" {
+		message["reasoning_content"] = reasoningContent
+	}
+	if len(toolCalls) > 0 {
+		message["tool_calls"] = toolCalls
+	}
+	if _, ok := message["content"]; !ok && len(toolCalls) == 0 {
+		message["content"] = ""
+	}
+
+	finishReason := strings.ToLower(firstString(candidate, "finishReason").(string))
+	if finishReason == "" {
+		finishReason = "stop"
+	}
+	finishReason = shared.ToOpenAIFinish(finishReason, "gemini")
+	if len(toolCalls) > 0 && finishReason == "stop" {
+		finishReason = "tool_calls"
+	}
+
+	model, _ := firstString(resp, "modelVersion").(string)
+	if model == "" {
+		model = "gemini"
+	}
+	respID, _ := firstString(resp, "responseId").(string)
+	id := respID
+	if id == "" {
+		id = shared.FallbackChatID()
+	}
+
+	result := map[string]any{
+		"id":      "chatcmpl-" + id,
+		"object":  "chat.completion",
+		"created": int(time.Now().Unix()),
+		"model":   model,
+		"choices": []map[string]any{
+			{
+				"index":         0,
+				"message":       message,
+				"finish_reason": finishReason,
+			},
+		},
+	}
+
+	usageMeta := firstMap(resp, body, "usageMetadata")
+	if usageMeta != nil {
+		promptTok := int(toFloat(usageMeta["promptTokenCount"])) + int(toFloat(usageMeta["thoughtsTokenCount"]))
+		complTok := int(toFloat(usageMeta["candidatesTokenCount"]))
+		totalTok := int(toFloat(usageMeta["totalTokenCount"]))
+		if totalTok == 0 {
+			totalTok = promptTok + complTok
+		}
+		usage := map[string]any{
+			"prompt_tokens":     promptTok,
+			"completion_tokens": complTok,
+			"total_tokens":      totalTok,
+		}
+		if thoughts := int(toFloat(usageMeta["thoughtsTokenCount"])); thoughts > 0 {
+			usage["completion_tokens_details"] = map[string]any{"reasoning_tokens": thoughts}
+		}
+		result["usage"] = usage
+	}
+	return result
+}
+
+// stripCodeFence removes wrapping ```json ... ``` fences (some providers, e.g.
+// kimi, wrap JSON tool text in a code block). Mirrors the legacy claude branch.
+func stripCodeFence(raw string) string {
+	s := strings.TrimSpace(raw)
+	if strings.HasPrefix(s, "```") {
+		if idx := strings.Index(s, "\n"); idx >= 0 {
+			first := strings.TrimSpace(s[:idx])
+			if strings.HasPrefix(first, "```") {
+				s = s[idx+1:]
+			}
+		}
+		s = strings.TrimSuffix(strings.TrimSpace(s), "```")
+	}
+	return s
+}
+
+func isArray(v any) bool { _, ok := v.([]any); return ok }
+
+func toFloat(v any) float64 {
+	switch x := v.(type) {
+	case float64:
+		return x
+	case int:
+		return float64(x)
+	case int64:
+		return float64(x)
+	}
+	return 0
+}
+
+func firstString(m map[string]any, keys ...string) any {
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			if s, ok := v.(string); ok && s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+func firstMap(a, b map[string]any, key string) map[string]any {
+	if v, ok := a[key].(map[string]any); ok {
+		return v
+	}
+	if v, ok := b[key].(map[string]any); ok {
+		return v
+	}
+	return nil
+}
+
+func partMap(part map[string]any, keys ...string) map[string]any {
+	for _, k := range keys {
+		if v, ok := part[k].(map[string]any); ok {
+			return v
+		}
+	}
+	return nil
 }
 
 // pipeAdapter adapts httpstream.Pipe to the StreamPiper interface.

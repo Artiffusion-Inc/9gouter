@@ -509,7 +509,7 @@ func (e *BaseExecutor) Execute(ctx context.Context, req provider.ExecRequest) (p
 			}
 		}
 
-		resp, err := e.doFetch(ctx, upReq, req.Credentials)
+		resp, cancelFetch, err := e.doFetch(ctx, upReq, req.Credentials)
 		if err != nil {
 			lastError = err
 			// Map network/fetch exceptions to 502 retry config.
@@ -529,23 +529,30 @@ func (e *BaseExecutor) Execute(ctx context.Context, req provider.ExecRequest) (p
 		if shouldRetry, rerr := tryRetry(urlIndex, resp.StatusCode, fmt.Sprintf("status %d", resp.StatusCode), resp); shouldRetry {
 			if rerr != nil {
 				resp.Body.Close()
+				cancelFetch()
 				return provider.Resp{}, rerr
 			}
 			resp.Body.Close()
+			cancelFetch()
 			urlIndex--
 			continue
 		}
 
 		if e.ShouldRetry(resp.StatusCode, urlIndex) {
 			resp.Body.Close()
+			cancelFetch()
 			continue
 		}
 
+		// Success: hand the fetch context's cancel to the caller via Done so
+		// it is released only after Response.Body has been fully read and
+		// closed (streaming safety — see doFetch doc comment).
 		return provider.Resp{
 			Response:        resp,
 			URL:             url,
 			Headers:         headers,
 			TransformedBody: transformedBody,
+			Done:             cancelFetch,
 		}, nil
 	}
 
@@ -604,14 +611,22 @@ func ProxyFetchOptsFromCreds(creds provider.Credentials, def proxy.ProxyFetchOpt
 	return opts
 }
 
-func (e *BaseExecutor) doFetch(ctx context.Context, req *http.Request, creds provider.Credentials) (*http.Response, error) {
-	// Use a context with timeout for connect timeout if possible.
+// doFetch performs the upstream fetch through the proxy-aware pipeline. It
+// attaches a connect/headers timeout via a fetch context that is CLONED onto
+// the outbound request — but it deliberately does NOT cancel that context on
+// return. For streaming responses resp.Body is bound to req.Context() (the
+// fetch context); cancelling it the instant doFetch returns closes the body
+// mid-stream and the Pipe reads only the first buffered chunk before getting
+// context.Canceled (the ollama/llama.cpp NDJSON 90s hang, decolua/9router
+// regression after the Go rewrite). The cancel func is returned so the caller
+// releases the fetch context only after resp.Body has been fully consumed
+// and closed.
+func (e *BaseExecutor) doFetch(ctx context.Context, req *http.Request, creds provider.Credentials) (*http.Response, context.CancelFunc, error) {
 	timeoutMs := e.Config.TimeoutMs
 	if timeoutMs <= 0 {
 		timeoutMs = 120000
 	}
 	fetchCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
-	defer cancel()
 	req = req.Clone(fetchCtx)
 	proxyOpts := proxyFetchOptsFromCreds(creds, e.ProxyFetchOpts)
 	// Surface proxy-fallback diagnostics through the resolved proxy options
@@ -623,7 +638,12 @@ func (e *BaseExecutor) doFetch(ctx context.Context, req *http.Request, creds pro
 			proxyOpts.Logger = slog.Default()
 		}
 	}
-	return e.Fetch(ctx, e.HTTPClient, req, e.ProxyOpts, proxyOpts, e.Fallback)
+	resp, err := e.Fetch(ctx, e.HTTPClient, req, e.ProxyOpts, proxyOpts, e.Fallback)
+	if err != nil {
+		cancel()
+		return nil, nil, err
+	}
+	return resp, cancel, nil
 }
 
 func (e *BaseExecutor) computeDynamicRetryDelay(response *http.Response, attempt, delayMs int) int {

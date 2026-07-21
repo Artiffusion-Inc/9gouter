@@ -34,6 +34,15 @@ type Resp struct {
 	URL            string
 	Headers        http.Header
 	TransformedBody json.RawMessage
+
+	// Done, when non-nil, releases resources tied to the upstream call's
+	// fetch context. The fetch context owns resp.Response.Body's lifetime for
+	// streaming responses: cancelling it (as a doFetch defer would) closes the
+	// body mid-stream and the Pipe only ever reads the first buffered chunk
+	// before getting context.Canceled (the ollama/llama.cpp NDJSON 90s hang).
+	// The caller MUST call Done after it has finished reading/closing
+	// Response.Body, so the fetch context stays alive for the full stream.
+	Done func()
 }
 
 // Executor is the per-provider port for building request URLs, headers,

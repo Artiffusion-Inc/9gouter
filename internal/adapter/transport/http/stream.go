@@ -114,11 +114,18 @@ func Pipe(ctx context.Context, upstream io.Reader, w *Writer, opts PipeOpts) err
 		for {
 			frame, err := framer.NextFrame()
 			if err != nil {
-				if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) && err != io.EOF {
-					errCh <- err
-				}
-				if err == io.EOF {
+				// A cancelled/expired upstream context (the fetch context that
+				// owns resp.Body, or the request context on client disconnect)
+				// surfaces as context.Canceled / DeadlineExceeded from
+				// framer.Read. Treat it as end-of-stream, not a hard error: the
+				// main loop would otherwise block on the stall timer until it
+				// fires (the ollama NDJSON 90s hang when the fetch context was
+				// cancelled prematurely). Close eofCh so the main loop returns
+				// promptly without emitting a spurious error SSE.
+				if err == io.EOF || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					close(eofCh)
+				} else {
+					errCh <- err
 				}
 				closeFrameCh()
 				return

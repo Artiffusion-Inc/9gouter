@@ -246,7 +246,7 @@ func Number(v any) int {
 		return int(i)
 	case string:
 		var i int
-		fmt.Sscanf(x, "%d", &i)
+		_, _ = fmt.Sscanf(x, "%d", &i)
 		return i
 	}
 	return 0

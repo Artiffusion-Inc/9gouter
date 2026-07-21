@@ -374,18 +374,14 @@ func validateOpenAI(ctx context.Context, client *http.Client, baseURL, apiKey, m
 func sanitizeAnthropicBaseURL(u string) string {
 	u = strings.TrimSpace(stringsOr(u, "https://api.anthropic.com/v1"))
 	u = strings.TrimRight(u, "/")
-	if strings.HasSuffix(u, "/messages") {
-		u = u[:len(u)-len("/messages")]
-	}
+	u = strings.TrimSuffix(u, "/messages")
 	return u
 }
 
 func sanitizeEmbeddingBaseURL(u string) string {
 	u = strings.TrimSpace(stringsOr(u, "https://api.openai.com/v1"))
 	u = strings.TrimRight(u, "/")
-	if strings.HasSuffix(u, "/embeddings") {
-		u = u[:len(u)-len("/embeddings")]
-	}
+	u = strings.TrimSuffix(u, "/embeddings")
 	return u
 }
 

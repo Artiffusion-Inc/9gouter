@@ -954,7 +954,7 @@ func addPlaceholders(obj any) {
 	}
 	if m["type"] == "object" {
 		props, _ := m["properties"].(map[string]any)
-		if props == nil || len(props) == 0 {
+		if len(props) == 0 {
 			m["properties"] = map[string]any{
 				"reason": map[string]any{
 					"type":        "string",

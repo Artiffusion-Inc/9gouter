@@ -237,7 +237,7 @@ func (r *CopilotRefresher) Refresh(ctx context.Context, githubAccessToken string
 	body := readLimit(resp.Body, 1<<16)
 	if resp.StatusCode != http.StatusOK {
 		log.Warn("token refresh failed", "label", "Copilot", "status", resp.StatusCode, "body", string(body))
-		return nil, fmt.Errorf("Copilot refresh %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("copilot refresh %d: %s", resp.StatusCode, string(body))
 	}
 	var parsed struct {
 		Token     string `json:"token"`

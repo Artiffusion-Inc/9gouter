@@ -107,13 +107,13 @@ func (h *Handler) Handle(ctx context.Context, req Request) Result {
 		return Result{StatusCode: http.StatusBadRequest, Err: fmt.Errorf("provider '%s' does not support STT", req.ProviderID)}
 	}
 	if len(req.File) == 0 {
-		return Result{StatusCode: http.StatusBadRequest, Err: errors.New("Missing required field: file")}
+		return Result{StatusCode: http.StatusBadRequest, Err: errors.New("missing required field: file")}
 	}
 	token := ""
 	if cfg.AuthType != stt.AuthTypeNone {
 		token = credentialToken(req.Credentials)
 		if token == "" {
-			return Result{StatusCode: http.StatusUnauthorized, Err: fmt.Errorf("No credentials for STT provider: %s", req.ProviderID)}
+			return Result{StatusCode: http.StatusUnauthorized, Err: fmt.Errorf("no credentials for STT provider: %s", req.ProviderID)}
 		}
 	}
 	switch cfg.Format {
@@ -469,7 +469,7 @@ func resolveAudioContentType(mime, filename string) string {
 func upstreamError(status int, body []byte) error {
 	msg := strings.TrimSpace(string(body))
 	if msg == "" {
-		return fmt.Errorf("Upstream error (%d)", status)
+		return fmt.Errorf("upstream error (%d)", status)
 	}
 	var j struct {
 		Error   json.RawMessage `json:"error"`

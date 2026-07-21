@@ -126,12 +126,12 @@ func (k *KiroRefresher) refreshAWS(ctx context.Context, refreshToken, clientID, 
 	}
 	// Carry profileArn through ProviderSpecificData so the resolver can
 	// resolve the region on the next ListAvailableModels call.
-	if resp.ProfileArn != "" {
-		// Merge into psd via the OnCredentialsRefreshed hook at the call site;
-		// here we only return token fields. profileArn patching (the JS
-		// resolveKiroProfileArnPatch path that fetches a missing profileArn)
-		// is a follow-up.
-	}
+	//
+	// TODO: merge resp.ProfileArn into psd via the OnCredentialsRefreshed hook
+	// at the call site; here we only return token fields. profileArn patching
+	// (the JS resolveKiroProfileArnPatch path that fetches a missing
+	// profileArn) is a follow-up.
+	_ = resp.ProfileArn
 	return out, nil
 }
 

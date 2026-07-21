@@ -157,7 +157,10 @@ func openaiToClaudeRequest(model string, raw json.RawMessage, stream bool) (json
 
 	for _, msg := range nonSystemMessages {
 		role, _ := msg["role"].(string)
-		newRole := role
+		// Classify the role: user and tool map to user, everything else
+		// (assistant) stays assistant. tool_result blocks flush and are
+		// emitted with role=user regardless of newRole.
+		var newRole string
 		if role == roleUser || role == roleTool {
 			newRole = roleUser
 		} else {
@@ -540,10 +543,10 @@ func supportsClaudeAdaptiveThinking(model string) bool {
 		return false
 	}
 	major := 0
-	fmt.Sscanf(m[1], "%d", &major)
+	_, _ = fmt.Sscanf(m[1], "%d", &major)
 	minor := -1
 	if m[2] != "" {
-		fmt.Sscanf(m[2], "%d", &minor)
+		_, _ = fmt.Sscanf(m[2], "%d", &minor)
 	}
 	if major < 4 {
 		return false

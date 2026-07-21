@@ -97,7 +97,7 @@ func isVertexServiceAccount(apiKey string) bool {
 	var v struct {
 		Type string `json:"type"`
 	}
-	json.Unmarshal([]byte(apiKey), &v)
+	_ = json.Unmarshal([]byte(apiKey), &v)
 	return v.Type == "service_account"
 }
 
@@ -108,6 +108,6 @@ func isVertexADC(apiKey string) bool {
 	var v struct {
 		Type string `json:"type"`
 	}
-	json.Unmarshal([]byte(apiKey), &v)
+	_ = json.Unmarshal([]byte(apiKey), &v)
 	return v.Type == "authorized_user"
 }

@@ -519,7 +519,7 @@ func mapToRaw(m map[string]any) (json.RawMessage, error) {
 
 func readShortResponse(resp *http.Response) string {
 	var buf bytes.Buffer
-	io.CopyN(&buf, resp.Body, 1024)
+	_, _ = io.CopyN(&buf, resp.Body, 1024)
 	return fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(buf.String()))
 }
 

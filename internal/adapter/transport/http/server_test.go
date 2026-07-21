@@ -29,7 +29,7 @@ func TestNewServerHealth(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("health status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if string(rec.Body.Bytes()) != "ok" {
+	if rec.Body.String() != "ok" {
 		t.Errorf("health body = %q, want %q", rec.Body.String(), "ok")
 	}
 }

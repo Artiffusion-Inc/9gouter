@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
@@ -98,7 +97,7 @@ func Number(v any) int {
 		return int(i)
 	case string:
 		var i int
-		fmt.Sscanf(x, "%d", &i)
+		_, _ = fmt.Sscanf(x, "%d", &i)
 		return i
 	}
 	return 0
@@ -489,11 +488,6 @@ func (e *BaseExecutor) Execute(ctx context.Context, req provider.ExecRequest) (p
 			retryAttemptsByURL[urlIndex] = 0
 		}
 
-		timeoutMs := e.Config.TimeoutMs
-		if timeoutMs <= 0 {
-			timeoutMs = int(config.Config{}.FetchConnectTimeout.Duration().Milliseconds())
-		}
-
 		bodyStr := string(transformedBody)
 		if transformedBody == nil {
 			bodyStr = ""
@@ -656,8 +650,8 @@ func DrainAndClose(resp *http.Response) {
 	if resp == nil || resp.Body == nil {
 		return
 	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
 }
 
 // ReadBody reads the full response body and closes it.

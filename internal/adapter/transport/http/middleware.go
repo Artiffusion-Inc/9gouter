@@ -198,10 +198,11 @@ func ContextErrorMiddleware() Middleware {
 			next.ServeHTTP(w, r)
 			if r.Context().Err() != nil {
 				if _, ok := w.(interface{ Written() bool }); !ok {
+					// Only DeadlineExceeded maps to a gateway-timeout response.
+					// context.Canceled (client closed the connection) and any
+					// other context error have nothing useful to write here.
 					if errors.Is(r.Context().Err(), context.DeadlineExceeded) {
 						http.Error(w, http.StatusText(http.StatusGatewayTimeout), http.StatusGatewayTimeout)
-					} else if errors.Is(r.Context().Err(), context.Canceled) {
-						// Client closed connection; nothing to write.
 					}
 				}
 			}

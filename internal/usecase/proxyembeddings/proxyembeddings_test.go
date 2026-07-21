@@ -93,8 +93,9 @@ func TestHandle_Success(t *testing.T) {
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, err = %v", res.StatusCode, res.Err)
 	}
-	if gotPath != "" { // srv.URL path is empty for root
-	}
+	// gotPath is empty for the srv.URL root; nothing to assert here, but keep
+	// the variable referenced so it is not flagged as unused.
+	_ = gotPath
 	if gotAuth != "Bearer sk-test" {
 		t.Errorf("upstream Authorization = %q", gotAuth)
 	}

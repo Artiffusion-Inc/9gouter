@@ -385,7 +385,8 @@ func convertOpenAIMessagesToKiro(messages []map[string]any, tools []map[string]a
 	toolsInjected := false
 
 	flush := func() {
-		if currentRole == "user" {
+		switch currentRole {
+		case "user":
 			content := strings.TrimSpace(strings.Join(pendingUserContent, "\n\n"))
 			if content == "" {
 				content = "continue"
@@ -412,7 +413,7 @@ func convertOpenAIMessagesToKiro(messages []map[string]any, tools []map[string]a
 			pendingUserContent = nil
 			pendingToolResults = nil
 			pendingImages = nil
-		} else if currentRole == "assistant" {
+		case "assistant":
 			content := strings.TrimSpace(strings.Join(pendingAssistantContent, "\n\n"))
 			if content == "" {
 				content = "..."
@@ -495,11 +496,12 @@ func convertOpenAIMessagesToKiro(messages []map[string]any, tools []map[string]a
 						continue
 					}
 					typ, _ := item["type"].(string)
-					if typ == "text" {
+					switch typ {
+					case "text":
 						if t, ok := item["text"].(string); ok {
 							textContent += t + "\n"
 						}
-					} else if typ == "tool_use" {
+					case "tool_use":
 						toolUses = append(toolUses, item)
 					}
 				}

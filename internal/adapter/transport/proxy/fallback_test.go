@@ -53,7 +53,7 @@ func TestFallbackFindWorkingProxy(t *testing.T) {
 
 	// Now add a working proxy candidate.
 	f.source = &staticPoolSource{pools: []ProxyPool{{ProxyURL: proxy.URL}}}
-	tr, url, err = f.Find(ctx, target.URL)
+	_, url, err = f.Find(ctx, target.URL)
 	if err != nil {
 		t.Fatalf("Find: %v", err)
 	}

@@ -123,9 +123,9 @@ func (r *PricingRepo) Reset(ctx context.Context, provider, model string) (map[st
 		if len(current) == 0 {
 			_, err = tx.ExecContext(ctx, `DELETE FROM kv WHERE scope = 'pricing' AND key = ?`, provider)
 		} else {
-			next, err := json.Marshal(current)
-			if err != nil {
-				return nil, err
+			next, mErr := json.Marshal(current)
+			if mErr != nil {
+				return nil, mErr
 			}
 			_, err = tx.ExecContext(ctx,
 				`INSERT INTO kv(scope, key, value) VALUES('pricing', ?, ?) ON CONFLICT(scope, key) DO UPDATE SET value = excluded.value`,

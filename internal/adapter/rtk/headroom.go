@@ -139,15 +139,15 @@ func CompressWithHeadroom(body map[string]any, cfg HeadroomConfig) (*HeadroomSta
 }
 
 func compressClaudeViaHeadroom(body map[string]any, cfg HeadroomConfig, client *http.Client, timeoutMs int) (*HeadroomStats, error) {
-	return nil, fmt.Errorf("Claude translator not available in this package")
+	return nil, fmt.Errorf("claude translator not available in this package")
 }
 
 func compressResponsesViaHeadroom(body map[string]any, cfg HeadroomConfig, client *http.Client, timeoutMs int) (*HeadroomStats, error) {
-	return nil, fmt.Errorf("Responses translator not available in this package")
+	return nil, fmt.Errorf("responses translator not available in this package")
 }
 
 func compressKiroViaHeadroom(body map[string]any, cfg HeadroomConfig, client *http.Client, timeoutMs int) (*HeadroomStats, error) {
-	return nil, fmt.Errorf("Kiro translator not available in this package")
+	return nil, fmt.Errorf("kiro translator not available in this package")
 }
 
 func messagesToAny(msgs []HeadroomMessage) []any {

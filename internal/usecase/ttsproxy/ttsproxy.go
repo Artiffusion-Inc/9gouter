@@ -108,7 +108,7 @@ func (h *Handler) Handle(ctx context.Context, req Request) Result {
 		return Result{StatusCode: http.StatusNotImplemented, Err: fmt.Errorf("TTS provider '%s' not supported in Go build", req.ProviderID)}
 	}
 	if strings.TrimSpace(req.Input) == "" {
-		return Result{StatusCode: http.StatusBadRequest, Err: errors.New("Missing required field: input")}
+		return Result{StatusCode: http.StatusBadRequest, Err: errors.New("missing required field: input")}
 	}
 	rf := req.ResponseFormat
 	if rf == "" {
@@ -118,7 +118,7 @@ func (h *Handler) Handle(ctx context.Context, req Request) Result {
 	// Resolve credentials unless the provider is noAuth.
 	if cfg.AuthType != tts.AuthTypeNone {
 		if credentialToken(req.Credentials) == "" {
-			return Result{StatusCode: http.StatusUnauthorized, Err: fmt.Errorf("No credentials for TTS provider: %s", req.ProviderID)}
+			return Result{StatusCode: http.StatusUnauthorized, Err: fmt.Errorf("no credentials for TTS provider: %s", req.ProviderID)}
 		}
 	}
 
@@ -590,7 +590,7 @@ func errResult(err error) Result {
 func upstreamError(status int, body []byte) error {
 	msg := strings.TrimSpace(string(body))
 	if msg == "" {
-		return fmt.Errorf("Upstream error (%d)", status)
+		return fmt.Errorf("upstream error (%d)", status)
 	}
 	var j struct {
 		Error   json.RawMessage `json:"error"`

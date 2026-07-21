@@ -147,11 +147,13 @@ func TestClaudeRefresh_RouteAwareProxyIsHonored(t *testing.T) {
 	}
 	// The recorder must not have seen a second hit — the dead proxy should have
 	// blocked the request before it reached the test server.
-	if got := len(rec.gotBody); got != 0 && rec.got != nil {
-		// rec.got is set on the FIRST (successful, direct) call; that is fine.
-		// A second successful direct call would have overwritten gotBody with
-		// the claude body; assert the proxy path did not produce a new body.
-	}
+	//
+	// Note: rec.got is set on the FIRST (successful, direct) call, which is
+	// fine. A second successful direct call would have overwritten gotBody
+	// with the claude body; the proxy path must not produce a new body. There
+	// is nothing to assert here beyond the absence of a second hit, which the
+	// t.Fatal above already guards.
+	_ = rec.gotBody
 }
 
 // TestClaudeRefresh_PreservesRefreshTokenWhenNotRotated verifies the

@@ -63,8 +63,8 @@ func TestProviderPort(t *testing.T) {
 	if prov.ID() != "openai" {
 		t.Errorf("ID = %q, want openai", prov.ID())
 	}
-	if _, ok := prov.Executor().(Executor); !ok {
-		t.Error("Executor did not return the Executor interface")
+	if prov.Executor() == nil {
+		t.Error("Executor returned nil")
 	}
 
 	// Exercise the executor methods return expected values.

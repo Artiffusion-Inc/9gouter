@@ -460,29 +460,32 @@ func silentWavMultipart(model string) (io.Reader, string) {
 	dataSize := sampleCount * channels * (bitsPerSample / 8)
 	var wav bytes.Buffer
 	wav.Grow(44 + dataSize)
-	binary.Write(&wav, binary.LittleEndian, []byte("RIFF"))
-	binary.Write(&wav, binary.LittleEndian, uint32(36+dataSize))
-	wav.Write([]byte("WAVE"))
-	wav.Write([]byte("fmt "))
-	binary.Write(&wav, binary.LittleEndian, uint32(16))
-	binary.Write(&wav, binary.LittleEndian, uint16(1))
-	binary.Write(&wav, binary.LittleEndian, uint16(channels))
-	binary.Write(&wav, binary.LittleEndian, uint32(sampleRate))
-	binary.Write(&wav, binary.LittleEndian, uint32(sampleRate*channels*(bitsPerSample/8)))
-	binary.Write(&wav, binary.LittleEndian, uint16(channels*(bitsPerSample/8)))
-	binary.Write(&wav, binary.LittleEndian, uint16(bitsPerSample))
-	wav.Write([]byte("data"))
-	binary.Write(&wav, binary.LittleEndian, uint32(dataSize))
-	wav.Write(make([]byte, dataSize))
+	wavb := &wav
+	// Writes to a *bytes.Buffer never fail, but errcheck cannot prove it.
+	// Discard the error explicitly so the write helpers stay unchecked-clean.
+	_ = binary.Write(wavb, binary.LittleEndian, []byte("RIFF"))
+	_ = binary.Write(wavb, binary.LittleEndian, uint32(36+dataSize))
+	_, _ = wavb.Write([]byte("WAVE"))
+	_, _ = wavb.Write([]byte("fmt "))
+	_ = binary.Write(wavb, binary.LittleEndian, uint32(16))
+	_ = binary.Write(wavb, binary.LittleEndian, uint16(1))
+	_ = binary.Write(wavb, binary.LittleEndian, uint16(channels))
+	_ = binary.Write(wavb, binary.LittleEndian, uint32(sampleRate))
+	_ = binary.Write(wavb, binary.LittleEndian, uint32(sampleRate*channels*(bitsPerSample/8)))
+	_ = binary.Write(wavb, binary.LittleEndian, uint16(channels*(bitsPerSample/8)))
+	_ = binary.Write(wavb, binary.LittleEndian, uint16(bitsPerSample))
+	_, _ = wavb.Write([]byte("data"))
+	_ = binary.Write(wavb, binary.LittleEndian, uint32(dataSize))
+	_, _ = wavb.Write(make([]byte, dataSize))
 
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	fw, err := mw.CreateFormFile("file", "test.wav")
 	if err == nil {
-		fw.Write(wav.Bytes())
+		_, _ = fw.Write(wav.Bytes())
 	}
 	_ = mw.WriteField("model", model)
-	mw.Close()
+	_ = mw.Close()
 	return &buf, mw.FormDataContentType()
 }
 

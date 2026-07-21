@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, notFound, useRouter } from "next/navigation";
+import { useParams, usePathname, notFound, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, Button, Input, Toggle, ModelSelectModal } from "@/shared/components";
@@ -45,7 +45,11 @@ function getListingHref(kind) {
 }
 
 export default function ClientPage() {
-  const { id } = useParams();
+  const params = useParams();
+  const pathname = usePathname();
+  // output:export bakes only the placeholder id ("_") into the shadow page;
+  // on a direct load useParams() returns "_", not the real URL segment.
+  const id = (pathname && pathname.split("/").pop()) || params.id;
   const router = useRouter();
   const [combo, setCombo] = useState(null);
   const [loading, setLoading] = useState(true);

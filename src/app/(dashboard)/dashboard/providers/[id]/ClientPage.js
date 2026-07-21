@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthWrapper, CursorAuthModal, IFlowCookieModal, GitLabAuthModal, Toggle, Select, EditConnectionModal, NoAuthProxyCard, ConfirmModal } from "@/shared/components";
@@ -35,8 +35,15 @@ function sleep(ms) {
 
 export default function ClientPage() {
   const params = useParams();
+  const pathname = usePathname();
   const router = useRouter();
-  const providerId = params.id;
+  // In Next.js `output: export`, the only static param emitted for a dynamic
+  // [id] route is the shadow placeholder "_" (see generateStaticParams). On a
+  // direct load of /dashboard/providers/<real-id>, useParams() returns that
+  // baked "_" instead of the real URL segment, so every provider renders
+  // "Provider not found". Derive the id from the real pathname instead, and
+  // only fall back to useParams() for client-side navigations that carry it.
+  const providerId = (pathname && pathname.split("/").pop()) || params.id;
   const { getCaps } = useModelCaps();
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);

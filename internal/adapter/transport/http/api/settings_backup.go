@@ -400,13 +400,23 @@ func strOr(m map[string]any, k, def string) string {
 	return def
 }
 
+// nullAny returns the value of a scalar string column from a backup payload,
+// or nil for absent/empty values. It is used for simple text columns
+// (name/email/type/machineId/kind). It must NOT JSON-encode strings: a value
+// like "foo@gmail.com" written through json.Marshal becomes `"foo@gmail.com"`
+// (with quotes) in the column, which the dashboard then renders verbatim with
+// surrounding quote characters. Only non-string scalars (rare) fall through to
+// a JSON representation. Blob columns use mustJSON directly, not nullAny.
 func nullAny(m map[string]any, k string) any {
 	v, ok := m[k]
 	if !ok || v == nil {
 		return nil
 	}
-	if s, ok := v.(string); ok && s == "" {
-		return nil
+	if s, ok := v.(string); ok {
+		if s == "" {
+			return nil
+		}
+		return s
 	}
 	if b, err := json.Marshal(v); err == nil {
 		return string(b)

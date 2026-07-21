@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, notFound, useRouter } from "next/navigation";
+import { useParams, usePathname, notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card, Badge, Button, Toggle, AddCustomEmbeddingModal } from "@/shared/components";
@@ -138,7 +138,12 @@ function ComboList({ combos }) {
 }
 
 export default function ClientPage() {
-  const { kind } = useParams();
+  const params = useParams();
+  const pathname = usePathname();
+  // output:export bakes only the placeholder param ("image") into the shadow
+  // page; on a direct load useParams() returns that placeholder, not the real
+  // URL segment. Derive from the pathname instead.
+  const kind = (pathname && pathname.split("/").pop()) || params.kind;
   const router = useRouter();
   const [connections, setConnections] = useState([]);
   const [customNodes, setCustomNodes] = useState([]);

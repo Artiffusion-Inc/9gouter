@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, notFound, useRouter } from "next/navigation";
+import { useParams, usePathname, notFound, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Card, Badge, Button, AddCustomEmbeddingModal, NoAuthProxyCard, ProviderInfoCard } from "@/shared/components";
@@ -16,7 +16,20 @@ import { SttExampleCard } from "./components/SttExampleCard";
 
 // MediaProviderDetailPage
 export default function ClientPage() {
-  const { kind, id } = useParams();
+  const params = useParams();
+  const pathname = usePathname();
+  // output:export bakes only the placeholder params ("image"/"_") into the
+  // shadow page; on a direct load useParams() returns those placeholders, not
+  // the real URL segments. Derive from the pathname instead.
+  let kind = params.kind;
+  let id = params.id;
+  if (pathname) {
+    const segs = pathname.split("/").filter(Boolean); // [..., "media-providers", kind, id]
+    if (segs.length >= 2) {
+      kind = segs[segs.length - 2];
+      id = segs[segs.length - 1];
+    }
+  }
   const router = useRouter();
   const kindConfig = MEDIA_PROVIDER_KINDS.find((k) => k.id === kind);
   const isCustom = isCustomEmbeddingProvider(id) && kind === "embedding";

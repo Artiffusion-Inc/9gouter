@@ -259,14 +259,6 @@ type frameReader struct {
 	err     error
 }
 
-func newFrameReader(r io.Reader, maxSize int) *frameReader {
-	return &frameReader{
-		r:       r,
-		buf:     make([]byte, 0, 64*1024),
-		maxSize: maxSize,
-	}
-}
-
 // NextFrame returns the next SSE frame (without the trailing "\n\n") or io.EOF.
 func (fr *frameReader) NextFrame() ([]byte, error) {
 	for {

@@ -28,12 +28,19 @@ func Chain(ms ...Middleware) Middleware {
 }
 
 // RecoverMiddleware recovers from panics, logs them, and returns HTTP 500.
+// The logger is resolved per-request via LoggerFromContext(r.Context()) so the
+// panic log line carries the request_id set by RequestIDMiddleware; the
+// fallback `log` is used only when no request ID is in context.
 func RecoverMiddleware(log *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if rec := recover(); rec != nil {
-					log.Error("panic recovered", "error", rec, "path", r.URL.Path, "method", r.Method)
+					rl := LoggerFromContext(r.Context())
+					if rl == nil {
+						rl = log
+					}
+					rl.Error("panic recovered", "error", rec, "path", r.URL.Path, "method", r.Method)
 					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 				}
 			}()
@@ -42,14 +49,22 @@ func RecoverMiddleware(log *slog.Logger) Middleware {
 	}
 }
 
-// LogMiddleware logs each request with method, path, status, duration, and client IP.
+// LogMiddleware logs each request with method, path, status, duration, and
+// client IP. The logger is resolved per-request via LoggerFromContext so the
+// log line carries the request_id set by RequestIDMiddleware (when that
+// middleware wraps LogMiddleware in the chain). The fallback `log` is used
+// only when no request ID is in context.
 func LogMiddleware(log *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			lr := &loggingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 			next.ServeHTTP(lr, r)
-			log.Info("request",
+			rl := LoggerFromContext(r.Context())
+			if rl == nil {
+				rl = log
+			}
+			rl.Info("request",
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", lr.statusCode,
@@ -218,12 +233,4 @@ func parseBodySize(s string) (int64, error) {
 		return 0, fmt.Errorf("invalid body size %q", s)
 	}
 	return int64(n) * mult, nil
-}
-
-// Helper to drain and close a body defensively.
-func closeBody(body io.ReadCloser) {
-	if body == nil {
-		return
-	}
-	_ = body.Close()
 }

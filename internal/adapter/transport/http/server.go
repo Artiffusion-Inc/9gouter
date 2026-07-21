@@ -43,6 +43,7 @@ func NewServer(deps Deps) *http.Server {
 	}
 
 	chain := Chain(
+		RequestIDMiddleware(),
 		RecoverMiddleware(log),
 		LogMiddleware(log),
 		ClientIPMiddleware(),

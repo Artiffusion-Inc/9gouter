@@ -2,7 +2,6 @@ package proxychat
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/rtk"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
@@ -91,11 +90,4 @@ func injectCaveman(body map[string]any, targetFormat format.Format, level string
 
 func injectPonytail(body map[string]any, targetFormat format.Format, level string) {
 	rtk.InjectPonytail(body, targetFormat, level)
-}
-
-func formatPxpipeSummary(summary *rtk.PxpipeSummary) string {
-	if summary == nil {
-		return ""
-	}
-	return fmt.Sprintf("PXPIPE:%dimg", summary.ImageCount)
 }

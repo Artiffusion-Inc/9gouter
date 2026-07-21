@@ -4,12 +4,6 @@ import (
 	"net/http"
 )
 
-// versionResponse matches the JS /api/version shape.
-type versionResponse struct {
-	Version string `json:"version"`
-	Commit  string `json:"commit,omitempty"`
-}
-
 // RegisterVersion mounts the public version route.
 func RegisterVersion(mux *http.ServeMux, version string) {
 	if version == "" {

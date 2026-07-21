@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -315,13 +314,4 @@ func ctxCancelReal(h *contextHandle) {
 	if h != nil && h.cancel != nil {
 		h.cancel()
 	}
-}
-
-// drainAndClose discards and closes a response body.
-func drainAndClose(body io.ReadCloser) {
-	if body == nil {
-		return
-	}
-	io.Copy(io.Discard, body)
-	body.Close()
 }

@@ -17,16 +17,6 @@ func boolToInt(b bool) int {
 	return 0
 }
 
-// intToBool converts a SQLite INTEGER back to bool.
-func intToBool(i int64) bool {
-	return i == 1
-}
-
-// nullBool returns a sql.NullInt64 for boolean storage.
-func nullBool(b bool) sql.NullInt64 {
-	return sql.NullInt64{Int64: int64(boolToInt(b)), Valid: true}
-}
-
 // scanBool reads an INTEGER boolean column, treating NULL as false.
 func scanBool(v interface{}) bool {
 	switch x := v.(type) {
@@ -73,26 +63,6 @@ func jsonText(v json.RawMessage) string {
 		return "null"
 	}
 	return string(v)
-}
-
-// jsonCol returns the raw bytes form of jsonText for contexts that accept []byte.
-func jsonCol(v json.RawMessage) []byte {
-	return []byte(jsonText(v))
-}
-
-// jsonScan copies a JSON TEXT column into json.RawMessage, preserving exact
-// bytes and leaving NULL as nil.
-func jsonScan(src interface{}) (json.RawMessage, error) {
-	switch x := src.(type) {
-	case nil:
-		return nil, nil
-	case string:
-		return json.RawMessage(x), nil
-	case []byte:
-		return json.RawMessage(x), nil
-	default:
-		return nil, fmt.Errorf("cannot scan %T into json.RawMessage", src)
-	}
 }
 
 // joinAnd joins WHERE clauses with " AND ".

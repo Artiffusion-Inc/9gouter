@@ -22,10 +22,6 @@ const translatorLogsDir = "logs/translator"
 //   - event message with data {"type":"lines","lines":[...]} for a batch
 //   - event message with data {"type":"clear"} after DELETE
 //
-// maxConsoleLogLines mirrors CONSOLE_LOG_CONFIG.maxLines (200) in the UI so
-// the buffer never grows unbounded.
-const maxConsoleLogLines = 200
-
 var (
 	consoleLogMu    sync.Mutex
 	consoleLogBuf   []string

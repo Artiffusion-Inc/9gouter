@@ -72,15 +72,6 @@ func (h *usageHandler) logs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, logs)
 }
 
-func (h *usageHandler) requestLogs(w http.ResponseWriter, r *http.Request) {
-	logs, err := h.svc.RecentLogs(r.Context(), 200)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to fetch logs")
-		return
-	}
-	writeJSON(w, http.StatusOK, logs)
-}
-
 func (h *usageHandler) requestDetails(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	page, _ := strconv.Atoi(q.Get("page"))

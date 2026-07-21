@@ -3,7 +3,6 @@ package codexec
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -178,9 +177,4 @@ func effortOrDefault(v, def string) string {
 		return "xhigh"
 	}
 	return v
-}
-
-// parseError is a placeholder hook (real port would parse 429 usage_limit_reached).
-func (e *Executor) parseError(response *http.Response, bodyText string) (int, string) {
-	return response.StatusCode, fmt.Sprintf("codex upstream error %d", response.StatusCode)
 }

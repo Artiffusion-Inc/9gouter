@@ -4,15 +4,16 @@
 #
 #   golangci-lint run ./internal/... ./cmd/... ./tools/...
 #
-# Baseline (2026-07-21): 81 pre-existing findings — unused (28),
-# staticcheck (29), errcheck (20), ineffassign (4). depguard, govet,
-# misspell, copyloopvar, dupword, nakedret are GREEN (0). The unused /
-# staticcheck / errcheck findings are known tech debt, not regressions:
-# treat NEW findings from that set as actionable and clean the baseline
-# incrementally. The depguard architecture rule (domain must not import
-# adapter/usecase/app) is green and MUST stay green — it is the only
-# deterministic guard against cross-layer imports an agent would
-# otherwise silently introduce.
+# Baseline (2026-07-21, post unused-cleanup pass): 51 pre-existing
+# findings — staticcheck (25), errcheck (19), ineffassign (7). unused is
+# GREEN (0 — 28 dead symbols deleted in the cleanup pass). depguard,
+# govet, misspell, copyloopvar, dupword, nakedret, unused are GREEN.
+# The remaining staticcheck/errcheck/ineffassign findings are known tech
+# debt, not regressions: treat NEW findings from that set as actionable
+# and clean the baseline incrementally. The depguard architecture rule
+# (domain must not import adapter/usecase/app) is green and MUST stay
+# green — it is the only deterministic guard against cross-layer imports
+# an agent would otherwise silently introduce.
 version: "2"
 
 run:
@@ -87,6 +88,9 @@ linters:
       - "node_modules"
       - "third_party"
       - "dashboard_assets"
+      # Agent worktrees (fresh repo copies under .claude/worktrees/*) — never
+      # lint these; they duplicate the tree and skew the issue count.
+      - "\\.claude/worktrees"
     rules:
       # Test helpers frequently marshal/scan with known-good inputs.
       - path: "_test\\.go"

@@ -25,18 +25,6 @@ func detectIPLiteralFamily(host string) int {
 	return 6
 }
 
-// parseFamily normalises a stored family directive.
-func parseFamily(value string) Family {
-	switch value {
-	case "ipv4":
-		return FamilyIPv4
-	case "ipv6":
-		return FamilyIPv6
-	default:
-		return FamilyAuto
-	}
-}
-
 // noProxyMatch returns true if hostname matches a comma-separated NO_PROXY list.
 func noProxyMatch(hostname, noProxy string) bool {
 	hostname = strings.ToLower(strings.TrimSpace(hostname))

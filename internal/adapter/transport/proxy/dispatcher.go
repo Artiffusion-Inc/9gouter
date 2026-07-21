@@ -13,19 +13,6 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-// supportedProxySchemes matches the JS dispatcher.
-var supportedProxySchemes = map[string]struct{}{
-	"http":    {},
-	"https":   {},
-	"socks5":  {},
-	"socks5h": {},
-}
-
-func isSupportedProxyScheme(scheme string) bool {
-	_, ok := supportedProxySchemes[scheme]
-	return ok
-}
-
 // ParsedURL holds the decomposed proxy URL for dispatcher construction.
 type ParsedURL struct {
 	Scheme   string
@@ -33,6 +20,14 @@ type ParsedURL struct {
 	Port     string
 	Username string
 	Password string
+}
+
+// supportedProxySchemes matches the JS dispatcher.
+var supportedProxySchemes = map[string]struct{}{
+	"http":    {},
+	"https":   {},
+	"socks5":  {},
+	"socks5h": {},
 }
 
 // NormalizeProxyURL parses a proxy URL string. It allows bare host:port by

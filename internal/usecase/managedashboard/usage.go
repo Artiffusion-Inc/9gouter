@@ -58,7 +58,6 @@ func (s *UsageService) Chart(ctx context.Context, period string) ([]map[string]a
 // prompt+completion tokens and cost over the hour window.
 func (s *UsageService) chartHourly(ctx context.Context, period string) ([]map[string]any, error) {
 	const bucketCount = 24
-	const bucketMs int64 = 3600 * 1000
 	now := time.Now()
 
 	var startTime time.Time

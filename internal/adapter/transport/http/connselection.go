@@ -122,14 +122,6 @@ func pickStickyRoundRobin(conns []settings.ProviderConnection, stickyLimit int) 
 	return byOldest[0], false
 }
 
-// providerStrategyOverride is the subset of settings.providerStrategies[<id>]
-// that selection reads.
-type providerStrategyOverride struct {
-	fallbackStrategy       string
-	stickyRoundRobinLimit  int
-	stickyLimitPresent      bool
-}
-
 // readStrategySettings resolves the effective fallback strategy and sticky
 // limit for a provider: per-provider override wins, else global, else default.
 // Mirrors the JS `(settings.providerStrategies||{})[providerId]` lookup plus

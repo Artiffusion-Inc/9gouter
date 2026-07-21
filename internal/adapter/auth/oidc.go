@@ -213,8 +213,3 @@ type httpRequestLike interface {
 
 // compile-time interface check.
 var _ domainauth.OIDCPort = (*OIDC)(nil)
-
-// redirectURLForCallback builds the callback redirect URI from a public origin.
-func redirectURLForCallback(origin string) string {
-	return strings.TrimRight(origin, "/") + "/auth/oidc/callback"
-}

@@ -365,8 +365,6 @@ func max(a, b int) int {
 // timeAfter returns a channel that receives the current time after duration.
 var timeAfter = timeAfterReal
 
-type timer interface{}
-
 // stubbed in tests.
 var nowMs = nowMsReal
 

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"time"
 
@@ -545,9 +544,4 @@ func upper(s string) string {
 		return "-"
 	}
 	return s
-}
-
-// sortableDateKeys helps tests.
-func sortDateKeys(keys []string) {
-	sort.Strings(keys)
 }

@@ -175,9 +175,3 @@ var generateID = func() string {
 
 // boolPtr returns a pointer to b.
 func boolPtr(b bool) *bool { return &b }
-
-// intPtr returns a pointer to n.
-func intPtr(n int) *int { return &n }
-
-// floatPtr returns a pointer to f.
-func floatPtr(f float64) *float64 { return &f }

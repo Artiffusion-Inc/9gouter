@@ -36,7 +36,6 @@ import (
 	// init() calls resolver.Register. Wire overrides the kiro registration
 	// below with a real KiroRefresher (the init() default uses the stub).
 	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
-	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/proxychat"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/proxyembeddings"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/proxyfetch"
@@ -292,12 +291,6 @@ func newProxyChatHandler(r repos, opts proxy.Options, cfg config.Config, logger 
 			Config:     cfg,
 		}),
 	}
-}
-
-// proxychatDomainProvider narrows the registry result to what proxychat expects.
-type proxychatDomainProvider interface {
-	ID() string
-	Executor() domainProv.Executor
 }
 
 // Handle implements httptransport.ChatHandler by mapping transport-level

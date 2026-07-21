@@ -164,9 +164,28 @@ func (r *AliasRepo) getStringMap(ctx context.Context, scope string) (map[string]
 		if err := rows.Scan(&k, &v); err != nil {
 			return nil, err
 		}
-		out[k] = v
+		out[k] = unquoteJSONString(v)
 	}
 	return out, rows.Err()
+}
+
+// unquoteJSONString normalizes a model-alias value to the legacy JS format.
+// The JS backend stored every kv value through stringifyJson, so a model id
+// "gpt-4" was persisted as the JSON string `"gpt-4"` (with quotes) and read back
+// via parseJson. The Go AliasRepo.SetAlias historically wrote the raw string
+// without quotes. Both formats must read back as the bare model id "gpt-4":
+// if v is a valid JSON string literal, unwrap it; otherwise return v as-is.
+// This keeps the runtime alias resolver and the backup round-trip
+// symmetric regardless of which backend wrote the row.
+func unquoteJSONString(v string) string {
+	t := strings.TrimSpace(v)
+	if len(t) >= 2 && t[0] == '"' && t[len(t)-1] == '"' {
+		var s string
+		if err := json.Unmarshal([]byte(t), &s); err == nil {
+			return s
+		}
+	}
+	return v
 }
 
 func (r *AliasRepo) kvSet(ctx context.Context, scope, key string, value any) error {

@@ -121,7 +121,17 @@ func ExportDb(r *http.Request, db *sql.DB) (*BackupPayload, error) {
 	}
 
 	// kv-backed maps.
-	out.ModelAliases, err = kvMap(ctx, db, "modelAliases")
+	//
+	// modelAliases values are JSON-encoded model id strings in the legacy
+	// JS format (setModelAlias → kvStore.set → stringifyJson: "gpt-4" stored
+	// as `"gpt-4"`). The Go AliasRepo.SetAlias historically wrote the raw
+	// string WITHOUT JSON quoting (kvSet string branch → []byte(v)), which
+	// makes ExportDb's json.RawMessage emit an invalid token ({"foo":gpt-4}
+	// instead of {"foo":"gpt-4"}) and silently breaks BackupPayload marshal.
+	// kvMapStrings wraps each value as a valid JSON string, tolerating both
+	// the JS (already-quoted) and legacy-Go (raw) storage formats so a
+	// backup round-trips regardless of which backend wrote the row.
+	out.ModelAliases, err = kvMapStrings(ctx, db, "modelAliases")
 	if err != nil {
 		return nil, err
 	}
@@ -292,6 +302,44 @@ func kvMap(ctx context.Context, db *sql.DB, scope string) (map[string]json.RawMe
 		m[k] = json.RawMessage(v)
 	}
 	return m, rows.Err()
+}
+
+// kvMapStrings reads a kv scope into a key->RawMessage map where every value
+// is a valid JSON string. It tolerates both the legacy JS storage format
+// (stringifyJson — values already valid JSON, e.g. `"gpt-4"`) and the legacy
+// Go AliasRepo format (raw unquoted strings, e.g. `gpt-4`). Values that are
+// already valid JSON are passed through verbatim; values that fail to parse
+// are re-emitted as JSON strings. This guarantees BackupPayload marshal
+// produces valid JSON regardless of which backend wrote the row.
+func kvMapStrings(ctx context.Context, db *sql.DB, scope string) (map[string]json.RawMessage, error) {
+	rows, err := db.QueryContext(ctx, `SELECT key, value FROM kv WHERE scope = ?`, scope)
+	if err != nil {
+		return nil, fmt.Errorf("kv %s: %w", scope, err)
+	}
+	defer rows.Close()
+	m := map[string]json.RawMessage{}
+	for rows.Next() {
+		var k string
+		var v []byte
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
+		}
+		m[k] = jsonStringOrRaw(v)
+	}
+	return m, rows.Err()
+}
+
+// jsonStringOrRaw returns v verbatim if it is already valid JSON, otherwise
+// marshals v as a JSON string (so a raw token like `gpt-4` becomes `"gpt-4"`).
+func jsonStringOrRaw(v []byte) json.RawMessage {
+	if json.Valid(v) {
+		return json.RawMessage(v)
+	}
+	b, err := json.Marshal(string(v))
+	if err != nil {
+		return json.RawMessage(`""`)
+	}
+	return json.RawMessage(b)
 }
 
 // kvList reads a kv scope into a slice of raw JSON values (customModels).

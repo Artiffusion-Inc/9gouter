@@ -77,3 +77,47 @@ func TestAliasRepo_RoundTrip(t *testing.T) {
 		t.Fatalf("mitm mismatch: %+v", mitm)
 	}
 }
+
+// TestUnquoteJSONString verifies the alias value normalizer handles both the
+// legacy JS storage format (stringifyJson → `"gpt-4"`, quoted) and the legacy
+// Go AliasRepo format (raw `gpt-4`, unquoted), reading both back as the bare
+// model id. This keeps the runtime alias resolver and the backup round-trip
+// symmetric regardless of which backend wrote the row.
+func TestUnquoteJSONString(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"gpt-4", "gpt-4"},              // legacy-Go raw
+		{`"gpt-4"`, "gpt-4"},            // legacy-JS JSON-encoded
+		{`"foo\"bar"`, `foo"bar`},       // escaped quote inside
+		{"", ""},                        // empty
+		{`"  "`, "  "},                  // quoted whitespace
+		{"unquoted with space", "unquoted with space"},
+	}
+	for _, c := range cases {
+		if got := unquoteJSONString(c.in); got != c.want {
+			t.Errorf("unquoteJSONString(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestAliasRepo_GetAliases_ReadsLegacyJSFormat writes a model alias value in
+// the legacy JS format (JSON-string-encoded, with surrounding quotes) directly
+// into the kv table and verifies GetAliases reads it back as the bare model id.
+// This guards the backup-import → runtime-read path: ImportDb writes aliases
+// through kvSet with the json.RawMessage payload (quoted), and GetAliases must
+// unwrap it rather than returning "gpt-4" with literal quote characters.
+func TestAliasRepo_GetAliases_ReadsLegacyJSFormat(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	_, err := db.ExecContext(ctx, `INSERT INTO kv(scope, key, value) VALUES('modelAliases', 'fast', ?)`, `"gpt-4"`)
+	if err != nil {
+		t.Fatalf("seed kv: %v", err)
+	}
+	r := NewAliasRepo(db)
+	aliases, err := r.GetAliases(ctx)
+	if err != nil {
+		t.Fatalf("getAliases: %v", err)
+	}
+	if aliases["fast"] != "gpt-4" {
+		t.Fatalf("aliases[fast] = %q, want gpt-4 (unwrapped JS JSON-string)", aliases["fast"])
+	}
+}

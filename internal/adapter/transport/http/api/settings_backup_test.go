@@ -54,11 +54,11 @@ func TestSettingsDatabase_ExportImport(t *testing.T) {
 	seedReq2("POST", "/api/keys", `{"name":"k1"}`)
 	seedReq2("POST", "/api/proxy-pools", `{"name":"pp1","proxyUrl":"http://x","type":"http"}`)
 	seedReq2("PATCH", "/api/pricing", `{"openai":{"gpt-4":{"input":0.001,"output":0.002}}}`)
-	// Note: do NOT seed a model alias here. AliasRepo.SetAlias stores the raw
-	// model string (not a JSON-encoded value) into the kv table, so ExportDb
-	// reading it back as json.RawMessage produces an invalid JSON token and
-	// the BackupPayload marshal fails silently — a latent bug in the backup
-	// path that's out of scope for the coverage task.
+	// Seed a model alias via PUT /api/models/alias. AliasRepo.SetAlias writes
+	// the raw model id string into the kv table (legacy-Go format). The
+	// backup export path must still emit valid JSON for this value so the
+	// BackupPayload marshal succeeds and round-trips.
+	seedReq2("PUT", "/api/models/alias", `{"model":"gpt-4","alias":"fast"}`)
 	_ = seedReq
 
 	// GET /api/settings/database — export.
@@ -88,6 +88,12 @@ func TestSettingsDatabase_ExportImport(t *testing.T) {
 	if _, ok := payload.Pricing["openai"]; !ok {
 		t.Fatalf("export pricing missing openai: %v", payload.Pricing)
 	}
+	// modelAliases must round-trip as valid JSON: alias "fast" -> "gpt-4".
+	if got, ok := payload.ModelAliases["fast"]; !ok {
+		t.Fatalf("export modelAliases missing fast: %v", payload.ModelAliases)
+	} else if string(got) != `"gpt-4"` {
+		t.Fatalf("export modelAliases[fast] = %s, want %q (valid JSON string)", string(got), `"gpt-4"`)
+	}
 
 	// Wipe the DB and re-import the payload, then verify counts.
 	if _, err := db.ExecContext(context.Background(), `DELETE FROM providerConnections`); err != nil {
@@ -98,6 +104,9 @@ func TestSettingsDatabase_ExportImport(t *testing.T) {
 	}
 	if _, err := db.ExecContext(context.Background(), `DELETE FROM apiKeys`); err != nil {
 		t.Fatalf("wipe apiKeys: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(), `DELETE FROM kv WHERE scope = 'modelAliases'`); err != nil {
+		t.Fatalf("wipe kv modelAliases: %v", err)
 	}
 
 	// POST /api/settings/database — import the exported payload.
@@ -131,6 +140,12 @@ func TestSettingsDatabase_ExportImport(t *testing.T) {
 	}
 	if len(payload2.APIKeys) != 1 {
 		t.Fatalf("post-import apiKeys = %d, want 1", len(payload2.APIKeys))
+	}
+	// modelAliases survive the import round-trip unchanged (still valid JSON).
+	if got, ok := payload2.ModelAliases["fast"]; !ok {
+		t.Fatalf("post-import modelAliases missing fast: %v", payload2.ModelAliases)
+	} else if string(got) != `"gpt-4"` {
+		t.Fatalf("post-import modelAliases[fast] = %s, want %q", string(got), `"gpt-4"`)
 	}
 }
 

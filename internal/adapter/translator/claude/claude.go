@@ -377,13 +377,22 @@ func openaiToClaudeResponse(chunk map[string]any, state map[string]any) []map[st
 		if u, ok := chunk["usage"].(map[string]any); ok {
 			promptTokens := shared.Number(u["prompt_tokens"])
 			outputTokens := shared.Number(u["completion_tokens"])
-			cacheRead := shared.Number(u["prompt_tokens_details"].(map[string]any)["cached_tokens"])
-			cacheCreate := shared.Number(u["prompt_tokens_details"].(map[string]any)["cache_creation_tokens"])
+			// prompt_tokens_details is optional; OpenAI providers add it
+			// (cached_tokens / cache_creation_tokens), but other upstreams
+			// (ollama, llama.cpp) emit a flat usage with no details. A bare
+			// type assertion on a missing/nil field panics ("interface {} is
+			// nil, not map[string]interface {}"), so navigate defensively and
+			// treat absent details as zero cache.
+			var cacheRead, cacheCreate int
+			if d, ok := u["prompt_tokens_details"].(map[string]any); ok {
+				cacheRead = shared.Number(d["cached_tokens"])
+				cacheCreate = shared.Number(d["cache_creation_tokens"])
+			}
 			inputTokens := promptTokens - cacheRead - cacheCreate
 			state["usage"] = map[string]any{
-				"input_tokens":              inputTokens,
-				"output_tokens":             outputTokens,
-				"cache_read_input_tokens":   cacheRead,
+				"input_tokens":                inputTokens,
+				"output_tokens":               outputTokens,
+				"cache_read_input_tokens":     cacheRead,
 				"cache_creation_input_tokens": cacheCreate,
 			}
 		}

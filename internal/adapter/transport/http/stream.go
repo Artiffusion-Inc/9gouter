@@ -46,6 +46,15 @@ type PipeOpts struct {
 	// nil the pipe does byte-for-byte raw passthrough (the historical
 	// behaviour and what TestPipePassthrough asserts).
 	TranslateResponse func(frame []byte, state map[string]any) ([][]byte, error)
+
+	// EmitEventPrefix writes the Anthropic SSE "event: <type>\n" line before
+	// each "data: <json>\n\n" frame, where <type> is the chunk's "type" field.
+	// The Anthropic streaming format requires the event line; without it the
+	// official Claude SDK (Claude Code) rejects the response as malformed
+	// ("API returned an empty or malformed response"). OpenAI streaming uses
+	// only "data:", so this is set only when the client source format is Claude.
+	// Mirrors legacy streamHelpers.js formatSSE (sourceFormat === CLAUDE).
+	EmitEventPrefix bool
 }
 
 // DefaultReason is the reason string used in the terminal error SSE.
@@ -146,7 +155,7 @@ func Pipe(ctx context.Context, upstream io.Reader, w *Writer, opts PipeOpts) err
 		// JS side). Initialized lazily on the first translated frame.
 		var state map[string]any
 		for frame := range frameCh {
-			out, err := translateOrPassthrough(w, opts.TranslateResponse, &state, frame)
+			out, err := translateOrPassthrough(w, opts.TranslateResponse, opts.EmitEventPrefix, &state, frame)
 			if err != nil {
 				errCh <- err
 				closeFrameCh()
@@ -424,6 +433,7 @@ func (a *autoFramer) NextFrame() ([]byte, error) {
 func translateOrPassthrough(
 	w *Writer,
 	translate func([]byte, map[string]any) ([][]byte, error),
+	emitEventPrefix bool,
 	state *map[string]any,
 	frame []byte,
 ) ([][]byte, error) {
@@ -445,10 +455,18 @@ func translateOrPassthrough(
 		if len(bytes.TrimSpace(c)) == 0 {
 			continue
 		}
-		// NDJSON/delta "done:true" markers translate to a final chunk; the
-		// caller's translator is responsible for emitting a finish chunk. We
-		// always wrap as "data: <chunk>\n\n".
-		ev := make([]byte, 0, len(c)+8)
+		// Anthropic streaming requires "event: <type>\ndata: <json>\n\n"; OpenAI
+		// uses only "data:". When EmitEventPrefix is set (Claude source format),
+		// extract the chunk's "type" field and prepend the event line. Mirrors
+		// legacy streamHelpers.js formatSSE (sourceFormat === CLAUDE).
+		ev := make([]byte, 0, len(c)+24)
+		if emitEventPrefix {
+			if eventType := extractEventType(c); len(eventType) > 0 {
+				ev = append(ev, []byte("event: ")...)
+				ev = append(ev, eventType...)
+				ev = append(ev, '\n')
+			}
+		}
 		ev = append(ev, []byte("data: ")...)
 		ev = append(ev, c...)
 		ev = append(ev, '\n', '\n')
@@ -460,4 +478,28 @@ func translateOrPassthrough(
 		return nil, nil
 	}
 	return out, nil
+}
+
+// extractEventType reads the "type" field from a JSON SSE chunk. Returns "" if
+// the chunk is not a JSON object or has no "type" field, in which case no
+// "event:" line is emitted (OpenAI-style frame falls back to "data:" only).
+func extractEventType(chunk []byte) []byte {
+	// Fast path: a streaming chunk always starts with "{" and the "type" field
+	// is conventionally near the start. Scan a bounded prefix rather than
+	// unmarshalling the whole object on every delta.
+	trimmed := bytes.TrimSpace(chunk)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return nil
+	}
+	// Unmarshal is simplest and correct; chunks are small (one delta each).
+	var probe struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(chunk, &probe); err != nil {
+		return nil
+	}
+	if probe.Type == "" {
+		return nil
+	}
+	return []byte(probe.Type)
 }

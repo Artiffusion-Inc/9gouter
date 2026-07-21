@@ -317,6 +317,12 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 			Model:               req.Model,
 			FrameMode:           frameModeFor(targetFormat),
 			TranslateResponse:   translateStreamChunk(sourceFormat, targetFormat),
+			// The Anthropic streaming format requires an "event: <type>\n" line
+			// before each "data: <json>\n\n" frame; the Claude SDK (Claude Code)
+			// rejects a stream that has only "data:" as malformed. Set the flag
+			// when the CLIENT source format is Claude, mirroring legacy
+			// streamHelpers.js formatSSE (sourceFormat === CLAUDE).
+			EmitEventPrefix:     sourceFormat == format.Claude,
 		}
 		err = h.deps.StreamPipe.Pipe(ctx, resp.Response.Body, w, opts)
 

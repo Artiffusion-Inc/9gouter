@@ -1,0 +1,111 @@
+# golangci-lint v2 config — local deterministic rails for a single-developer repo.
+#
+# Run before pushing to main (no PR-CI in this workflow):
+#
+#   golangci-lint run ./internal/... ./cmd/... ./tools/...
+#
+# Baseline (2026-07-21): 81 pre-existing findings — unused (28),
+# staticcheck (29), errcheck (20), ineffassign (4). depguard, govet,
+# misspell, copyloopvar, dupword, nakedret are GREEN (0). The unused /
+# staticcheck / errcheck findings are known tech debt, not regressions:
+# treat NEW findings from that set as actionable and clean the baseline
+# incrementally. The depguard architecture rule (domain must not import
+# adapter/usecase/app) is green and MUST stay green — it is the only
+# deterministic guard against cross-layer imports an agent would
+# otherwise silently introduce.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  # Legacy JS dead-tree (~1167 files) is committed for rollback reference
+  # only; the Go runtime never imports it. Exclude it from lint entirely.
+  modules-download-mode: readonly
+
+linters:
+  default: none
+  enable:
+    # --- architecture ---
+    - depguard      # domain must not import lower layers (clean arch guard)
+    # --- correctness ---
+    - govet
+    - staticcheck
+    - errcheck
+    - unused
+    - ineffassign
+    # --- simplicity / style (green on current code) ---
+    - misspell
+    - copyloopvar
+    - dupword
+    - nakedret
+
+  settings:
+    depguard:
+      rules:
+        domain-no-lower:
+          list-mode: lax
+          files:
+            - "**/internal/domain/**"
+          deny:
+            - pkg: "github.com/Artiffusion-Inc/9gouter/internal/adapter"
+              desc: domain must not import adapter (clean architecture)
+            - pkg: "github.com/Artiffusion-Inc/9gouter/internal/usecase"
+              desc: domain must not import usecase (clean architecture)
+            - pkg: "github.com/Artiffusion-Inc/9gouter/internal/app"
+              desc: domain must not import the composition root (clean architecture)
+
+    errcheck:
+      # Rolling back a transaction is a deliberate best-effort; the error
+      # is not actionable. Keep other errcheck checks strict.
+      exclude-functions:
+        - (*database/sql.Tx).Rollback
+        - (io.Closer).Close
+
+    govet:
+      enable-all: false
+      disable:
+        # inline-const warnings in test files are noise on this toolchain.
+        - inline
+
+  exclusions:
+    presets:
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      # Legacy JS dead-tree (rollback reference only — not active code).
+      - "open-sse"
+      - "src"
+      - "tests"
+      - "public"
+      - "gitbook"
+      - "cli"
+      - "i18n"
+      - "skills"
+      - "images"
+      # Build artifacts / vendored.
+      - "node_modules"
+      - "third_party"
+      - "dashboard_assets"
+    rules:
+      # Test helpers frequently marshal/scan with known-good inputs.
+      - path: "_test\\.go"
+        linters:
+          - errcheck
+
+# gofumpt is a formatter, not a linter. It is intentionally NOT enabled
+# here: it flags ~140 formatting drifts on the current tree, which would
+# drown out the real correctness findings. Run it on demand when you want
+# to normalize formatting:
+#
+#   gofumpt -w ./internal ./cmd ./tools
+#
+# formatters:
+#   enable:
+#     - gofumpt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # Show the full baseline so new findings are diffable against it.
+  fix: false

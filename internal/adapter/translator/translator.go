@@ -155,7 +155,6 @@ func TranslateResponse(targetFormat, sourceFormat format.Format, chunk json.RawM
 	}
 
 	results := []json.RawMessage{chunk}
-	var openaiIntermediate []json.RawMessage
 
 	// Step 1: target -> openai.
 	if targetFormat != format.Openai {
@@ -168,7 +167,6 @@ func TranslateResponse(targetFormat, sourceFormat format.Format, chunk json.RawM
 				results = nil
 			} else {
 				results = out
-				openaiIntermediate = out
 			}
 		}
 	}
@@ -191,19 +189,16 @@ func TranslateResponse(targetFormat, sourceFormat format.Format, chunk json.RawM
 		}
 	}
 
-	// Preserve OpenAI intermediate results for logging, mirroring the JS property.
-	if openaiIntermediate != nil && sourceFormat != format.Openai && targetFormat != format.Openai {
-		if len(results) > 0 {
-			// Store as a synthetic field on the first result; not used for wire.
-			var first map[string]any
-			if err := json.Unmarshal(results[0], &first); err == nil {
-				first["_openaiIntermediate"] = openaiIntermediate
-				if b, err := json.Marshal(first); err == nil {
-					results[0] = b
-				}
-			}
-		}
-	}
+	// NOTE: the legacy JS stream.js keeps an `_openaiIntermediate` sidecar for
+	// request logging ONLY — it iterates it for reqLogger.appendOpenAIChunk and
+	// then enqueues just the translated claude/gemini events to the client
+	// (stream.js:301-303, 392-394, 412-414). It is never written to the wire.
+	// The earlier Go port mistakenly stamped `_openaiIntermediate` onto the
+	// first translated event and sent it to the client. Strict Anthropic-SDK
+	// clients (Claude Code) treat the unexpected field on `message_start` as a
+	// malformed response ("API returned an empty or malformed response"). No Go
+	// code reads this field, so drop the sidecar entirely rather than carrying
+	// it on the wire payload.
 
 	return results, nil
 }

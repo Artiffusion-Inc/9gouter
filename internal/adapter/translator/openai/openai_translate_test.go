@@ -594,12 +594,13 @@ func TestOpenAIToOpenAIResponsesRequestAssistantToolCall(t *testing.T) {
 }
 
 func TestOpenAIToOpenAIResponsesRequestToolMessage(t *testing.T) {
-	// role=tool is currently filtered by the Chat→Responses translator (it
-	// only emits message/function_call/reasoning items for user/assistant
-	// roles). This test pins the CURRENT behavior: the assistant's tool_call
-	// is emitted as a function_call item, and the role=tool message is NOT
-	// converted to function_call_output. If this behavior is later fixed,
-	// update the assertions accordingly.
+	// role=tool is translated to a function_call_output input item for the
+	// Responses API (matching the assistant's preceding function_call by
+	// tool_call_id). The assistant's tool_call is emitted as a function_call
+	// item. Previously the role=tool message was dropped because the filter
+	// `if role != roleUser && role != roleAssistant { continue }` ran before
+	// the roleTool branch — fixed by hoisting the roleTool branch above the
+	// filter.
 	body := `{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"ok","tool_calls":[{"id":"c1","type":"function","function":{"name":"f","arguments":"{}"}}]},{"role":"tool","tool_call_id":"c1","content":"result"}]}`
 	out, err := openaiToOpenaiResponsesRequest("gpt-4o", json.RawMessage(body), true)
 	if err != nil {
@@ -608,21 +609,31 @@ func TestOpenAIToOpenAIResponsesRequestToolMessage(t *testing.T) {
 	v := mustUnmarshal(t, out)
 	input := asArray(t, v, "input")
 	var foundFunctionCall bool
-	var foundFunctionCallOutput bool
+	var fcOutputItem map[string]any
 	for _, it := range input {
-		typ, _ := it.(map[string]any)["type"].(string)
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		typ, _ := m["type"].(string)
 		if typ == "function_call" {
 			foundFunctionCall = true
 		}
 		if typ == "function_call_output" {
-			foundFunctionCallOutput = true
+			fcOutputItem = m
 		}
 	}
 	if !foundFunctionCall {
 		t.Errorf("assistant tool_calls should emit a function_call input item; input=%v", input)
 	}
-	if foundFunctionCallOutput {
-		t.Errorf("role=tool is not currently translated to function_call_output by Chat→Responses; if this changed, update the test")
+	if fcOutputItem == nil {
+		t.Fatalf("role=tool should emit a function_call_output item; input=%v", input)
+	}
+	if fcOutputItem["call_id"] != "c1" {
+		t.Errorf("function_call_output call_id = %v, want c1 (matches tool_call_id)", fcOutputItem["call_id"])
+	}
+	if fcOutputItem["output"] != "result" {
+		t.Errorf("function_call_output output = %v, want \"result\"", fcOutputItem["output"])
 	}
 }
 

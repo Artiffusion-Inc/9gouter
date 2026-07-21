@@ -790,6 +790,35 @@ func openaiToOpenaiResponsesRequest(model string, raw json.RawMessage, stream bo
 			}
 			continue
 		}
+		if role == roleTool {
+			output := ""
+			switch c := msg["content"].(type) {
+			case string:
+				output = c
+			case []any:
+				var parts []string
+				for _, part := range c {
+					if m, ok := part.(map[string]any); ok {
+						if t, ok := m["text"].(string); ok {
+							parts = append(parts, t)
+						} else {
+							parts = append(parts, marshalJSONString(m))
+						}
+					} else {
+						parts = append(parts, marshalJSONString(part))
+					}
+				}
+				output = strings.Join(parts, "")
+			default:
+				output = marshalJSONString(c)
+			}
+			result["input"] = append(result["input"].([]any), map[string]any{
+				"type":      responsesItemFunctionCallOutput,
+				"call_id":   clampCallID(msg["tool_call_id"]),
+				"output":    output,
+			})
+			continue
+		}
 		if role != roleUser && role != roleAssistant {
 			continue
 		}
@@ -837,35 +866,6 @@ func openaiToOpenaiResponsesRequest(model string, raw json.RawMessage, stream bo
 					})
 				}
 			}
-		}
-
-		if role == roleTool {
-			output := ""
-			switch c := msg["content"].(type) {
-			case string:
-				output = c
-			case []any:
-				var parts []string
-				for _, part := range c {
-					if m, ok := part.(map[string]any); ok {
-						if t, ok := m["text"].(string); ok {
-							parts = append(parts, t)
-						} else {
-							parts = append(parts, marshalJSONString(m))
-						}
-					} else {
-						parts = append(parts, marshalJSONString(part))
-					}
-				}
-				output = strings.Join(parts, "")
-			default:
-				output = marshalJSONString(c)
-			}
-			result["input"] = append(result["input"].([]any), map[string]any{
-				"type":      responsesItemFunctionCallOutput,
-				"call_id":   clampCallID(msg["tool_call_id"]),
-				"output":    output,
-			})
 		}
 	}
 

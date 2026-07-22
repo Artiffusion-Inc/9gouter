@@ -173,15 +173,21 @@ func TestProvidersExtra_CRUD(t *testing.T) {
 		t.Fatalf("test missing status = %d, want 404; body=%s", rec.Code, rec.Body.String())
 	}
 
-	// GET models/test-models stubs.
-	for _, p := range []string{"/api/providers/" + id + "/models", "/api/providers/" + id + "/test-models"} {
-		req = httptest.NewRequest("GET", p, nil)
-		req.Header.Set("Cookie", "auth_token="+ck)
-		rec = httptest.NewRecorder()
-		mux.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s status = %d, want 200; body=%s", p, rec.Code, rec.Body.String())
-		}
+	// GET /test-models is still a stub → 200.
+	req = httptest.NewRequest("GET", "/api/providers/"+id+"/test-models", nil)
+	req.Header.Set("Cookie", "auth_token="+ck)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("test-models status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	// GET /models for openai: no live resolver, no static catalog → 400.
+	req = httptest.NewRequest("GET", "/api/providers/"+id+"/models", nil)
+	req.Header.Set("Cookie", "auth_token="+ck)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("openai models status = %d, want 400 (no resolver/catalog); body=%s", rec.Code, rec.Body.String())
 	}
 
 	// PUT /api/providers/{id} — priority update.
@@ -253,8 +259,73 @@ func TestProvidersExtra_CRUD(t *testing.T) {
 	}
 }
 
-// TestProvidersExtra_StaticAndBatch covers the suggested-models, kilo-free-models,
-// validate, and testBatch routes (all stubs or computed).
+// TestProvidersExtra_ModelsEndpoint covers GET /api/providers/{id}/models —
+// the v0.5.40 live model catalog handler. A provider with a static catalog
+// (gemini) and no live resolver returns the static list with 200; a missing
+// connection returns 404; a provider with neither resolver nor catalog returns
+// 400. (The live-resolver path itself — codex client_version gate, refresh on
+// 401 — is covered end-to-end by resolver/codex_test.go against an httptest
+// server.)
+func TestProvidersExtra_ModelsEndpoint(t *testing.T) {
+	db := mustOpenDB(t)
+	deps := buildDeps(t, db)
+	mux := http.NewServeMux()
+	RegisterProviders(mux, deps)
+	RegisterProvidersExtra(mux, deps)
+	ck := authCookie(t, deps.SessionStore.(*adapterauth.CookieStore))
+
+	// Seed a gemini connection (gemini has a static catalog, no live resolver).
+	body := `{"provider":"gemini","apiKey":"sk-gem","name":"G","priority":1}`
+	req := httptest.NewRequest("POST", "/api/providers", strings.NewReader(body))
+	req.Header.Set("Cookie", "auth_token="+ck)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		Connection map[string]any `json:"connection"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	id, _ := created.Connection["id"].(string)
+
+	// GET /models → 200 + static catalog.
+	req = httptest.NewRequest("GET", "/api/providers/"+id+"/models", nil)
+	req.Header.Set("Cookie", "auth_token="+ck)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("gemini models status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Provider     string              `json:"provider"`
+		ConnectionID string              `json:"connectionId"`
+		Models       []map[string]any    `json:"models"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+	}
+	if resp.Provider != "gemini" || resp.ConnectionID != id {
+		t.Errorf("resp = %+v, want provider=gemini connectionId=%s", resp, id)
+	}
+	if len(resp.Models) == 0 {
+		t.Fatalf("expected static gemini models, got empty list; body=%s", rec.Body.String())
+	}
+	if _, ok := resp.Models[0]["id"].(string); !ok {
+		t.Errorf("first model missing id: %+v", resp.Models[0])
+	}
+
+	// Missing connection → 404.
+	req = httptest.NewRequest("GET", "/api/providers/nope/models", nil)
+	req.Header.Set("Cookie", "auth_token="+ck)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("missing connection models status = %d, want 404", rec.Code)
+	}
+}
+
 func TestProvidersExtra_StaticAndBatch(t *testing.T) {
 	db := mustOpenDB(t)
 	deps := buildDeps(t, db)

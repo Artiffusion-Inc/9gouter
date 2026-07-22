@@ -85,7 +85,8 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	resolver.Register(resolver.NewCopilotResolver(nil, tokenrefresh.NewCopilotRefresher(), cfg.Version))
 	resolver.Register(resolver.NewClinepassResolver(nil, cfg.Version))
 	resolver.Register(resolver.NewKimchiResolver(nil))
-	resolver.Register(resolver.NewQoderResolver()) // stub: COSY signing not yet ported
+	resolver.Register(resolver.NewQoderResolver())  // stub: COSY signing not yet ported
+	resolver.Register(resolver.NewCodexResolver(nil, tokenrefresh.NewCodexRefresher()))
 
 	proxyOpts := proxy.OptionsFromConfig(cfg)
 

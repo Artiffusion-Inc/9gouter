@@ -42,11 +42,18 @@ func (h *usageHandler) stats(w http.ResponseWriter, r *http.Request) {
 	if period == "" {
 		period = "7d"
 	}
-	stats, err := h.svc.Stats(r.Context(), period)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "Failed to fetch usage stats")
-		return
-	}
+	// Full dashboard contract (legacy getUsageStats shape): camelCase keys,
+	// byModel/byAccount/byApiKey/byEndpoint as objects keyed by
+	// "rawModel (provider)" with {rawModel, provider(display), requests,
+	// promptTokens, completionTokens, cachedTokens, cost, tpsSum, tpsCount,
+	// avgTps, lastUsed}, plus recentRequests/last10Minutes/activeRequests/
+	// pending/errorProvider. The domain usage.Aggregates struct (no JSON tags)
+	// could not satisfy this shape — StatsWithMeta reconstructs it 1:1.
+	stats := h.svc.StatsWithMeta(r.Context(), managedashboard.FullStatsOptions{
+		Period:  period,
+		Meta:    h.usageMeta(),
+		Pending: h.deps.UsageTracker,
+	})
 	writeJSON(w, http.StatusOK, stats)
 }
 
@@ -109,3 +116,16 @@ func (h *usageHandler) providers(w http.ResponseWriter, r *http.Request) {
 }
 
 var _ usage.Aggregates
+
+// usageMeta builds the StatsMeta metadata-join source from Deps repos. Returns
+// nil if the connection/node/apikey repos are absent (degrades to ID names).
+func (h *usageHandler) usageMeta() *managedashboard.StatsMeta {
+	if h.deps.Connections == nil && h.deps.Nodes == nil && h.deps.APIKeys == nil {
+		return nil
+	}
+	return &managedashboard.StatsMeta{
+		Connections: h.deps.Connections,
+		Nodes:       h.deps.Nodes,
+		APIKeys:     h.deps.APIKeys,
+	}
+}

@@ -20,6 +20,7 @@ import (
 
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
 	domainauth "github.com/Artiffusion-Inc/9gouter/internal/domain/auth"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/managedashboard"
 )
 
 // publicRoutes lists /api paths that bypass the session auth requirement.
@@ -66,6 +67,7 @@ type Deps struct {
 	RequestDetails *repo.RequestDetailRepo
 	Settings       *repo.SettingsRepo
 	Usage          *repo.UsageRepo
+	UsageTracker   *managedashboard.EventTracker
 	SessionStore   domainauth.Store
 	Logger         *slog.Logger
 

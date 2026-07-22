@@ -36,6 +36,7 @@ import (
 	// init() calls resolver.Register. Wire overrides the kiro registration
 	// below with a real KiroRefresher (the init() default uses the stub).
 	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/managedashboard"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/proxychat"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/proxyembeddings"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/proxyfetch"
@@ -87,7 +88,14 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 
 	proxyOpts := proxy.OptionsFromConfig(cfg)
 
-	chatHandler := newProxyChatHandler(repos, proxyOpts, cfg, logger)
+	// usageTracker is the process-live real-time analytics surface (#83):
+	// proxychat publishes Start/Stop/Save events into it; the dashboard
+	// /api/usage/stream SSE handler subscribes and pushes live frames. One
+	// instance is shared by both the chat path and the API handlers so a
+	// request flowing through chat is visible to the dashboard immediately.
+	usageTracker := managedashboard.NewEventTracker()
+
+	chatHandler := newProxyChatHandler(repos, proxyOpts, cfg, logger, usageTracker)
 	embeddingsHandler := newProxyEmbeddingsHandler(repos, proxyOpts, cfg, logger)
 	webFetchHandler := newProxyWebFetchHandler(cfg, logger)
 	videoHandler := newVideoProxyHandler(cfg, logger)
@@ -141,6 +149,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		RequestDetails: repos.RequestDetails,
 		Settings:       repos.Settings,
 		Usage:          repos.Usage,
+		UsageTracker:   usageTracker,
 		SessionStore:   sessionStore,
 		Logger:         logger,
 		DB:             db,
@@ -279,7 +288,7 @@ type proxyChatHandler struct {
 	logger  *slog.Logger
 }
 
-func newProxyChatHandler(r repos, opts proxy.Options, cfg config.Config, logger *slog.Logger) *proxyChatHandler {
+func newProxyChatHandler(r repos, opts proxy.Options, cfg config.Config, logger *slog.Logger, events proxychat.UsageEventPublisher) *proxyChatHandler {
 	return &proxyChatHandler{
 		logger: logger,
 		handler: proxychat.New(proxychat.Dependencies{
@@ -289,6 +298,7 @@ func newProxyChatHandler(r repos, opts proxy.Options, cfg config.Config, logger 
 			JSONToSSE:  synthesizerFunc(translator.Synthesize),
 			Logger:     &slogLogger{logger},
 			Config:     cfg,
+			UsageEvents: events,
 		}),
 	}
 }

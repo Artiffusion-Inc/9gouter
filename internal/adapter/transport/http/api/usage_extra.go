@@ -1,8 +1,14 @@
 package api
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/managedashboard"
 )
 
 // RegisterUsageExtra mounts additional usage routes not covered by the initial
@@ -21,18 +27,128 @@ type usageExtraHandler struct {
 }
 
 func (h *usageExtraHandler) stream(w http.ResponseWriter, r *http.Request) {
+	// Real-time analytics SSE (#83). Mirrors legacy /api/usage/stream: on open,
+	// push a live frame immediately, then subscribe to the live EventTracker
+	// and push a lightweight frame (recentRequests + activeRequests +
+	// errorProvider + pending) on every state change. A 25s keepalive ping
+	// keeps proxies from closing the idle connection. If no tracker is wired
+	// (UsageTracker nil), fall back to a single empty frame so the UI still
+	// receives one event and settles instead of hanging the EventSource.
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("event: usage\ndata: {}\n\n"))
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
+
+	flusher, _ := w.(http.Flusher)
+	flush := func() {
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	writeFrame := func(payload map[string]any) {
+		b, _ := json.Marshal(payload)
+		_, _ = w.Write([]byte("data: "))
+		_, _ = w.Write(b)
+		_, _ = w.Write([]byte("\n\n"))
+		flush()
+	}
+
+	tracker := h.deps.UsageTracker
+	if tracker == nil {
+		writeFrame(map[string]any{})
+		return
+	}
+
+	// Connection display-name resolver (best-effort join over providerConnections).
+	connName := h.connNameFunc(r.Context())
+	buildFrame := func() map[string]any {
+		return map[string]any{
+			"activeRequests": tracker.ActiveRequests(r.Context(), connName),
+			"recentRequests": tracker.RecentRequests(20),
+			"errorProvider":  tracker.ErrorProvider(),
+			"pending":        tracker.Snapshot(),
+		}
+	}
+
+	// Immediate frame so the client sees current state without waiting.
+	writeFrame(buildFrame())
+
+	// Subscribe and pump on every notify until the client disconnects.
+	notifyCh := make(chan struct{}, 1)
+	unsub := tracker.Subscribe(func() {
+		select {
+		case notifyCh <- struct{}{}:
+		default:
+		}
+	})
+	defer unsub()
+
+	stop := r.Context().Done()
+	keepalive := time.NewTicker(25 * time.Second)
+	defer keepalive.Stop()
+
+	for {
+		select {
+		case <-stop:
+			return
+		case <-keepalive.C:
+			_, _ = w.Write([]byte(": ping\n\n"))
+			flush()
+		case <-notifyCh:
+			writeFrame(buildFrame())
+		}
 	}
 }
 
+// connNameFunc returns a connection-id → display-name resolver backed by the
+// ConnectionRepo. Best-effort: on repo error or absent repo, falls back to
+// "Account <id[:8]>..." which matches the legacy JS default.
+func (h *usageExtraHandler) connNameFunc(ctx context.Context) func(id string) string {
+	if h.deps.Connections == nil {
+		return func(id string) string { return "Account " + shortIDForConn(id) }
+	}
+	conns, err := h.deps.Connections.List(ctx, repo.ConnectionFilter{})
+	cache := map[string]string{}
+	if err == nil {
+		for _, c := range conns {
+			name := c.Name
+			if name == "" {
+				name = c.Email
+			}
+			if name == "" {
+				name = c.ID
+			}
+			cache[c.ID] = name
+		}
+	}
+	return func(id string) string {
+		if n, ok := cache[id]; ok {
+			return n
+		}
+		return "Account " + shortIDForConn(id)
+	}
+}
+
+func shortIDForConn(id string) string {
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
+}
+
 func (h *usageExtraHandler) requestLogs(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"logs": []any{}})
+	// Frontend (RequestLogger.js) awaits res.json() and uses the result as an
+	// array of formatted "date | model | provider | account | in | out | status"
+	// log lines directly (not data.logs). The legacy /api/usage/request-logs
+	// handler returned getRecentLogs(200) as a bare array — match that contract.
+	svc := &managedashboard.UsageService{Repo: h.deps.Usage}
+	logs, err := svc.RecentLogs(r.Context(), 200)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to fetch logs")
+		return
+	}
+	writeJSON(w, http.StatusOK, logs)
 }
 
 func (h *usageExtraHandler) byConnection(w http.ResponseWriter, r *http.Request) {

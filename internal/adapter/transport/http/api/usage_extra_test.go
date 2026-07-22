@@ -7,20 +7,37 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	adapterauth "github.com/Artiffusion-Inc/9gouter/internal/adapter/auth"
+	"github.com/Artiffusion-Inc/9gouter/internal/domain/usage"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/managedashboard"
 )
 
 // TestUsageExtra_RequestLogsAndStream covers the request-logs and stream routes
-// registered by RegisterUsageExtra.
+// registered by RegisterUsageExtra. After #82/#83 the request-logs handler
+// returns the real RecentLogs array (not a hardcoded {logs:[]}) and the stream
+// handler, when a UsageTracker is wired, emits a live frame carrying the
+// activeRequests/recentRequests/pending/errorProvider overlay — not a single
+// dead `data:{}`.
 func TestUsageExtra_RequestLogsAndStream(t *testing.T) {
 	db := mustOpenDB(t)
 	deps := buildDeps(t, db)
+	deps.UsageTracker = managedashboard.NewEventTracker()
 	mux := http.NewServeMux()
 	RegisterUsageExtra(mux, deps)
 	ck := authCookie(t, deps.SessionStore.(*adapterauth.CookieStore))
 
-	// request-logs.
+	// Seed one usage row so request-logs returns a formatted line (not empty).
+	if err := deps.Usage.Save(context.Background(), usage.UsageRecord{
+		Provider: "openai", Model: "gpt-4",
+		PromptTokens: 10, CompletionTokens: 5, Status: "success",
+	}); err != nil {
+		t.Fatalf("seed usage: %v", err)
+	}
+
+	// request-logs: legacy contract is a BARE array of formatted strings
+	// ("date | model | provider | account | in | out | status"), not {logs:[]}.
 	req := httptest.NewRequest("GET", "/api/usage/request-logs", nil)
 	req.Header.Set("Cookie", "auth_token="+ck)
 	rec := httptest.NewRecorder()
@@ -28,17 +45,78 @@ func TestUsageExtra_RequestLogsAndStream(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("request-logs status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
+	var logs []string
+	if err := json.Unmarshal(rec.Body.Bytes(), &logs); err != nil {
+		t.Fatalf("request-logs body must be a JSON array of strings, got parse err %v; body=%s", err, rec.Body.String())
+	}
+	if len(logs) != 1 {
+		t.Fatalf("request-logs returned %d lines, want 1 (the seeded row); body=%s", len(logs), rec.Body.String())
+	}
+	// Line shape: "date | model | provider | account | in | out | status".
+	parts := strings.Split(logs[0], " | ")
+	if len(parts) < 7 {
+		t.Fatalf("request-logs line has %d pipe-parts, want 7: %q", len(parts), logs[0])
+	}
+	if parts[1] != "gpt-4" {
+		t.Errorf("request-logs model field = %q, want gpt-4", parts[1])
+	}
 
-	// stream — short SSE response.
+	// stream: with a tracker wired, the first frame carries the live overlay
+	// (recentRequests must contain the seeded row). The handler blocks on the
+	// notify channel, so run it in a goroutine and cancel the request context
+	// to end the loop after reading the first frame.
 	req = httptest.NewRequest("GET", "/api/usage/stream", nil)
 	req.Header.Set("Cookie", "auth_token="+ck)
+	ctx, cancel := context.WithCancel(req.Context())
+	req = req.WithContext(ctx)
 	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
+	done := make(chan struct{})
+	go func() {
+		mux.ServeHTTP(rec, req)
+		close(done)
+	}()
+	// Give the handler a moment to write the immediate frame, then cancel.
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	<-done
 	if rec.Code != http.StatusOK {
 		t.Fatalf("stream status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
 	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
 		t.Fatalf("stream Content-Type = %q, want text/event-stream", ct)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "data: ") {
+		t.Fatalf("stream body missing SSE data frame: %s", body)
+	}
+	// The live frame must carry the overlay keys the dashboard merges in.
+	for _, want := range []string{`"recentRequests"`, `"activeRequests"`, `"pending"`, `"errorProvider"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("stream frame missing %s; body=%s", want, body)
+		}
+	}
+}
+
+// TestUsageExtra_Stream_NoTracker covers the nil-tracker fallback: a single
+// empty frame so the EventSource settles instead of hanging.
+func TestUsageExtra_Stream_NoTracker(t *testing.T) {
+	db := mustOpenDB(t)
+	deps := buildDeps(t, db)
+	// deps.UsageTracker left nil.
+	mux := http.NewServeMux()
+	RegisterUsageExtra(mux, deps)
+	ck := authCookie(t, deps.SessionStore.(*adapterauth.CookieStore))
+
+	req := httptest.NewRequest("GET", "/api/usage/stream", nil)
+	req.Header.Set("Cookie", "auth_token="+ck)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stream status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "data: {}") {
+		t.Fatalf("nil-tracker fallback must emit one empty frame; got: %s", body)
 	}
 }
 

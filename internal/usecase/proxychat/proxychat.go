@@ -68,12 +68,23 @@ type Result struct {
 
 // Dependencies collects the collaborators consumed by the usecase.
 type Dependencies struct {
-	Registry       func(id string) (DomainProvider, error)
-	UsageRepo      usage.Repo
-	StreamPipe     StreamPiper
-	JSONToSSE      JSONToSSETranslator
-	Logger         Logger
-	Config         config.Config
+	Registry    func(id string) (DomainProvider, error)
+	UsageRepo   usage.Repo
+	StreamPipe  StreamPiper
+	JSONToSSE   JSONToSSETranslator
+	Logger      Logger
+	Config      config.Config
+	UsageEvents UsageEventPublisher
+}
+
+// UsageEventPublisher is the live real-time analytics surface. proxychat
+// publishes Start (before upstream call), Stop (after response/error), and
+// Save (after usage repo write) events so the dashboard's SSE stream can push
+// active/recent request updates. nil = no-op (tests/legacy wiring).
+type UsageEventPublisher interface {
+	PublishStart(model, provider, connectionID string)
+	PublishStop(model, provider, connectionID string, errored bool)
+	PublishSave(model, provider, status string, prompt, completion int, ts time.Time)
 }
 
 // DomainProvider narrows provider.Provider to the fields we need.
@@ -246,6 +257,9 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 		Stream:      req.Stream,
 		Credentials: req.Credentials,
 	}
+	if h.deps.UsageEvents != nil {
+		h.deps.UsageEvents.PublishStart(req.Model, providerID, req.ConnectionID)
+	}
 	resp, err := exec.Execute(ctx, execReq)
 	if err != nil {
 		status := http.StatusBadGateway
@@ -375,6 +389,15 @@ func (h *Handler) saveUsage(ctx context.Context, req Request, providerID string,
 		TPS:              tps,
 	}
 	_ = h.deps.UsageRepo.Save(ctx, rec)
+	// Real-time analytics (#83): every completed request (success or error)
+	// decrements the in-flight counter and feeds the recent-requests ring, so
+	// the dashboard SSE stream can push an updated frame. errored = any status
+	// that is not a plain "success".
+	if h.deps.UsageEvents != nil {
+		errored := status != "success" && !strings.HasPrefix(status, "failed ")
+		h.deps.UsageEvents.PublishStop(req.Model, providerID, req.ConnectionID, errored)
+		h.deps.UsageEvents.PublishSave(req.Model, providerID, status, prompt, completion, start)
+	}
 }
 
 func (h *Handler) errorResult(status int, msg string, start time.Time) (Result, error) {

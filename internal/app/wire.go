@@ -37,14 +37,14 @@ import (
 	// init() calls resolver.Register. Wire overrides the kiro registration
 	// below with a real KiroRefresher (the init() default uses the stub).
 	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/imageproxy"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/managedashboard"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/proxychat"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/proxyembeddings"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/proxyfetch"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/searchproxy"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/sttproxy"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/ttsproxy"
-	"github.com/Artiffusion-Inc/9gouter/internal/usecase/imageproxy"
-	"github.com/Artiffusion-Inc/9gouter/internal/usecase/searchproxy"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/videoproxy"
 )
 
@@ -85,8 +85,13 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	resolver.Register(resolver.NewCopilotResolver(nil, tokenrefresh.NewCopilotRefresher(), cfg.Version))
 	resolver.Register(resolver.NewClinepassResolver(nil, cfg.Version))
 	resolver.Register(resolver.NewKimchiResolver(nil))
-	resolver.Register(resolver.NewQoderResolver())  // stub: COSY signing not yet ported
+	resolver.Register(resolver.NewQoderResolver()) // stub: COSY signing not yet ported
 	resolver.Register(resolver.NewCodexResolver(nil, tokenrefresh.NewCodexRefresher()))
+	// cursor has no token refresher (the upstream cursorModels.js returns null
+	// on auth failure so callers fall back to the static catalog), so unlike
+	// codex/grok-cli it takes only a cache. #92 (v0.5.40): AgentService
+	// GetUsableModels live resolver with bumped clientVersion 3.12.17.
+	resolver.Register(resolver.NewCursorResolver(nil))
 
 	proxyOpts := proxy.OptionsFromConfig(cfg)
 
@@ -119,25 +124,25 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	mux := http.NewServeMux()
 	httptransport.RegisterV1(mux, httptransport.V1Deps{
 		APIKeysRepo:      repos.APIKeys,
-		SettingsRepo:    repos.Settings,
-		ConnectionRepo:  repos.Connections,
-		ComboRepo:       repos.Combos,
+		SettingsRepo:     repos.Settings,
+		ConnectionRepo:   repos.Connections,
+		ComboRepo:        repos.Combos,
 		AliasRepo:        repos.Aliases,
-		NodeRepo:        repos.Nodes,
-		ProxyPoolRepo:   repos.ProxyPools,
-		DisabledModels:  repos.DisabledModels,
-		ProxyOpts:       proxyOpts,
-		Logger:          logger,
-		Config:          cfg,
+		NodeRepo:         repos.Nodes,
+		ProxyPoolRepo:    repos.ProxyPools,
+		DisabledModels:   repos.DisabledModels,
+		ProxyOpts:        proxyOpts,
+		Logger:           logger,
+		Config:           cfg,
 		ProjectIDFetcher: projectIDFetcher,
-		Chat:           chatHandler,
-		Embeddings:     embeddingsHandler,
-		WebFetch:       webFetchHandler,
-		Video:          videoHandler,
-		Stt:            sttHandler,
-		Tts:            ttsHandler,
-		Image:          imageHandler,
-		Search:          searchHandler,
+		Chat:             chatHandler,
+		Embeddings:       embeddingsHandler,
+		WebFetch:         webFetchHandler,
+		Video:            videoHandler,
+		Stt:              sttHandler,
+		Tts:              ttsHandler,
+		Image:            imageHandler,
+		Search:           searchHandler,
 	})
 
 	sessionStore, err := auth.NewCookieStore(cfg.DashboardSessionSecret)
@@ -299,12 +304,12 @@ func newProxyChatHandler(r repos, opts proxy.Options, cfg config.Config, logger 
 	return &proxyChatHandler{
 		logger: logger,
 		handler: proxychat.New(proxychat.Dependencies{
-			Registry:   domainProvRegistry,
-			UsageRepo:  r.Usage,
-			StreamPipe: pipeAdapter{},
-			JSONToSSE:  synthesizerFunc(translator.Synthesize),
-			Logger:     &slogLogger{logger},
-			Config:     cfg,
+			Registry:    domainProvRegistry,
+			UsageRepo:   r.Usage,
+			StreamPipe:  pipeAdapter{},
+			JSONToSSE:   synthesizerFunc(translator.Synthesize),
+			Logger:      &slogLogger{logger},
+			Config:      cfg,
 			UsageEvents: events,
 			Pricing:     priceResolver,
 		}),
@@ -505,7 +510,7 @@ func (h *sttHandler) Handle(ctx context.Context, req httptransport.SttRequest) (
 	})
 	return httptransport.SttResult{
 		StatusCode:  res.StatusCode,
-		Err:        res.Err,
+		Err:         res.Err,
 		Body:        res.Body,
 		ContentType: res.ContentType,
 	}, nil

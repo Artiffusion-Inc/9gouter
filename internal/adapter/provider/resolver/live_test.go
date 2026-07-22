@@ -49,7 +49,7 @@ func withSwap(r LiveModelResolver, srvURL string) {
 func (r *clinepassResolver) setTransport(t http.RoundTripper) { r.client.Transport = t }
 func (r *copilotResolver) setTransport(t http.RoundTripper)   { r.client.Transport = t }
 func (r *grokCliResolver) setTransport(t http.RoundTripper)   { r.client.Transport = t }
-func (r *kimchiResolver) setTransport(t http.RoundTripper)     { r.client.Transport = t }
+func (r *kimchiResolver) setTransport(t http.RoundTripper)    { r.client.Transport = t }
 
 // liveServer builds an httptest server that records the request and replies
 // with the given body (200 unless status != 0).
@@ -218,7 +218,10 @@ func TestCopilotResolve_EmptyToken(t *testing.T) {
 
 // stubRefresher is a TokenRefresher that returns a fixed token, for copilot /
 // grok-cli refresh-on-401 tests.
-type stubRefresher struct{ token string; err error }
+type stubRefresher struct {
+	token string
+	err   error
+}
 
 func (s *stubRefresher) Refresh(_ context.Context, _ string, _ map[string]any, _ ProxyOptions, _ Logger) (*RefreshedCredentials, error) {
 	if s.err != nil {
@@ -414,7 +417,7 @@ func TestKimchiResolve_CustomEndpoint(t *testing.T) {
 	r := NewKimchiResolver(nil).(*kimchiResolver)
 	withSwap(r, srv.URL)
 	_, err := r.Resolve(context.Background(), provider.Credentials{
-		AccessToken: "tok",
+		AccessToken:          "tok",
 		ProviderSpecificData: map[string]any{"kimchiEndpoint": "https://custom.kimchi.example/"},
 	}, ResolveOpts{})
 	if err != nil {
@@ -445,7 +448,8 @@ func TestResolveRegistry_RegistersAll(t *testing.T) {
 	Register(NewGrokCliResolver(nil, nil))
 	Register(NewKimchiResolver(nil))
 	Register(NewQoderResolver())
-	for _, id := range []string{"clinepass", "github", "grok-cli", "kimchi", "qoder"} {
+	Register(NewCursorResolver(nil))
+	for _, id := range []string{"clinepass", "github", "grok-cli", "kimchi", "qoder", "cursor"} {
 		if Lookup(id) == nil {
 			t.Errorf("Lookup(%q)=nil after Register", id)
 		}
@@ -459,6 +463,7 @@ var (
 	_ LiveModelResolver = (*grokCliResolver)(nil)
 	_ LiveModelResolver = (*kimchiResolver)(nil)
 	_ LiveModelResolver = (*qoderResolver)(nil)
+	_ LiveModelResolver = (*cursorResolver)(nil)
 )
 
 // keep imports used in some build configs.

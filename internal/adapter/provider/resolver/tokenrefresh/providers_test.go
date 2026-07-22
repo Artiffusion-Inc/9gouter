@@ -17,9 +17,9 @@ import (
 // refreshRecorder captures the inbound request and replies with a canned
 // body + status. Tests configure the response before the call.
 type refreshRecorder struct {
-	body   string
-	status int
-	got    *http.Request
+	body    string
+	status  int
+	got     *http.Request
 	gotBody string
 }
 
@@ -45,8 +45,8 @@ type refreshClientSetter interface {
 	setClient(*http.Client)
 }
 
-func (r *ClaudeRefresher) setClient(c *http.Client)     { r.httpClient = c }
-func (r *GoogleRefresher) setClient(c *http.Client)     { r.httpClient = c }
+func (r *ClaudeRefresher) setClient(c *http.Client)    { r.httpClient = c }
+func (r *GoogleRefresher) setClient(c *http.Client)    { r.httpClient = c }
 func (r *QwenRefresher) setClient(c *http.Client)      { r.httpClient = c }
 func (r *CodexRefresher) setClient(c *http.Client)     { r.httpClient = c }
 func (r *IflowRefresher) setClient(c *http.Client)     { r.httpClient = c }
@@ -55,6 +55,7 @@ func (r *CopilotRefresher) setClient(c *http.Client)   { r.httpClient = c }
 func (r *CodebuddyRefresher) setClient(c *http.Client) { r.httpClient = c }
 func (r *XaiRefresher) setClient(c *http.Client)       { r.httpClient = c }
 func (r *GenericRefresher) setClient(c *http.Client)   { r.httpClient = c }
+func (r *KimiRefresher) setClient(c *http.Client)      { r.httpClient = c }
 
 // pointClient redirects a refresher's http client at the test server by
 // wrapping the test server's transport with hostSwapTransport (defined in
@@ -448,6 +449,8 @@ func TestLookup(t *testing.T) {
 		"gcli":           "*tokenrefresh.XaiRefresher",
 		"vertex":         "*tokenrefresh.VertexRefresher",
 		"vertex-partner": "*tokenrefresh.VertexRefresher",
+		"kimi":           "*tokenrefresh.KimiRefresher",
+		"kimi-coding":    "*tokenrefresh.KimiRefresher",
 	}
 	for id, want := range cases {
 		r := Lookup(id)
@@ -491,6 +494,93 @@ func TestClassifyOAuthRefreshError(t *testing.T) {
 	}
 }
 
+// TestKimiRefresh verifies the form-encoded body (grant_type, refresh_token,
+// client_id, NO client_secret) + the X-Msh-* headers required by the CLIProxyAPI
+// Kimi parity, and that the stable deviceId is preserved onto the refreshed
+// credentials so subsequent refreshes keep the same X-Msh-Device-Id.
+func TestKimiRefresh(t *testing.T) {
+	rec := &refreshRecorder{body: `{"access_token":"at","refresh_token":"rt2","expires_in":3600}`}
+	srv := newRefreshServer(t, rec)
+	r := NewKimiRefresher()
+	pointClient(srv, r)
+
+	psd := map[string]any{"deviceId": "stable-device-xyz"}
+	out, err := r.Refresh(context.Background(), "rt", psd, resolver.ProxyOptions{}, resolver.NopLogger())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if out.AccessToken != "at" {
+		t.Errorf("AccessToken=%q want at", out.AccessToken)
+	}
+	if out.RefreshToken != "rt2" {
+		t.Errorf("RefreshToken=%q want rt2", out.RefreshToken)
+	}
+	if out.ExpiresIn != 3600 {
+		t.Errorf("ExpiresIn=%d want 3600", out.ExpiresIn)
+	}
+	// Body must be form-encoded with grant_type/refresh_token/client_id and NO
+	// client_secret (Kimi is a public client).
+	form, _ := url.ParseQuery(rec.gotBody)
+	if form.Get("grant_type") != "refresh_token" {
+		t.Errorf("grant_type=%q", form.Get("grant_type"))
+	}
+	if form.Get("refresh_token") != "rt" {
+		t.Errorf("refresh_token=%q", form.Get("refresh_token"))
+	}
+	if form.Get("client_id") != kimiClientID {
+		t.Errorf("client_id=%q", form.Get("client_id"))
+	}
+	if form.Get("client_secret") != "" {
+		t.Errorf("client_secret should be absent, got %q", form.Get("client_secret"))
+	}
+	if rec.got.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
+		t.Errorf("Content-Type=%q", rec.got.Header.Get("Content-Type"))
+	}
+	// X-Msh-* parity headers must be present.
+	if rec.got.Header.Get("X-Msh-Platform") != "9gouter" {
+		t.Errorf("X-Msh-Platform=%q", rec.got.Header.Get("X-Msh-Platform"))
+	}
+	if rec.got.Header.Get("X-Msh-Device-Id") != "stable-device-xyz" {
+		t.Errorf("X-Msh-Device-Id=%q want stable-device-xyz", rec.got.Header.Get("X-Msh-Device-Id"))
+	}
+	if rec.got.Header.Get("X-Msh-Device-Name") == "" {
+		t.Errorf("X-Msh-Device-Name should be non-empty (hostname)")
+	}
+	// The stable deviceId is preserved onto the refreshed credentials.
+	if id, _ := out.ProviderSpecificData["deviceId"].(string); id != "stable-device-xyz" {
+		t.Errorf("refreshed deviceId=%q want stable-device-xyz", id)
+	}
+}
+
+// TestKimiRefresh_EmptyToken returns nil,nil (no-op) for an empty refresh token.
+func TestKimiRefresh_EmptyToken(t *testing.T) {
+	r := NewKimiRefresher()
+	out, err := r.Refresh(context.Background(), "", nil, resolver.ProxyOptions{}, resolver.NopLogger())
+	if err != nil || out != nil {
+		t.Fatalf("expected nil,nil got %v %v", out, err)
+	}
+}
+
+// TestKimiRefresh_NoDeviceIdGeneratesOne verifies the refresh still works (and
+// sends an X-Msh-Device-Id with the kimi- prefix) when no deviceId is stored.
+func TestKimiRefresh_NoDeviceIdGeneratesOne(t *testing.T) {
+	rec := &refreshRecorder{body: `{"access_token":"at","expires_in":3600}`}
+	srv := newRefreshServer(t, rec)
+	r := NewKimiRefresher()
+	pointClient(srv, r)
+
+	out, err := r.Refresh(context.Background(), "rt", nil, resolver.ProxyOptions{}, resolver.NopLogger())
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if out.AccessToken != "at" {
+		t.Errorf("AccessToken=%q want at", out.AccessToken)
+	}
+	if id := rec.got.Header.Get("X-Msh-Device-Id"); !strings.HasPrefix(id, "kimi-") {
+		t.Errorf("X-Msh-Device-Id=%q, want kimi- prefix", id)
+	}
+}
+
 // Compile-time: all refreshers satisfy the interface.
 var (
 	_ resolver.TokenRefresher = (*ClaudeRefresher)(nil)
@@ -504,4 +594,5 @@ var (
 	_ resolver.TokenRefresher = (*XaiRefresher)(nil)
 	_ resolver.TokenRefresher = (*GenericRefresher)(nil)
 	_ resolver.TokenRefresher = (*VertexRefresher)(nil)
+	_ resolver.TokenRefresher = (*KimiRefresher)(nil)
 )

@@ -55,7 +55,7 @@ func TestGoldenRequestOpenAIToClaudeFullBody(t *testing.T) {
 
 func TestGoldenRequestOpenAIToClaudeReasoningEffort(t *testing.T) {
 	body := map[string]any{
-		"messages":        []any{map[string]any{"role": "user", "content": "hi"}},
+		"messages":         []any{map[string]any{"role": "user", "content": "hi"}},
 		"reasoning_effort": "high",
 	}
 	runRequestTest(t, "fixtures/golden-request.test.js.snap",
@@ -189,7 +189,7 @@ func TestGoldenResponseStreamOllamaToOpenAI(t *testing.T) {
 		eventJSON(map[string]any{
 			"model": "qwen3",
 			"message": map[string]any{
-				"role": "assistant",
+				"role":       "assistant",
 				"tool_calls": []any{map[string]any{"function": map[string]any{"name": "search", "arguments": map[string]any{"q": "x"}}}},
 			},
 		}),
@@ -205,7 +205,7 @@ func TestGoldenResponseStreamOllamaToOpenAIFinishAfterTool(t *testing.T) {
 		eventJSON(map[string]any{
 			"model": "qwen3",
 			"message": map[string]any{
-				"role": "assistant",
+				"role":       "assistant",
 				"tool_calls": []any{map[string]any{"function": map[string]any{"name": "search", "arguments": map[string]any{"q": "x"}}}},
 			},
 		}),
@@ -376,8 +376,8 @@ func safeString(fn func() string) string {
 }
 
 var (
-	bearerRe  = regexp.MustCompile(`Bearer .+`)
-	kimiTsRe  = regexp.MustCompile(`kimi-\d{10,}`)
+	bearerRe = regexp.MustCompile(`Bearer .+`)
+	kimiTsRe = regexp.MustCompile(`kimi-\d{10,}`)
 )
 
 func sanitizeHeaders(h map[string][]string) map[string]any {
@@ -393,6 +393,11 @@ func sanitizeHeaders(h map[string][]string) map[string]any {
 		v = kimiTsRe.ReplaceAllString(v, "kimi-<TS>")
 		if k == "X-Msh-Device-Model" {
 			v = "<OS>"
+		}
+		if k == "X-Msh-Device-Name" {
+			// hostname is machine-specific (upstream buildKimiHeaders reads
+			// os.hostname()); collapse to a stable placeholder.
+			v = "<HOST>"
 		}
 		out[k] = v
 	}
@@ -594,10 +599,10 @@ func stripVolatile(v any) any {
 }
 
 var (
-	geminiToolIDRe   = regexp.MustCompile(`^([^-]+)-\d{10,}-(\d+)$`)
-	chatcmplIDRe     = regexp.MustCompile(`^chatcmpl-\d{10,}$`)
-	ollamaToolIDRe1  = regexp.MustCompile(`^call_(\d+)_\d{10,}$`)
-	ollamaToolIDRe2  = regexp.MustCompile(`^call_\d{10,}_(\d+)$`)
+	geminiToolIDRe  = regexp.MustCompile(`^([^-]+)-\d{10,}-(\d+)$`)
+	chatcmplIDRe    = regexp.MustCompile(`^chatcmpl-\d{10,}$`)
+	ollamaToolIDRe1 = regexp.MustCompile(`^call_(\d+)_\d{10,}$`)
+	ollamaToolIDRe2 = regexp.MustCompile(`^call_\d{10,}_(\d+)$`)
 )
 
 func normalizeVolatileID(s string) string {
@@ -654,9 +659,9 @@ func TestGoldenURLHeaderAll25Providers(t *testing.T) {
 			wantURLStream: "https://api.openai.com/openai/deployments/test-model/chat/completions?api-version=2024-10-01-preview",
 			wantURLNon:    "https://api.openai.com/openai/deployments/test-model/chat/completions?api-version=2024-10-01-preview",
 			wantHeaders: map[string]any{
-				"Accept":        "text/event-stream",
-				"api-key":       "<CRED>",
-				"Content-Type":  "application/json",
+				"Accept":       "text/event-stream",
+				"api-key":      "<CRED>",
+				"Content-Type": "application/json",
 			},
 		},
 		{
@@ -697,15 +702,15 @@ func TestGoldenURLHeaderAll25Providers(t *testing.T) {
 			wantURLStream: "https://api2.cursor.sh/aiserver.v1.ChatService/StreamUnifiedChatWithTools",
 			wantURLNon:    "https://api2.cursor.sh/aiserver.v1.ChatService/StreamUnifiedChatWithTools",
 			wantHeaders: map[string]any{
-				"Accept":                    "text/event-stream",
-				"Authorization":             "Bearer <TOK>",
-				"connect-accept-encoding":   "gzip",
-				"connect-protocol-version":  "1",
-				"Content-Type":              "application/connect+proto",
-				"User-Agent":                "connect-es/1.6.1",
-				"x-cursor-client-type":      "ide",
-				"x-cursor-client-version":   "3.1.0",
-				"x-machine-id":              "<MACHINE>",
+				"Accept":                   "text/event-stream",
+				"Authorization":            "Bearer <TOK>",
+				"connect-accept-encoding":  "gzip",
+				"connect-protocol-version": "1",
+				"Content-Type":             "application/connect+proto",
+				"User-Agent":               "connect-es/1.6.1",
+				"x-cursor-client-type":     "ide",
+				"x-cursor-client-version":  "3.1.0",
+				"x-machine-id":             "<MACHINE>",
 			},
 		},
 		{
@@ -733,7 +738,7 @@ func TestGoldenURLHeaderAll25Providers(t *testing.T) {
 				"copilot-integration-id":              "vscode-chat",
 				"editor-plugin-version":               "copilot-chat/0.38.0",
 				"editor-version":                      "vscode/1.110.0",
-				"openai-intent":                     "conversation-panel",
+				"openai-intent":                       "conversation-panel",
 				"user-agent":                          "GitHubCopilotChat/0.38.0",
 				"x-github-api-version":                "2025-04-01",
 				"x-request-id":                        "<UUID>",
@@ -818,10 +823,10 @@ func TestGoldenURLHeaderAll25Providers(t *testing.T) {
 			wantURLStream: "https://api.xiaomimimo.com/api/free-ai/openai/chat",
 			wantURLNon:    "https://api.xiaomimimo.com/api/free-ai/openai/chat",
 			wantHeaders: map[string]any{
-				"Accept":           "text/event-stream",
-				"Content-Type":     "application/json",
-				"User-Agent":       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-				"X-Mimo-Source":    "mimocode-cli-free",
+				"Accept":             "text/event-stream",
+				"Content-Type":       "application/json",
+				"User-Agent":         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+				"X-Mimo-Source":      "mimocode-cli-free",
 				"x-session-affinity": "<SESSION>",
 			},
 		},
@@ -854,9 +859,9 @@ func TestGoldenURLHeaderAll25Providers(t *testing.T) {
 			wantURLStream: "https://opencode.ai/zen/go/v1/chat/completions",
 			wantURLNon:    "https://opencode.ai/zen/go/v1/chat/completions",
 			wantHeaders: map[string]any{
-				"Accept":          "text/event-stream",
-				"Authorization":   "Bearer <TOK>",
-				"Content-Type":    "application/json",
+				"Accept":        "text/event-stream",
+				"Authorization": "Bearer <TOK>",
+				"Content-Type":  "application/json",
 			},
 		},
 		{
@@ -865,14 +870,14 @@ func TestGoldenURLHeaderAll25Providers(t *testing.T) {
 			wantURLStream: "https://www.perplexity.ai/rest/sse/perplexity_ask",
 			wantURLNon:    "https://www.perplexity.ai/rest/sse/perplexity_ask",
 			wantHeaders: map[string]any{
-				"Accept":             "text/event-stream",
-				"Content-Type":       "application/json",
-				"Cookie":             "__Secure-next-auth.session-token=<CRED>",
-				"Origin":             "https://www.perplexity.ai",
-				"Referer":            "https://www.perplexity.ai/",
-				"User-Agent":         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-				"X-App-ApiClient":    "default",
-				"X-App-ApiVersion":   "2.18",
+				"Accept":           "text/event-stream",
+				"Content-Type":     "application/json",
+				"Cookie":           "__Secure-next-auth.session-token=<CRED>",
+				"Origin":           "https://www.perplexity.ai",
+				"Referer":          "https://www.perplexity.ai/",
+				"User-Agent":       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+				"X-App-ApiClient":  "default",
+				"X-App-ApiVersion": "2.18",
 			},
 			oauthHeaders: map[string]any{
 				"Accept":           "text/event-stream",
@@ -891,12 +896,12 @@ func TestGoldenURLHeaderAll25Providers(t *testing.T) {
 			wantURLStream: "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
 			wantURLNon:    "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
 			wantHeaders: map[string]any{
-				"Accept":            "text/event-stream",
-				"Authorization":     "Bearer <TOK>",
-				"Content-Type":      "application/json",
-				"X-Cosy-Signature":  "<SIG>",
-				"X-Qoder-Client":    "qodercli",
-				"X-Qoder-Version":   "3",
+				"Accept":           "text/event-stream",
+				"Authorization":    "Bearer <TOK>",
+				"Content-Type":     "application/json",
+				"X-Cosy-Signature": "<SIG>",
+				"X-Qoder-Client":   "qodercli",
+				"X-Qoder-Version":  "3",
 			},
 		},
 		{
@@ -905,22 +910,22 @@ func TestGoldenURLHeaderAll25Providers(t *testing.T) {
 			wantURLStream: "https://portal.qwen.ai/v1/chat/completions",
 			wantURLNon:    "https://portal.qwen.ai/v1/chat/completions",
 			wantHeaders: map[string]any{
-				"Accept":                    "text/event-stream",
-				"Accept-Language":           "*",
-				"Authorization":             "Bearer <TOK>",
-				"Connection":                "keep-alive",
-				"Content-Type":              "application/json",
-				"Sec-Fetch-Mode":            "cors",
-				"User-Agent":                "QwenCode/0.12.3 (linux; x64)",
-				"X-DashScope-AuthType":      "qwen-oauth",
-				"X-DashScope-CacheControl":  "enable",
-				"X-DashScope-UserAgent":     "QwenCode/0.12.3 (linux; x64)",
-				"X-Stainless-Arch":          "x64",
-				"X-Stainless-Lang":          "js",
-				"X-Stainless-Os":            "Linux",
+				"Accept":                      "text/event-stream",
+				"Accept-Language":             "*",
+				"Authorization":               "Bearer <TOK>",
+				"Connection":                  "keep-alive",
+				"Content-Type":                "application/json",
+				"Sec-Fetch-Mode":              "cors",
+				"User-Agent":                  "QwenCode/0.12.3 (linux; x64)",
+				"X-DashScope-AuthType":        "qwen-oauth",
+				"X-DashScope-CacheControl":    "enable",
+				"X-DashScope-UserAgent":       "QwenCode/0.12.3 (linux; x64)",
+				"X-Stainless-Arch":            "x64",
+				"X-Stainless-Lang":            "js",
+				"X-Stainless-Os":              "Linux",
 				"X-Stainless-Package-Version": "5.11.0",
-				"X-Stainless-Retry-Count":   "1",
-				"X-Stainless-Runtime":       "node",
+				"X-Stainless-Retry-Count":     "1",
+				"X-Stainless-Runtime":         "node",
 				"X-Stainless-Runtime-Version": "v18.19.1",
 			},
 		},

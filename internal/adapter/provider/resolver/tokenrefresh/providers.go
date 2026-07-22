@@ -26,29 +26,29 @@ import (
 // public client ids; client secrets are only present for confidential clients
 // (iflow).
 const (
-	claudeTokenURL   = "https://api.anthropic.com/v1/oauth/token"
-	claudeClientID   = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-	codexTokenURL    = "https://auth.openai.com/oauth/token"
-	codexClientID    = "app_EMoamEEZ73f0CkXaXp7hrann"
-	qwenTokenURL     = "https://chat.qwen.ai/api/v1/oauth2/token"
-	qwenClientID     = "f0304373b74a44d2b584a3fb70ca9e56"
-	iflowTokenURL    = "https://iflow.cn/oauth/token"
-	iflowClientID    = "10009311001"
-	iflowClientSecret = "4Z3YjXycVsQvyGF1etiNlIBB4RsqSDtW"
-	googleTokenURL   = "https://oauth2.googleapis.com/token"
-	githubTokenURL   = "https://github.com/login/oauth/access_token"
-	githubClientID   = "Iv1.b507a08c87ecfe98"
-	xaiTokenURL      = "https://auth.x.ai/oauth2/token"
-	xaiClientID      = "b1a00492-073a-47ea-816f-4c329264a828"
+	claudeTokenURL      = "https://api.anthropic.com/v1/oauth/token"
+	claudeClientID      = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+	codexTokenURL       = "https://auth.openai.com/oauth/token"
+	codexClientID       = "app_EMoamEEZ73f0CkXaXp7hrann"
+	qwenTokenURL        = "https://chat.qwen.ai/api/v1/oauth2/token"
+	qwenClientID        = "f0304373b74a44d2b584a3fb70ca9e56"
+	iflowTokenURL       = "https://iflow.cn/oauth/token"
+	iflowClientID       = "10009311001"
+	iflowClientSecret   = "4Z3YjXycVsQvyGF1etiNlIBB4RsqSDtW"
+	googleTokenURL      = "https://oauth2.googleapis.com/token"
+	githubTokenURL      = "https://github.com/login/oauth/access_token"
+	githubClientID      = "Iv1.b507a08c87ecfe98"
+	xaiTokenURL         = "https://auth.x.ai/oauth2/token"
+	xaiClientID         = "b1a00492-073a-47ea-816f-4c329264a828"
 	codebuddyRefreshURL = "https://copilot.tencent.com/v2/plugin/auth/token/refresh"
 	codebuddyUserAgent  = "CLI/2.63.2 CodeBuddy/2.63.2"
 	// GitHub Copilot token exchange (not an OAuth refresh — exchanges a github
 	// access token for a short-lived copilot token).
-	copilotTokenURL = "https://api.github.com/copilot_internal/v2/token"
+	copilotTokenURL  = "https://api.github.com/copilot_internal/v2/token"
 	copilotUserAgent = "GitHubCopilotChat/0.38.0"
 	copilotVSCode    = "1.110.0"
-	copilotChatVer  = "0.38.0"
-	copilotAPIVer   = "2025-04-01"
+	copilotChatVer   = "0.38.0"
+	copilotAPIVer    = "2025-04-01"
 )
 
 // ClaudeRefresher refreshes a Claude (Anthropic) OAuth token. Mirrors
@@ -209,7 +209,9 @@ func (r *GitHubRefresher) Refresh(ctx context.Context, refreshToken string, psd 
 // RefreshedCredentials.AccessToken + ExpiresAt.
 type CopilotRefresher struct{ httpClient *http.Client }
 
-func NewCopilotRefresher() *CopilotRefresher { return &CopilotRefresher{httpClient: newRefreshClient()} }
+func NewCopilotRefresher() *CopilotRefresher {
+	return &CopilotRefresher{httpClient: newRefreshClient()}
+}
 
 func (r *CopilotRefresher) Refresh(ctx context.Context, githubAccessToken string, _ map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if githubAccessToken == "" {
@@ -256,7 +258,9 @@ func (r *CopilotRefresher) Refresh(ctx context.Context, githubAccessToken string
 // refreshToken, expiresIn}}.
 type CodebuddyRefresher struct{ httpClient *http.Client }
 
-func NewCodebuddyRefresher() *CodebuddyRefresher { return &CodebuddyRefresher{httpClient: newRefreshClient()} }
+func NewCodebuddyRefresher() *CodebuddyRefresher {
+	return &CodebuddyRefresher{httpClient: newRefreshClient()}
+}
 
 func (r *CodebuddyRefresher) Refresh(ctx context.Context, refreshToken string, _ map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
 	if refreshToken == "" {
@@ -354,7 +358,7 @@ func (r *XaiRefresher) Refresh(ctx context.Context, refreshToken string, _ map[s
 }
 
 // GenericRefresher is the fallback for providers with a standard OAuth2
-// form-encoded refresh endpoint (cline, clinepass, kimi-coding, qoder, ...).
+// form-encoded refresh endpoint (cline, clinepass, qoder, ...).
 // Mirrors the JS refreshAccessToken fallback: reads refreshUrl/clientId/
 // clientSecret from the connection's ProviderSpecificData and POSTs a
 // grant_type=refresh_token form body.
@@ -428,6 +432,8 @@ func Lookup(providerID string) resolver.TokenRefresher {
 		return NewXaiRefresher()
 	case "kiro":
 		return NewKiroRefresher()
+	case "kimi", "kimi-coding":
+		return NewKimiRefresher()
 	case "vertex", "vertex-partner":
 		return NewVertexRefresher()
 	}

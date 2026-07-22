@@ -98,16 +98,30 @@ func TestClineHeadersNoTokenSkipsAuth(t *testing.T) {
 
 func TestKimiHeaders(t *testing.T) {
 	e := &DefaultExecutor{BaseExecutor: base.NewBaseExecutor("p", base.Config{})}
+	// No stored deviceId → generated id with kimi- prefix (api-key auth).
 	h := http.Header{}
 	e.kimiHeaders(h, provider.Credentials{})
 	if headerExact(h, "X-Msh-Platform") != "9gouter" {
 		t.Errorf("X-Msh-Platform = %q", headerExact(h, "X-Msh-Platform"))
 	}
-	if headerExact(h, "X-Msh-Version") != "2.1.2" {
-		t.Errorf("X-Msh-Version = %q", headerExact(h, "X-Msh-Version"))
+	if headerExact(h, "X-Msh-Version") != AppVersion {
+		t.Errorf("X-Msh-Version = %q, want AppVersion %q", headerExact(h, "X-Msh-Version"), AppVersion)
+	}
+	if name := headerExact(h, "X-Msh-Device-Name"); name == "" {
+		t.Errorf("X-Msh-Device-Name = %q, want non-empty (hostname)", name)
+	}
+	if model := headerExact(h, "X-Msh-Device-Model"); model == "" {
+		t.Errorf("X-Msh-Device-Model = %q, want non-empty", model)
 	}
 	if id := headerExact(h, "X-Msh-Device-Id"); !strings.HasPrefix(id, "kimi-") {
 		t.Errorf("X-Msh-Device-Id = %q, want kimi- prefix", id)
+	}
+
+	// Stored deviceId is preserved verbatim (OAuth session stability).
+	h2 := http.Header{}
+	e.kimiHeaders(h2, provider.Credentials{ProviderSpecificData: map[string]any{"deviceId": "stable-device-xyz"}})
+	if id := headerExact(h2, "X-Msh-Device-Id"); id != "stable-device-xyz" {
+		t.Errorf("X-Msh-Device-Id = %q, want stable-device-xyz", id)
 	}
 }
 
@@ -273,9 +287,9 @@ func TestResolveRuntimeTransportFull(t *testing.T) {
 			"headers":   map[string]any{"x-foo": "bar"},
 			"auth": map[string]any{
 				"combined":         true,
-				"header":            "Authorization",
-				"scheme":            "bearer",
-				"anthropicVersion":  true,
+				"header":           "Authorization",
+				"scheme":           "bearer",
+				"anthropicVersion": true,
 			},
 		},
 	}))
@@ -401,9 +415,9 @@ func TestBuildHeadersAnthropicCompatibleGatewayCleanup(t *testing.T) {
 	// loop (which reads via h.Get, canonicalized) can see and filter it.
 	e := &DefaultExecutor{BaseExecutor: base.NewBaseExecutor("anthropic-compatible-x", base.Config{
 		Headers: map[string]string{
-			"Anthropic-Beta":                          "claude-code-20250219,fine-grained-tool-streaming-2025-05-14",
+			"Anthropic-Beta": "claude-code-20250219,fine-grained-tool-streaming-2025-05-14",
 			"anthropic-dangerous-direct-browser-access": "true",
-			"x-app":                                 "value",
+			"x-app": "value",
 		},
 	})}
 	h := e.BuildHeaders(creds("sk-key", "", map[string]any{"baseUrl": "https://gateway.example"}), false)

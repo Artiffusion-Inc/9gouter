@@ -33,11 +33,15 @@ type oauthPolicy struct {
 // tokenExpiryBufferMs. Values copied verbatim from the JS registry.
 var oauthPolicies = map[string]oauthPolicy{
 	"codex": {
-		refreshLeadMs:  432000000, // 5 days
+		refreshLeadMs:   432000000, // 5 days
 		maxRefreshAgeMs: 691200000, // 8 days
-		trackRefreshAt: true,
+		trackRefreshAt:  true,
 	},
-	"kimi-coding": {
+	// kimi: merged dual-auth provider (upstream v0.5.40, commit 68566f53).
+	// CLIProxyAPI refreshThresholdSeconds = 300. The legacy `kimi-coding` id
+	// resolves to `kimi` via the registry alias map, so a separate entry is no
+	// longer needed.
+	"kimi": {
 		refreshLeadMs: 300000, // 5 min
 	},
 }

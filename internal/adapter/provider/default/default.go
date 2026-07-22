@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -26,8 +27,10 @@ func delHeaderExact(h http.Header, k string) {
 	delete(h, k)
 }
 
-// AppVersion mirrors package.json version used by Cline headers.
-const AppVersion = "0.5.35"
+// AppVersion mirrors package.json version used by Cline headers and the Kimi
+// X-Msh-Version parity header (upstream v0.5.40). Bumped alongside upstream
+// sync; golden snapshots expect this exact value.
+const AppVersion = "0.5.40"
 
 // DefaultExecutor extends BaseExecutor with config-driven auth hooks.
 type DefaultExecutor struct {
@@ -73,11 +76,60 @@ func (e *DefaultExecutor) clineHeaders(h http.Header, creds provider.Credentials
 	setHeaderExact(h, "X-IS-MULTIROOT", "false")
 }
 
+// kimiHeaders emits the X-Msh-* headers required by the Kimi Code
+// CLIProxyAPI parity (upstream v0.5.40, commit 68566f53 buildKimiHeaders).
+// deviceId must stay stable per connection for the whole OAuth session — it is
+// read from creds.ProviderSpecificData["deviceId"] (set at device-code
+// acquisition) and falls back to a timestamp id only when absent (api-key
+// auth, where the id is cosmetic).
 func (e *DefaultExecutor) kimiHeaders(h http.Header, creds provider.Credentials) {
+	BuildKimiHeaders(h, kimiDeviceID(creds))
+}
+
+// kimiDeviceID resolves the stable Kimi device id from creds, falling back to a
+// timestamp-based id (api-key auth has no device-code session).
+func kimiDeviceID(creds provider.Credentials) string {
+	if creds.ProviderSpecificData != nil {
+		if id, ok := creds.ProviderSpecificData["deviceId"].(string); ok && strings.TrimSpace(id) != "" {
+			return strings.TrimSpace(id)
+		}
+	}
+	return fmt.Sprintf("kimi-%d", time.Now().UnixMilli())
+}
+
+// BuildKimiHeaders writes the X-Msh-* headers onto h for the given deviceId,
+// mirroring buildKimiHeaders in open-sse/config/appConstants.js. Exported so the
+// token refresher (tokenrefresh package) reuses the exact same header shape on
+// refresh requests without duplicating the logic.
+func BuildKimiHeaders(h http.Header, deviceID string) {
+	deviceModel := deviceModelString()
+	deviceName, _ := os.Hostname()
+	if deviceName == "" {
+		deviceName = "unknown"
+	}
+	id := strings.TrimSpace(deviceID)
+	if id == "" {
+		id = fmt.Sprintf("kimi-%d", time.Now().UnixMilli())
+	}
 	setHeaderExact(h, "X-Msh-Platform", "9gouter")
-	setHeaderExact(h, "X-Msh-Version", "2.1.2")
-	setHeaderExact(h, "X-Msh-Device-Model", fmt.Sprintf("%s %s", runtime.GOOS, runtime.GOARCH))
-	setHeaderExact(h, "X-Msh-Device-Id", fmt.Sprintf("kimi-%d", time.Now().UnixMilli()))
+	setHeaderExact(h, "X-Msh-Version", AppVersion)
+	setHeaderExact(h, "X-Msh-Device-Name", deviceName)
+	setHeaderExact(h, "X-Msh-Device-Model", deviceModel)
+	setHeaderExact(h, "X-Msh-Device-Id", id)
+}
+
+// deviceModelString mirrors the JS device-model derivation (macOS/Windows/Linux
+// + architecture).
+func deviceModelString() string {
+	switch runtime.GOOS {
+	case "darwin":
+		return "macOS " + runtime.GOARCH
+	case "windows":
+		return "Windows " + runtime.GOARCH
+	case "linux":
+		return "Linux " + runtime.GOARCH
+	}
+	return fmt.Sprintf("%s %s", runtime.GOOS, runtime.GOARCH)
 }
 
 func (e *DefaultExecutor) claudeOverlay(h http.Header, creds provider.Credentials) {
@@ -266,16 +318,16 @@ func (e *DefaultExecutor) BuildHeaders(creds provider.Credentials, stream bool) 
 func (e *DefaultExecutor) resolveAuthDescriptor() base.AuthDescriptor {
 	if e.Provider != "" && strings.HasPrefix(e.Provider, "anthropic-compatible-") {
 		return base.AuthDescriptor{
-			APIKey: &base.AuthSpec{Header: "x-api-key", Scheme: "raw"},
-			OAuth:  &base.AuthSpec{Header: "Authorization", Scheme: "bearer"},
+			APIKey:           &base.AuthSpec{Header: "x-api-key", Scheme: "raw"},
+			OAuth:            &base.AuthSpec{Header: "Authorization", Scheme: "bearer"},
 			AnthropicVersion: true,
 		}
 	}
 	if e.Config.Format == "claude" {
 		return base.AuthDescriptor{
-			Combined: true,
-			Header:   "x-api-key",
-			Scheme:   "raw",
+			Combined:         true,
+			Header:           "x-api-key",
+			Scheme:           "raw",
 			AnthropicVersion: true,
 		}
 	}

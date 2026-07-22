@@ -301,21 +301,27 @@ func readStreamWithTimeouts(ctx context.Context, body io.Reader, ttftMs, stallMs
 			return err
 		}
 		chunk, err := readChunkWithTimeout(ctx, body, buf, deadline)
+		// A Read may return (n>0, io.EOF) for the final chunk of a streaming body
+		// (net/http's bufio reader does this); process that chunk before honoring
+		// EOF, otherwise the last partial chunk is dropped (the httptest EventStream
+		// body is small enough to arrive in a single such read).
+		if len(chunk) > 0 {
+			keep, cerr := onChunk(chunk)
+			if cerr != nil {
+				return cerr
+			}
+			if !keep {
+				return nil
+			}
+			// Reset the stall deadline after each chunk.
+			deadline = time.Now().Add(time.Duration(stallMs) * time.Millisecond)
+		}
 		if err != nil {
 			if err == io.EOF {
 				return nil
 			}
 			return err
 		}
-		keep, cerr := onChunk(chunk)
-		if cerr != nil {
-			return cerr
-		}
-		if !keep {
-			return nil
-		}
-		// Reset the stall deadline after each chunk.
-		deadline = time.Now().Add(time.Duration(stallMs) * time.Millisecond)
 	}
 }
 

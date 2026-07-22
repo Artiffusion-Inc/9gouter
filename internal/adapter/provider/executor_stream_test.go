@@ -46,7 +46,11 @@ func TestProviderStreamingUsage(t *testing.T) {
 		{pid: "grok-web", creds: domain.Credentials{}},
 		{pid: "iflow", creds: apiKeyCreds},
 		{pid: "kimchi", creds: apiKeyCreds},
-		{pid: "kiro", creds: domain.Credentials{APIKey: "sk-test-APIKEY", ProviderSpecificData: map[string]any{"authMethod": "api_key"}}},
+		// kiro is exercised by its own binary-EventStream integrity test in the
+		// kiro package (execute_test.go); the generic mock-fetch harness serves
+		// SSE/ndjson, but Kiro's Execute drains a binary AWS EventStream body
+		// through the integrity gate and synthesizes OpenAI SSE, so a canned
+		// SSE server does not exercise its real path.
 		{pid: "mimo-free", creds: domain.Credentials{}},
 		{pid: "ollama-local", creds: domain.Credentials{}},
 		{pid: "opencode", creds: domain.Credentials{}},

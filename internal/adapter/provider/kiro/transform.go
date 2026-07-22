@@ -953,19 +953,18 @@ func stopDispositionErrorCode(disposition string) string {
 
 // encodeSSEError renders an OpenAI-style error SSE event + [DONE], mirroring
 // encodeSSEError in kiro.js:183-190 (which always closes with data: [DONE]).
-// details is the terminal diagnostics object surfaced as error.details.
-func encodeSSEError(code, message string, details *TerminalState) []byte {
-	body := map[string]any{
-		"error": map[string]any{
-			"message": message,
-			"type":    "upstream_error",
-			"code":    code,
-		},
+// details is surfaced as error.details; it may be a *TerminalState (per-attempt
+// diagnostics) or an arbitrary map (the retry path's {status}/{attempts}).
+func encodeSSEError(code, message string, details any) []byte {
+	errObj := map[string]any{
+		"message": message,
+		"type":    "upstream_error",
+		"code":    code,
 	}
 	if details != nil {
-		body["error"].(map[string]any)["details"] = details
+		errObj["details"] = details
 	}
-	raw, _ := json.Marshal(body)
+	raw, _ := json.Marshal(map[string]any{"error": errObj})
 	out := append([]byte("data: "), append(raw, '\n', '\n')...)
 	out = append(out, []byte(sseDone)...)
 	return out

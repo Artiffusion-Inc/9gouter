@@ -98,6 +98,7 @@
   "idToAlias": {
     "alicode": "alicode",
     "alicode-intl": "alicode-intl",
+    "alims-intl": "alims-intl",
     "anthropic": "anthropic",
     "antigravity": "ag",
     "assemblyai": "assemblyai",
@@ -167,6 +168,7 @@
     "ag",
     "alicode",
     "alicode-intl",
+    "alims-intl",
     "anthropic",
     "assemblyai",
     "black-forest-labs",

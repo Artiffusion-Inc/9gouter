@@ -66,8 +66,32 @@ var configs = map[string]base.Config{
 		Quirks:  base.Quirks{PreserveCacheControl: true},
 	},
 	"alicode-intl": {
+		// Coding Plan keys (sk-sp-...) only work on the coding-intl host.
+		// Reverted from the DashScope compatible-mode endpoint by upstream
+		// 55628eea: the two key types use two different hosts and are not
+		// interchangeable. Standard DashScope keys (sk-...) live on alims-intl.
+		BaseURL: "https://coding-intl.dashscope.aliyuncs.com/v1/chat/completions",
+		Quirks:  base.Quirks{PreserveCacheControl: true},
+	},
+	"alims-intl": {
+		// Model Studio Intl — standard DashScope API keys (sk-...), NOT Coding
+		// Plan keys. Sibling of alicode-intl (Coding Plan). Added by upstream
+		// 55628eea; the two key types use two different hosts.
 		BaseURL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
 		Quirks:  base.Quirks{PreserveCacheControl: true},
+		Catalog: domain.ProviderCatalog{
+			ID:    "alims-intl",
+			Alias: "alims-intl",
+			Models: []domain.Model{
+				{ID: "qwen3.5-plus", Name: "Qwen3.5 Plus"},
+				{ID: "kimi-k2.5", Name: "Kimi K2.5"},
+				{ID: "glm-5", Name: "GLM 5"},
+				{ID: "MiniMax-M2.5", Name: "MiniMax M2.5"},
+				{ID: "qwen3-coder-next", Name: "Qwen3 Coder Next"},
+				{ID: "qwen3-coder-plus", Name: "Qwen3 Coder Plus"},
+				{ID: "glm-4.7", Name: "GLM 4.7"},
+			},
+		},
 	},
 	"anthropic": {
 		BaseURL: "https://api.anthropic.com/v1/messages",
@@ -522,6 +546,7 @@ var aliases = map[string]string{
 	// Canonical ids are self-mapping.
 	"alicode":          "alicode",
 	"alicode-intl":     "alicode-intl",
+	"alims-intl":       "alims-intl",
 	"anthropic":        "anthropic",
 	"antigravity":      "antigravity",
 	"assemblyai":       "assemblyai",

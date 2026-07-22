@@ -900,5 +900,13 @@
         }
       }
     ]
+  },
+  "alims-intl": {
+    "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+    "headers": {},
+    "quirks": {
+      "preserveCacheControl": true
+    },
+    "format": "openai"
   }
 }

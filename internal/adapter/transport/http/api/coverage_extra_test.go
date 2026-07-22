@@ -787,11 +787,24 @@ func TestAuth_ProbeOIDCClientSecret(t *testing.T) {
 	}
 }
 
-// TestAuth_BcryptCompareStub covers the stub function (kept for parity with
-// the JS codebase; returns a not-implemented error).
-func TestAuth_BcryptCompareStub(t *testing.T) {
-	if err := bcryptCompareStub("a", "b"); err == nil {
-		t.Fatal("bcryptCompareStub returned nil, want error")
+// TestAuth_BcryptCompareReal covers the real bcrypt comparator wired into
+// the login verifier (adapter/auth.CompareBcrypt). The previous stub always
+// returned an error; the real comparator must accept a matching password and
+// reject a wrong one. Uses a freshly generated bcrypt hash — no mocks.
+func TestAuth_BcryptCompareReal(t *testing.T) {
+	hash, err := adapterauth.HashBcrypt("correct-horse-battery-staple")
+	if err != nil {
+		t.Fatalf("HashBcrypt: %v", err)
+	}
+	if err := adapterauth.CompareBcrypt("correct-horse-battery-staple", hash); err != nil {
+		t.Fatalf("CompareBcrypt(matching) = %v, want nil", err)
+	}
+	if err := adapterauth.CompareBcrypt("wrong-password", hash); err == nil {
+		t.Fatal("CompareBcrypt(wrong) = nil, want error")
+	}
+	// Malformed hash must error, not panic.
+	if err := adapterauth.CompareBcrypt("x", "not-a-bcrypt-hash"); err == nil {
+		t.Fatal("CompareBcrypt(malformed) = nil, want error")
 	}
 }
 

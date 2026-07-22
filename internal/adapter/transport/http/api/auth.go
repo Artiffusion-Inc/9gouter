@@ -52,7 +52,11 @@ type loginResponse struct {
 func newAuthHandler(deps Deps, cfg config.Config) *authHandler {
 	var verifier usecaseauth.PasswordVerifier
 	if cfg.DashboardPasswordHash != "" {
-		verifier = &usecaseauth.BcryptVerifier{Hash: cfg.DashboardPasswordHash, Comparator: bcryptCompareStub}
+		// Real bcrypt comparator (golang.org/x/crypto/bcrypt). The previous
+		// bcryptCompareStub always returned an error, so env-hash login was
+		// impossible from the HTTP path — only unit tests that minted a
+		// session directly via the SessionStore could exercise the dashboard.
+		verifier = &usecaseauth.BcryptVerifier{Hash: cfg.DashboardPasswordHash, Comparator: adapterauth.CompareBcrypt}
 	} else {
 		verifier = &usecaseauth.PlainVerifier{InitialPassword: "123456"}
 	}
@@ -62,8 +66,6 @@ func newAuthHandler(deps Deps, cfg config.Config) *authHandler {
 		svc:  &managedashboard.SettingsService{Repo: deps.Settings},
 	}
 }
-
-func bcryptCompareStub(_, _ string) error { return errors.New("not implemented in tests") }
 
 func (h *authHandler) login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest

@@ -529,11 +529,37 @@ func tokenCount(body map[string]any, keys ...string) int {
 		return 0
 	}
 	for _, k := range keys {
-		if v, ok := usage[k].(float64); ok {
-			return int(v)
+		if n, ok := numericInt(usage[k]); ok {
+			return n
 		}
 	}
 	return 0
+}
+
+// numericInt coerces the numeric value v to an int, accepting the full set of
+// types a usage field may take after json.Unmarshal (float64, json.Number) or
+// after an in-process translation that builds the usage map via BuildUsage
+// (int, int64). This matters for non-stream responses translated from
+// ollama/claude/gemini→openai: BuildUsage emits int values, so a tokenCount
+// that only matched float64 (the raw json.Unmarshal type) would record 0 for
+// every translated response. Returns ok=false for non-numeric / missing
+// values so callers can fall through to the next key.
+func numericInt(v any) (int, bool) {
+	switch x := v.(type) {
+	case float64:
+		return int(x), true
+	case int:
+		return x, true
+	case int64:
+		return int(x), true
+	case json.Number:
+		i, err := x.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return int(i), true
+	}
+	return 0, false
 }
 
 func translateNonStreamingResponse(body map[string]any, sourceFormat, targetFormat format.Format) map[string]any {

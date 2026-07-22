@@ -50,6 +50,38 @@ func TestGetForModel_FallbackChain(t *testing.T) {
 	}
 }
 
+// TestGetForModel_KimiV0540 pins the upstream v0.5.40 kimi pricing additions
+// (commit 68566f53: k3 / kimi-k2.7-code / kimi-for-coding / kimi-k2.6 exact
+// entries + the kimi-k3* pattern). Without these the cost calc falls back to
+// the kimi-* pattern (1.00 input) instead of the real k3 rate (3.00).
+func TestGetForModel_KimiV0540(t *testing.T) {
+	// Exact entries added in v0.5.40.
+	cases := []struct {
+		model         string
+		input, output float64
+	}{
+		{"kimi-k3", 3.00, 15.00},
+		{"k3", 3.00, 15.00},
+		{"kimi-k2.7-code", 0.95, 4.00},
+		{"kimi-k2.7-code-highspeed", 1.90, 8.00},
+		{"kimi-for-coding", 0.95, 4.00},
+		{"kimi-for-coding-highspeed", 1.90, 8.00},
+		{"kimi-k2.6", 1.00, 4.00},
+	}
+	for _, c := range cases {
+		r, ok := GetForModel("kimi", c.model)
+		if !ok || !approxEq(r.Input, c.input) || !approxEq(r.Output, c.output) {
+			t.Errorf("kimi %s = %+v ok=%v, want input %v output %v", c.model, r, ok, c.input, c.output)
+		}
+	}
+	// Pattern fallback kimi-k3* matches a non-exact k3 variant at the k3 rate,
+	// not the kimi-* fallback rate.
+	r, ok := GetForModel("kimi", "kimi-k3-coder")
+	if !ok || !approxEq(r.Input, 3.00) {
+		t.Errorf("kimi-k3-coder pattern = %+v ok=%v, want input 3.00 (kimi-k3*)", r, ok)
+	}
+}
+
 // TestCalculateCost_Basic mirrors the legacy calculateCostFromTokens basic
 // case: 100 prompt + 50 completion at gpt-4 rates (2.50/1.25 input/output per 1M,
 // no cache).

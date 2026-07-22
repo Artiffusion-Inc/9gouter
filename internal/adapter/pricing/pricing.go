@@ -105,11 +105,19 @@ var modelPricing = map[string]Rate{
 	"qwen3-coder-flash": {Input: 0.50, Output: 2.00, Cached: 0.25, Reasoning: 3.00, CacheCreation: 0.50},
 
 	// === Kimi ===
-	"kimi-k2":           {Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00},
-	"kimi-k2-thinking":  {Input: 1.50, Output: 6.00, Cached: 0.75, Reasoning: 9.00, CacheCreation: 1.50},
-	"kimi-k2.5":         {Input: 1.20, Output: 4.80, Cached: 0.60, Reasoning: 7.20, CacheCreation: 1.20},
-	"kimi-k2.5-thinking": {Input: 1.80, Output: 7.20, Cached: 0.90, Reasoning: 10.80, CacheCreation: 1.80},
-	"kimi-latest":       {Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00},
+	// Official platform.kimi.ai: cache-hit / cache-miss / output per 1M tokens.
+	"kimi-k3":                  {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 15.00, CacheCreation: 3.00},
+	"k3":                       {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 15.00, CacheCreation: 3.00},
+	"kimi-k2.7-code":           {Input: 0.95, Output: 4.00, Cached: 0.19, Reasoning: 4.00, CacheCreation: 0.95},
+	"kimi-k2.7-code-highspeed": {Input: 1.90, Output: 8.00, Cached: 0.38, Reasoning: 8.00, CacheCreation: 1.90},
+	"kimi-for-coding":          {Input: 0.95, Output: 4.00, Cached: 0.19, Reasoning: 4.00, CacheCreation: 0.95},
+	"kimi-for-coding-highspeed": {Input: 1.90, Output: 8.00, Cached: 0.38, Reasoning: 8.00, CacheCreation: 1.90},
+	"kimi-k2":                  {Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00},
+	"kimi-k2-thinking":         {Input: 1.50, Output: 6.00, Cached: 0.75, Reasoning: 9.00, CacheCreation: 1.50},
+	"kimi-k2.5":                {Input: 1.20, Output: 4.80, Cached: 0.60, Reasoning: 7.20, CacheCreation: 1.20},
+	"kimi-k2.5-thinking":       {Input: 1.80, Output: 7.20, Cached: 0.90, Reasoning: 10.80, CacheCreation: 1.80},
+	"kimi-k2.6":                {Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00},
+	"kimi-latest":              {Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00},
 
 	// === DeepSeek ===
 	"deepseek-chat":       {Input: 0.14, Output: 0.28, Cached: 0.0028, Reasoning: 0.28, CacheCreation: 0.14},
@@ -213,6 +221,7 @@ var patternPricing = []patternEntry{
 
 	// --- Kimi ---
 	patternEntry{pattern: "kimi-*-thinking", rate: Rate{Input: 1.80, Output: 7.20, Cached: 0.90, Reasoning: 10.80, CacheCreation: 1.80}},
+	patternEntry{pattern: "kimi-k3*", rate: Rate{Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 15.00, CacheCreation: 3.00}},
 	patternEntry{pattern: "kimi-k2*", rate: Rate{Input: 1.20, Output: 4.80, Cached: 0.60, Reasoning: 7.20, CacheCreation: 1.20}},
 	patternEntry{pattern: "kimi-*", rate: Rate{Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00}},
 

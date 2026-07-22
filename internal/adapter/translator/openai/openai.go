@@ -745,6 +745,16 @@ func openaiResponsesToOpenaiRequest(model string, raw json.RawMessage, stream bo
 		}
 		delete(result, "max_output_tokens")
 	}
+	// Port upstream c97963c4: before deleting the Responses `reasoning` object,
+	// flatten its `effort` string into the OpenAI `reasoning_effort` field so
+	// callers that key on reasoning_effort still see it.
+	if r, ok := result["reasoning"].(map[string]any); ok {
+		if effort, ok := r["effort"].(string); ok && effort != "" {
+			if _, has := result["reasoning_effort"]; !has {
+				result["reasoning_effort"] = effort
+			}
+		}
+	}
 	for _, k := range []string{"input", "instructions", "include", "prompt_cache_key", "store", "reasoning", "client_metadata"} {
 		delete(result, k)
 	}
@@ -909,6 +919,11 @@ func openaiToOpenaiResponsesRequest(model string, raw json.RawMessage, stream bo
 	}
 	if v, ok := body["reasoning_effort"]; ok {
 		result["reasoning"] = map[string]any{"effort": v, "summary": "auto"}
+	}
+	// Port upstream c97963c4: pass service_tier through OpenAI→Responses so
+	// priority/auto/flex tier selection reaches the Responses endpoint.
+	if v, ok := body["service_tier"]; ok {
+		result["service_tier"] = v
 	}
 
 	return json.Marshal(result)

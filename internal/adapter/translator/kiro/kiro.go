@@ -283,6 +283,11 @@ func openaiToKiroRequest(model string, raw json.RawMessage, stream bool) (json.R
 		return nil, fmt.Errorf("unmarshal body: %w", err)
 	}
 
+	// Strip synthetic -agentic / -thinking suffixes; the upstream model id is
+	// what Kiro receives in modelId / additionalModelRequestFields resolution.
+	res := resolveKiroModel(model)
+	upstreamModel := res.upstream
+
 	messages := []map[string]any{}
 	if rawMsgs, ok := body["messages"].([]any); ok {
 		for _, m := range rawMsgs {
@@ -305,8 +310,18 @@ func openaiToKiroRequest(model string, raw json.RawMessage, stream bool) (json.R
 		temperature = t
 	}
 
+	// Thinking / effort resolution (ports open-sse/config/kiroConstants.js).
+	// headers are unavailable at the translator seam, so the header-based
+	// interleaved-thinking detector is not applied here (body/tag/model only).
+	// resolveKiroThinkingBudget sees the ORIGINAL model id (with -thinking
+	// suffix) so its model-suffix detector fires; the effort-path resolvers see
+	// the STRIPPED upstream model id (gpt-5.6 / claude-x.y version gate).
+	thinkingBudget := resolveKiroThinkingBudget(body, nil, model)
+	additionalModelRequestFields := buildKiroAdditionalModelRequestFieldsForModel(body, upstreamModel)
+	usesNativeGptEffort := usesKiroNativeGptEffort(body, upstreamModel)
+
 	// Simplified conversion matching the golden snapshot shape.
-	history, currentMessage := convertOpenAIMessagesToKiro(messages, tools, model)
+	history, currentMessage := convertOpenAIMessagesToKiro(messages, tools, upstreamModel)
 
 	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	currentTimeContext := fmt.Sprintf("[Context: Current time is %s]", timestamp)
@@ -324,6 +339,15 @@ func openaiToKiroRequest(model string, raw json.RawMessage, stream bool) (json.R
 		}
 	}
 
+	// systemPrompt carries the legacy <thinking_mode> prefix for models that
+	// need prompt-tag reasoning. For gpt-5.6* with a native reasoning effort,
+	// skip the tag — Kiro consumes the additionalModelRequestFields.reasoning
+	// field instead (upstream cef5dd4d / eb00222c).
+	var systemPrompt string
+	if thinkingBudget >= 0 && !usesNativeGptEffort {
+		systemPrompt = buildThinkingSystemPrefix(thinkingBudget)
+	}
+
 	payload := map[string]any{
 		"agentMode": "vibe",
 		"conversationState": map[string]any{
@@ -337,6 +361,12 @@ func openaiToKiroRequest(model string, raw json.RawMessage, stream bool) (json.R
 			"temperature": temperature,
 		},
 		"profileArn": "arn:aws:codewhisperer:us-east-1:638616132270:profile/AAAACCCCXXXX",
+	}
+	if systemPrompt != "" {
+		payload["systemPrompt"] = systemPrompt
+	}
+	if additionalModelRequestFields != nil {
+		payload["additionalModelRequestFields"] = additionalModelRequestFields
 	}
 
 	return json.Marshal(payload)

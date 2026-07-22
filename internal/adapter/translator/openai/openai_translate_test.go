@@ -650,6 +650,39 @@ func TestOpenAIToOpenAIResponsesRequestReasoningEffort(t *testing.T) {
 	}
 }
 
+// TestOpenAIToOpenAIResponsesRequestServiceTier pins upstream c97963c4:
+// service_tier must pass through OpenAI→Responses so priority/auto/flex tier
+// selection reaches the Responses endpoint.
+func TestOpenAIToOpenAIResponsesRequestServiceTier(t *testing.T) {
+	body := `{"messages":[{"role":"user","content":"hi"}],"service_tier":"priority"}`
+	out, err := openaiToOpenaiResponsesRequest("gpt-4o", json.RawMessage(body), true)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	v := mustUnmarshal(t, out)
+	if v["service_tier"] != "priority" {
+		t.Errorf("service_tier = %v, want priority", v["service_tier"])
+	}
+}
+
+// TestOpenAIResponsesToOpenAIRequestReasoningEffortFlatten pins upstream
+// c97963c4: the Responses `reasoning.effort` string must be flattened into the
+// OpenAI `reasoning_effort` field before `reasoning` is deleted.
+func TestOpenAIResponsesToOpenAIRequestReasoningEffortFlatten(t *testing.T) {
+	body := `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}],"reasoning":{"effort":"high","summary":"auto"}}`
+	out, err := openaiResponsesToOpenaiRequest("gpt-4o", json.RawMessage(body), true)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	v := mustUnmarshal(t, out)
+	if v["reasoning_effort"] != "high" {
+		t.Errorf("reasoning_effort = %v, want high (flattened from reasoning.effort)", v["reasoning_effort"])
+	}
+	if _, still := v["reasoning"]; still {
+		t.Errorf("reasoning object should be deleted after flattening effort; got %v", v["reasoning"])
+	}
+}
+
 // --- openaiResponsesToOpenaiRequest ---
 
 func TestOpenAIResponsesToOpenAIRequestBasic(t *testing.T) {

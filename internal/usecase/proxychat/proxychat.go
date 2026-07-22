@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/pricing"
 	reg "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
 	httpstream "github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
@@ -75,6 +76,9 @@ type Dependencies struct {
 	Logger      Logger
 	Config      config.Config
 	UsageEvents UsageEventPublisher
+	// Pricing computes the USD cost of a request from its token breakdown. nil
+	// → cost stays 0 (legacy wiring / tests that only check token counts).
+	Pricing *pricing.Resolver
 }
 
 // UsageEventPublisher is the live real-time analytics surface. proxychat
@@ -370,23 +374,63 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 		_, _ = req.ResponseWriter.Write(clientBytes)
 	}
 
-	h.saveUsage(ctx, req, providerID, start, tokenCount(clientBody, "prompt_tokens", "input_tokens"), tokenCount(clientBody, "completion_tokens", "output_tokens"), "success", nil, nil)
+	prompt := tokenCount(clientBody, "prompt_tokens", "input_tokens")
+	completion := tokenCount(clientBody, "completion_tokens", "output_tokens")
+	tok := extractTokens(clientBody, prompt, completion)
+	h.saveUsageWith(ctx, req, providerID, start, prompt, completion, "success", nil, nil, tok)
 	return Result{StatusCode: http.StatusOK}, nil
 }
 
 func (h *Handler) saveUsage(ctx context.Context, req Request, providerID string, start time.Time, prompt, completion int, status string, streamMs *int, tps *float64) {
+	h.saveUsageWith(ctx, req, providerID, start, prompt, completion, status, streamMs, tps, nil)
+}
+
+// saveUsageWith persists a usage record, optionally carrying a detailed token
+// breakdown (cached/reasoning/cache_creation) used to compute the USD cost.
+// When tok is nil, only the flat prompt/completion counts are recorded and cost
+// is computed from those alone (cached/reasoning treated as 0). This mirrors
+// the legacy saveRequestUsage → calculateCost(provider, model, tokens) path.
+func (h *Handler) saveUsageWith(ctx context.Context, req Request, providerID string, start time.Time, prompt, completion int, status string, streamMs *int, tps *float64, tok *pricing.Tokens) {
+	tokens := pricing.Tokens{PromptTokens: prompt, CompletionTokens: completion}
+	if tok != nil {
+		tokens.CachedTokens = tok.CachedTokens
+		tokens.ReasoningTokens = tok.ReasoningTokens
+		tokens.CacheCreationTokens = tok.CacheCreationTokens
+	}
+	cost := 0.0
+	if h.deps.Pricing != nil {
+		cost = h.deps.Pricing.CostFor(providerID, req.Model, tokens)
+	}
+
+	var tokensBlob json.RawMessage
+	if tok != nil {
+		b, err := json.Marshal(map[string]int{
+			"prompt_tokens":                tokens.PromptTokens,
+			"completion_tokens":             tokens.CompletionTokens,
+			"cached_tokens":                 tokens.CachedTokens,
+			"reasoning_tokens":              tokens.ReasoningTokens,
+			"cache_creation_input_tokens":   tokens.CacheCreationTokens,
+			"total_tokens":                  tokens.PromptTokens + tokens.CompletionTokens,
+		})
+		if err == nil {
+			tokensBlob = b
+		}
+	}
+
 	rec := usage.UsageRecord{
 		Timestamp:        start,
 		Provider:         providerID,
-		Model:            req.Model,
-		ConnectionID:     req.ConnectionID,
-		APIKey:           req.APIKey,
-		Endpoint:         req.Endpoint,
-		PromptTokens:     prompt,
-		CompletionTokens: completion,
-		Status:           status,
-		StreamMs:         streamMs,
-		TPS:              tps,
+		Model:             req.Model,
+		ConnectionID:      req.ConnectionID,
+		APIKey:            req.APIKey,
+		Endpoint:          req.Endpoint,
+		PromptTokens:      prompt,
+		CompletionTokens:  completion,
+		Cost:              cost,
+		Status:            status,
+		StreamMs:          streamMs,
+		TPS:               tps,
+		Tokens:            tokensBlob,
 	}
 	_ = h.deps.UsageRepo.Save(ctx, rec)
 	// Real-time analytics (#83): every completed request (success or error)
@@ -557,6 +601,46 @@ func tokenCount(body map[string]any, keys ...string) int {
 		}
 	}
 	return 0
+}
+
+// extractTokens pulls the detailed token breakdown (cached/reasoning/cache
+// creation) out of a non-streaming response body so saveUsageWith can compute
+// cost. prompt/completion are passed in (already resolved by the caller via
+// tokenCount, which handles the prompt_tokens/input_tokens aliasing) rather
+// than re-reading. Cached and cache_creation come from the OpenAI/Claude usage
+// fields; reasoning comes from completion_tokens_details.reasoning_tokens
+// (OpenAI o-series) or the top-level reasoning_tokens (translated formats).
+// Missing fields are 0 — the cost formula tolerates a partial breakdown.
+func extractTokens(body map[string]any, prompt, completion int) *pricing.Tokens {
+	usage, ok := body["usage"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	t := &pricing.Tokens{PromptTokens: prompt, CompletionTokens: completion}
+	// cached_tokens (OpenAI/Gemini canonical) or cache_read_input_tokens (Claude).
+	if n, ok := numericInt(usage["cached_tokens"]); ok {
+		t.CachedTokens = n
+	} else if n, ok := numericInt(usage["cache_read_input_tokens"]); ok {
+		t.CachedTokens = n
+	}
+	// cache_creation_input_tokens (Claude) or nested prompt_tokens_details.
+	if n, ok := numericInt(usage["cache_creation_input_tokens"]); ok {
+		t.CacheCreationTokens = n
+	} else if details, ok := usage["prompt_tokens_details"].(map[string]any); ok {
+		if n, ok := numericInt(details["cache_creation_tokens"]); ok {
+			t.CacheCreationTokens = n
+		}
+	}
+	// reasoning_tokens: top-level (translated formats) or nested
+	// completion_tokens_details.reasoning_tokens (OpenAI o-series).
+	if n, ok := numericInt(usage["reasoning_tokens"]); ok {
+		t.ReasoningTokens = n
+	} else if details, ok := usage["completion_tokens_details"].(map[string]any); ok {
+		if n, ok := numericInt(details["reasoning_tokens"]); ok {
+			t.ReasoningTokens = n
+		}
+	}
+	return t
 }
 
 // numericInt coerces the numeric value v to an int, accepting the full set of

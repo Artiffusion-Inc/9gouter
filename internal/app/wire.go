@@ -19,6 +19,7 @@ import (
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/migrations"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/sqlite"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/pricing"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/projectid"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
@@ -95,7 +96,12 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	// request flowing through chat is visible to the dashboard immediately.
 	usageTracker := managedashboard.NewEventTracker()
 
-	chatHandler := newProxyChatHandler(repos, proxyOpts, cfg, logger, usageTracker)
+	// Pricing resolver merges user overrides (kv) on top of the hard-coded
+	// MODEL_PRICING/PATTERN_PRICING fallback chain so saveUsage can compute the
+	// USD cost of each request (the legacy saveRequestUsage → calculateCost path).
+	pricingResolver := pricing.NewResolver(&pricing.RepoOverrides{Store: repos.Pricing})
+
+	chatHandler := newProxyChatHandler(repos, proxyOpts, cfg, logger, usageTracker, pricingResolver)
 	embeddingsHandler := newProxyEmbeddingsHandler(repos, proxyOpts, cfg, logger)
 	webFetchHandler := newProxyWebFetchHandler(cfg, logger)
 	videoHandler := newVideoProxyHandler(cfg, logger)
@@ -288,7 +294,7 @@ type proxyChatHandler struct {
 	logger  *slog.Logger
 }
 
-func newProxyChatHandler(r repos, opts proxy.Options, cfg config.Config, logger *slog.Logger, events proxychat.UsageEventPublisher) *proxyChatHandler {
+func newProxyChatHandler(r repos, opts proxy.Options, cfg config.Config, logger *slog.Logger, events proxychat.UsageEventPublisher, priceResolver *pricing.Resolver) *proxyChatHandler {
 	return &proxyChatHandler{
 		logger: logger,
 		handler: proxychat.New(proxychat.Dependencies{
@@ -299,6 +305,7 @@ func newProxyChatHandler(r repos, opts proxy.Options, cfg config.Config, logger 
 			Logger:     &slogLogger{logger},
 			Config:     cfg,
 			UsageEvents: events,
+			Pricing:     priceResolver,
 		}),
 	}
 }

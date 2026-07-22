@@ -61,6 +61,9 @@ type h2AgentSession struct {
 	pw   *io.PipeWriter
 	pr   *io.PipeReader
 	resp *http.Response
+	// cancel, when non-nil, cancels the session's derived context (the
+	// agentSessionTimeout ceiling). Invoked from Close.
+	cancel context.CancelFunc
 
 	mu       sync.Mutex
 	closed   bool
@@ -84,6 +87,7 @@ func OpenAgentSession(ctx context.Context, transport *http2.Transport, endpoint 
 	if transport == nil {
 		transport = &http2.Transport{}
 	}
+	var deferCancel context.CancelFunc
 	// Guard against a caller that hands us a context with no deadline: a hung
 	// AgentService stream would otherwise leak the pump goroutine forever.
 	// The proxychat stall timeout governs client-facing liveness separately;
@@ -92,7 +96,10 @@ func OpenAgentSession(ctx context.Context, transport *http2.Transport, endpoint 
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, agentSessionTimeout)
-		defer cancel()
+		// The derived ctx owns the request/stream lifetime, so cancel must outlive
+		// OpenAgentSession — a defer here would cancel the stream the moment Open
+		// returns. The session Close invokes it instead.
+		deferCancel = cancel
 	}
 	pr, pw := io.Pipe()
 	reqURL := *endpoint
@@ -142,6 +149,7 @@ func OpenAgentSession(ctx context.Context, transport *http2.Transport, endpoint 
 		pw:       pw,
 		pr:       pr,
 		resp:     resp,
+		cancel:   deferCancel,
 		readCh:   make(chan readResult, 1),
 		readDone: make(chan struct{}),
 	}
@@ -224,6 +232,12 @@ func (s *h2AgentSession) Close() error {
 	// Close the response body / h2 stream.
 	if s.resp != nil && s.resp.Body != nil {
 		_ = s.resp.Body.Close()
+	}
+	// Cancel the derived session context (the agentSessionTimeout ceiling),
+	// if one was created. Safe to call on a caller-supplied context's cancel
+	// only when Open created it (cancel == nil otherwise).
+	if s.cancel != nil {
+		s.cancel()
 	}
 	<-s.readDone
 	return nil

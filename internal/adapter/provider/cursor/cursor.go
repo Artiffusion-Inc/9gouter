@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"golang.org/x/net/http2"
+
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/base"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
@@ -12,6 +14,16 @@ import (
 // Executor extends BaseExecutor for Cursor.
 type Executor struct {
 	*base.BaseExecutor
+
+	// agentTransport, when non-nil, overrides the direct HTTP/2 transport used
+	// for the AgentService Run RPC. Tests inject an h2 transport whose
+	// DialTLSContext targets an in-process httptest server; production leaves it
+	// nil so OpenAgentSession uses a default direct transport.
+	agentTransport *http2.Transport
+	// agentBaseURL overrides the AgentService endpoint base URL
+	// (https://agent.api5.cursor.sh by default). Tests point this at an
+	// in-process h2 server.
+	agentBaseURL string
 }
 
 // New creates a Cursor executor.

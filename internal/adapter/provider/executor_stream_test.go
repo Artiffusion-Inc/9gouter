@@ -37,7 +37,9 @@ func TestProviderStreamingUsage(t *testing.T) {
 		{pid: "codebuddy-cn", creds: apiKeyCreds},
 		{pid: "codex", creds: apiKeyCreds},
 		{pid: "commandcode", creds: apiKeyCreds, serverFmt: "ndjson"},
-		{pid: "cursor", creds: domain.Credentials{APIKey: "sk-test-APIKEY", AccessToken: "tok-test-ACCESS", ProviderSpecificData: map[string]any{"machineId": "machine-123"}}},
+		// cursor is exercised by its own AgentService duplex test in the cursor
+		// package (execute_test.go); the generic mock-fetch harness below cannot
+		// target the h2-only agent.api5 Run RPC.
 		{pid: "gemini-cli", creds: oauthCreds},
 		{pid: "github", creds: oauthCreds},
 		{pid: "grok-cli", creds: oauthCreds},

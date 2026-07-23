@@ -270,13 +270,17 @@ func TestHeadroom_ProxyRoutes(t *testing.T) {
 	RegisterHeadroom(mux, deps)
 	ck := authCookie(t, deps.SessionStore.(*adapterauth.CookieStore))
 
+	// The proxy now reverse-proxies (481e7e46) and gates on a loopback viewer.
+	// Set a loopback Host so the LOCAL_ONLY gate passes for every method; the
+	// upstream is not running, so we assert the gate did not refuse (not 403).
 	for _, method := range []string{"GET", "POST", "PUT", "DELETE", "PATCH"} {
 		req := httptest.NewRequest(method, "/api/headroom/proxy/v1/something", nil)
+		req.Host = "localhost:20127"
 		req.Header.Set("Cookie", "auth_token="+ck)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s proxy status = %d, want 200; body=%s", method, rec.Code, rec.Body.String())
+		if rec.Code == http.StatusForbidden {
+			t.Fatalf("%s proxy gated as 403 for a loopback viewer: body=%s", method, rec.Body.String())
 		}
 	}
 }

@@ -115,12 +115,18 @@ func TestHeadroom_HappyPath(t *testing.T) {
 		}
 	}
 
+	// The proxy now reverse-proxies to the Headroom upstream (481e7e46) and
+	// gates on a loopback viewer (LOCAL_ONLY). Set a loopback Host so the gate
+	// passes; the upstream itself is not running in tests, so we assert only
+	// that the gate did not refuse (i.e. not 403). A 5xx means the proxy reached
+	// the build-target-URL stage and failed to dial the upstream — expected.
 	req := httptest.NewRequest("GET", "/api/headroom/proxy/foo/bar", nil)
+	req.Host = "localhost:20127"
 	req.Header.Set("Cookie", "auth_token="+ck)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("proxy status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	if rec.Code == http.StatusForbidden {
+		t.Fatalf("proxy gated as 403 for a loopback viewer: body=%s", rec.Body.String())
 	}
 }
 

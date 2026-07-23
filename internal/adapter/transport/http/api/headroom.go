@@ -272,7 +272,7 @@ type headroomStatusResponse struct {
 	CanStart   bool            `json:"canStart"`
 	ManagedPID any             `json:"managedPid"` // int|null
 	URL        string          `json:"url,omitempty"`
-	Version    any             `json:"version"`    // string|null
+	Version    any             `json:"version"` // string|null
 	Extras     map[string]bool `json:"extras,omitempty"`
 }
 
@@ -616,12 +616,10 @@ func (h *headroomHandler) restart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *headroomHandler) proxy(w http.ResponseWriter, r *http.Request) {
-	path := r.PathValue("path")
-	writeJSON(w, http.StatusOK, map[string]any{
-		"success": false,
-		"message": "Headroom proxy passthrough not available in Go build",
-		"path":    strings.TrimPrefix(path, "/"),
-	})
+	// Reverse-proxy to the Headroom dashboard (#2372 / 481e7e46). Implemented in
+	// headroom_proxy.go so this file stays focused on the process/management
+	// surface. The handler is method-dispatched by the mux registrations above.
+	proxyLocalOnly(w, r)
 }
 
 // managedPID reads headroom's pid file and verifies the process is alive.

@@ -15,9 +15,9 @@ import (
 
 // HeadroomStats mirrors the data returned by the Headroom /v1/compress endpoint.
 type HeadroomStats struct {
-	TokensBefore int `json:"tokens_before"`
-	TokensAfter  int `json:"tokens_after"`
-	TokensSaved  int `json:"tokens_saved"`
+	TokensBefore int               `json:"tokens_before"`
+	TokensAfter  int               `json:"tokens_after"`
+	TokensSaved  int               `json:"tokens_saved"`
 	Messages     []HeadroomMessage `json:"messages,omitempty"`
 }
 
@@ -139,15 +139,15 @@ func CompressWithHeadroom(body map[string]any, cfg HeadroomConfig) (*HeadroomSta
 }
 
 func compressClaudeViaHeadroom(body map[string]any, cfg HeadroomConfig, client *http.Client, timeoutMs int) (*HeadroomStats, error) {
-	return nil, fmt.Errorf("claude translator not available in this package")
+	return compressClaudeViaHeadroomImpl(body, cfg, client, timeoutMs)
 }
 
 func compressResponsesViaHeadroom(body map[string]any, cfg HeadroomConfig, client *http.Client, timeoutMs int) (*HeadroomStats, error) {
-	return nil, fmt.Errorf("responses translator not available in this package")
+	return compressResponsesViaHeadroomImpl(body, cfg, client, timeoutMs)
 }
 
 func compressKiroViaHeadroom(body map[string]any, cfg HeadroomConfig, client *http.Client, timeoutMs int) (*HeadroomStats, error) {
-	return nil, fmt.Errorf("kiro translator not available in this package")
+	return compressKiroViaHeadroomImpl(body, cfg, client, timeoutMs)
 }
 
 func messagesToAny(msgs []HeadroomMessage) []any {
@@ -240,6 +240,15 @@ func messagePayload(body map[string]any) []any {
 	}
 	if i, ok := body["input"].([]any); ok {
 		return i
+	}
+	// Kiro carries its conversation in conversationState; project it to OpenAI
+	// messages so the size snapshot reflects the compressible payload (#2488).
+	if projection := collectKiroHeadroomMessages(body); projection != nil {
+		out := make([]any, len(projection.messages))
+		for i, m := range projection.messages {
+			out[i] = m
+		}
+		return out
 	}
 	return nil
 }

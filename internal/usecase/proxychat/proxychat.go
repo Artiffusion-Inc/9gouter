@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/paramsupport"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/pricing"
 	reg "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
@@ -190,6 +191,12 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	// so clamp "max"→"xhigh" here for any OpenAI-native target format, mirroring
 	// FORMAT_TO_NATIVE (openai/openai-responses/codex all map to "openai").
 	clampReasoningEffortForOpenAINative(bodyMap, targetFormat)
+
+	// Strip/clamp request params the upstream provider/model rejects, mirroring
+	// open-sse/translator/concerns/paramSupport.js stripUnsupportedParams
+	// (bbae990b / cfbdf060 / #1748 / #713 / #1926). Applied after translation so
+	// it sees the final upstream-bound body and model id.
+	paramsupport.StripUnsupportedParams(providerID, req.Model, bodyMap)
 
 	// Token-saver pipeline, gated by X-9Gouter-Token-Saver header.
 	tokenSaverEnabled := isTokenSaverEnabled(req.Headers, h.deps.Config)

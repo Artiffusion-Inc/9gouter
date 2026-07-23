@@ -250,9 +250,14 @@ func (r *UsageRepo) aggregatesFromHistory(ctx context.Context, period string) (u
 		if rec.ConnectionID != "" {
 			addCounter(&agg.ByAccount, rec.ConnectionID, usage.Counter{Requests: 1, PromptTokens: prompt, CompletionTokens: completion, Cost: rec.Cost})
 		}
+		// Port upstream d8c2298d (security audit): the byApiKey JSON object is
+		// keyed by the api key — mask it so the raw key never leaks as a JSON
+		// key in the /api/usage/history response.
 		apiKeyKey := rec.APIKey
 		if apiKeyKey == "" {
 			apiKeyKey = "local-no-key"
+		} else {
+			apiKeyKey = maskAPIKey(apiKeyKey)
 		}
 		addCounter(&agg.ByAPIKey, apiKeyKey, usage.Counter{Requests: 1, PromptTokens: prompt, CompletionTokens: completion, Cost: rec.Cost})
 		epKey := rec.Endpoint
@@ -378,14 +383,14 @@ type tokenBlob struct {
 }
 
 type dayAggregate struct {
-	Requests         int               `json:"requests"`
-	PromptTokens     int               `json:"promptTokens"`
-	CompletionTokens int               `json:"completionTokens"`
-	CachedTokens     int               `json:"cachedTokens"`
-	Cost             float64           `json:"cost"`
-	StreamMsTotal    int               `json:"streamMsTotal"`
-	TpsCount         int               `json:"tpsCount"`
-	TpsSum           float64           `json:"tpsSum"`
+	Requests         int                `json:"requests"`
+	PromptTokens     int                `json:"promptTokens"`
+	CompletionTokens int                `json:"completionTokens"`
+	CachedTokens     int                `json:"cachedTokens"`
+	Cost             float64            `json:"cost"`
+	StreamMsTotal    int                `json:"streamMsTotal"`
+	TpsCount         int                `json:"tpsCount"`
+	TpsSum           float64            `json:"tpsSum"`
 	ByProvider       map[string]counter `json:"byProvider"`
 	ByModel          map[string]counter `json:"byModel"`
 	ByAccount        map[string]counter `json:"byAccount"`
@@ -437,9 +442,13 @@ func aggregateEntryToDay(day *dayAggregate, rec usage.UsageRecord) {
 		addCounterMap(&day.ByAccount, rec.ConnectionID, counter{1, prompt, completion, cached, cost, valueOrZeroF(rec.TPS), countF(rec.TPS)})
 	}
 
+	// Port upstream d8c2298d (security audit): mask the api key used as the
+	// byApiKey JSON object key in usageDaily rollups.
 	apiKeyKey := rec.APIKey
 	if apiKeyKey == "" {
 		apiKeyKey = "local-no-key"
+	} else {
+		apiKeyKey = maskAPIKey(apiKeyKey)
 	}
 	addCounterMap(&day.ByAPIKey, apiKeyKey, counter{1, prompt, completion, cached, cost, valueOrZeroF(rec.TPS), countF(rec.TPS)})
 
@@ -544,4 +553,17 @@ func upper(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// maskAPIKey collapses a raw api key to a non-reversible prefix for use as a
+// JSON object key, mirroring managedashboard.maskApiKey (upstream d8c2298d).
+// The raw key must never leak as a JSON key in usage aggregate responses.
+func maskAPIKey(key string) string {
+	if key == "" {
+		return ""
+	}
+	if len(key) <= 8 {
+		return string(key[0]) + "***"
+	}
+	return key[:8] + "***"
 }

@@ -169,6 +169,11 @@ func TestV1WebFetch_SSRFBlocked(t *testing.T) {
 		"http://192.168.1.1/",
 		"file:///etc/passwd",
 		"ftp://example.com/",
+		// Port upstream GHSA-hj98-rc6w-m8cw (8ac631d6): IPv4-mapped IPv6 must
+		// not bypass the SSRF filter.
+		"http://[::ffff:127.0.0.1]/admin",
+		"http://[::ffff:169.254.169.254]/latest/meta-data/",
+		"http://[::FFFF:10.0.0.1]/internal",
 	}
 	stub := &stubWebFetchHandler{}
 	mux, _ := newWebFetchMux(t, stub)
@@ -291,3 +296,57 @@ var _ = domainProv.Credentials{}
 
 // webfetch import marker (Params is constructed in tests).
 var _ = webfetch.Params{}
+
+// TestSSRFIPv4MappedIPv6 pins upstream GHSA-hj98-rc6w-m8cw (8ac631d6): the
+// SSRF guard must normalize ::ffff:<ipv4> back to the IPv4 path so an
+// attacker cannot bypass the private-range filter with a mapped address.
+func TestSSRFIPv4MappedIPv6(t *testing.T) {
+	blocked := []string{
+		"::ffff:127.0.0.1",
+		"::ffff:10.0.0.1",
+		"::ffff:192.168.1.1",
+		"::ffff:169.254.169.254",
+		"::FFFF:172.16.0.1", // case-insensitive prefix
+		"[::ffff:127.0.0.1]",
+	}
+	for _, h := range blocked {
+		if !isPrivateOrLoopbackIP(h) {
+			t.Errorf("isPrivateOrLoopbackIP(%q) = false, want true (IPv4-mapped bypass)", h)
+		}
+	}
+	// A real IPv4-mapped *public* address must NOT be blocked (only the
+	// private IPv4 part matters, not the mapping itself).
+	if isPrivateOrLoopbackIP("::ffff:8.8.8.8") {
+		t.Errorf("isPrivateOrLoopbackIP(::ffff:8.8.8.8) = true, want false (public IPv4 mapped)")
+	}
+	// Non-mapped IPv6 and hostnames must be unaffected.
+	if isPrivateOrLoopbackIP("::ffff:") {
+		t.Errorf("bare ::ffff: must not be treated as IPv4-mapped")
+	}
+	if isPrivateOrLoopbackIP("fffe::1") {
+		t.Errorf("fffe::1 must not be blocked (non-private, non-mapped)")
+	}
+}
+
+func TestStripIPv4MappedIPv6(t *testing.T) {
+	cases := []struct {
+		in     string
+		want   string
+		wantOK bool
+	}{
+		{"::ffff:127.0.0.1", "127.0.0.1", true},
+		{"::FFFF:10.0.0.1", "10.0.0.1", true},
+		{"::ffff:8.8.8.8", "8.8.8.8", true},
+		{"::ffff:256.1.1.1", "", false}, // invalid octet
+		{"::ffff:1.2.3", "", false},     // not a quad
+		{"::ffff:", "", false},          // empty
+		{"fe80::1", "", false},          // plain IPv6, not mapped
+		{"127.0.0.1", "", false},        // plain IPv4, not mapped
+	}
+	for _, c := range cases {
+		got, ok := stripIPv4MappedIPv6(c.in)
+		if ok != c.wantOK || (ok && got != c.want) {
+			t.Errorf("stripIPv4MappedIPv6(%q) = (%q,%v), want (%q,%v)", c.in, got, ok, c.want, c.wantOK)
+		}
+	}
+}

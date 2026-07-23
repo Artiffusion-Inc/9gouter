@@ -205,6 +205,12 @@ func (e *fetchErr) Error() string { return e.msg }
 func isPrivateOrLoopbackIP(host string) bool {
 	// Strip zone/brackets for IPv6 literal forms.
 	host = strings.Trim(host, "[]")
+	// Port upstream GHSA-hj98-rc6w-m8cw (8ac631d6): normalize IPv4-mapped IPv6
+	// (::ffff:<ipv4>) back to the IPv4 path, otherwise the SSRF filter is
+	// bypassed by writing e.g. http://[::ffff:127.0.0.1]/.
+	if v4, ok := stripIPv4MappedIPv6(host); ok {
+		host = v4
+	}
 	// Crude prefix checks covering the common ranges; the upstream fetch still
 	// resolves DNS, this is a belt-and-braces guard against literal-IP SSRF.
 	switch {
@@ -216,6 +222,50 @@ func isPrivateOrLoopbackIP(host string) bool {
 	case host == "::1" || strings.HasPrefix(host, "fe80:") || strings.HasPrefix(host, "fc") || strings.HasPrefix(host, "fd"):
 	default:
 		return false
+	}
+	return true
+}
+
+// stripIPv4MappedIPv6 extracts the IPv4 part of an IPv4-mapped IPv6 address
+// (e.g. "::ffff:127.0.0.1" → "127.0.0.1"). Returns ok=false when the host is
+// not in that form. Ports isBlockedIpv6 from src/shared/utils/ssrfGuard.js
+// (upstream 8ac631d6).
+func stripIPv4MappedIPv6(host string) (string, bool) {
+	// Lowercase, drop any (possibly bracketed) "::ffff:" prefix.
+	h := strings.ToLower(host)
+	const prefix = "::ffff:"
+	if !strings.HasPrefix(h, prefix) {
+		return "", false
+	}
+	v4 := host[len(prefix):]
+	// Must be a dotted-quad IPv4 literal; reject anything else so we don't
+	// misclassify a plain IPv6 host that merely starts with ffff:.
+	if !isDottedQuad(v4) {
+		return "", false
+	}
+	return v4, true
+}
+
+// isDottedQuad reports whether s is a canonical a.b.c.d IPv4 literal.
+func isDottedQuad(s string) bool {
+	parts := strings.Split(s, ".")
+	if len(parts) != 4 {
+		return false
+	}
+	for _, p := range parts {
+		if p == "" || len(p) > 3 {
+			return false
+		}
+		n := 0
+		for _, ch := range p {
+			if ch < '0' || ch > '9' {
+				return false
+			}
+			n = n*10 + int(ch-'0')
+		}
+		if n > 255 {
+			return false
+		}
 	}
 	return true
 }

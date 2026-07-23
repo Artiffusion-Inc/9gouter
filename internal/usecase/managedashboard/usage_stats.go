@@ -52,13 +52,13 @@ type PendingTracker interface {
 // statsBucket is one accumulation bucket for the byModel/byAccount/byApiKey/
 // byEndpoint/byProvider maps. It mirrors the JS counter shape exactly.
 type statsBucket struct {
-	Requests         int     `json:"requests"`
-	PromptTokens     int     `json:"promptTokens"`
-	CompletionTokens int     `json:"completionTokens"`
-	CachedTokens     int     `json:"cachedTokens"`
-	Cost             float64 `json:"cost"`
-	TpsSum           float64 `json:"tpsSum"`
-	TpsCount         int     `json:"tpsCount"`
+	Requests         int      `json:"requests"`
+	PromptTokens     int      `json:"promptTokens"`
+	CompletionTokens int      `json:"completionTokens"`
+	CachedTokens     int      `json:"cachedTokens"`
+	Cost             float64  `json:"cost"`
+	TpsSum           float64  `json:"tpsSum"`
+	TpsCount         int      `json:"tpsCount"`
 	AvgTps           *float64 `json:"avgTps"`
 }
 
@@ -81,20 +81,20 @@ func (s *UsageService) StatsWithMeta(ctx context.Context, opts FullStatsOptions)
 	}
 
 	stats := map[string]any{
-		"totalRequests":        0,
-		"totalPromptTokens":    0,
+		"totalRequests":         0,
+		"totalPromptTokens":     0,
 		"totalCompletionTokens": 0,
-		"totalCachedTokens":    0,
-		"totalCost":            0.0,
-		"byProvider":           map[string]map[string]any{},
-		"byModel":              map[string]map[string]any{},
-		"byAccount":            map[string]map[string]any{},
-		"byApiKey":             map[string]map[string]any{},
-		"byEndpoint":           map[string]map[string]any{},
-		"last10Minutes":        []map[string]any{},
-		"activeRequests":       []map[string]any{},
-		"recentRequests":       []map[string]any{},
-		"errorProvider":        "",
+		"totalCachedTokens":     0,
+		"totalCost":             0.0,
+		"byProvider":            map[string]map[string]any{},
+		"byModel":               map[string]map[string]any{},
+		"byAccount":             map[string]map[string]any{},
+		"byApiKey":              map[string]map[string]any{},
+		"byEndpoint":            map[string]map[string]any{},
+		"last10Minutes":         []map[string]any{},
+		"activeRequests":        []map[string]any{},
+		"recentRequests":        []map[string]any{},
+		"errorProvider":         "",
 	}
 
 	now := time.Now()
@@ -186,9 +186,9 @@ func (s *UsageService) StatsWithMeta(ctx context.Context, opts FullStatsOptions)
 		accBucket(byModel, modelKey, prompt, completion, cached, cost, tps)
 		if _, ok := modelMeta[modelKey]; !ok {
 			modelMeta[modelKey] = map[string]any{
-				"rawModel":  rec.Model,
-				"provider":  providerDisplay,
-				"lastUsed":  formatRFC3339(rec.Timestamp),
+				"rawModel": rec.Model,
+				"provider": providerDisplay,
+				"lastUsed": formatRFC3339(rec.Timestamp),
 			}
 		}
 		updateLastUsed(lastUsed, modelKey, rec.Timestamp)
@@ -210,12 +210,19 @@ func (s *UsageService) StatsWithMeta(ctx context.Context, opts FullStatsOptions)
 			updateLastUsed(lastUsed, acctKey, rec.Timestamp)
 		}
 
-		// byApiKey — key "apiKey|model|provider" (matches JS akModelKey)
+		// byApiKey — key "apiKey|model|provider" (matches JS akModelKey).
+		// Port upstream d8c2298d (security audit): the map key must be the
+		// masked apiKey, not the raw value, otherwise the raw api key leaks as
+		// a JSON object key in the byApiKey response bucket.
 		apiKeyVal := rec.APIKey
 		if apiKeyVal == "" {
 			apiKeyVal = "local-no-key"
 		}
-		akKey := apiKeyVal + "|" + rec.Model + "|" + nonEmpty(rec.Provider, "unknown")
+		maskedKey := apiKeyVal
+		if rec.APIKey != "" {
+			maskedKey = maskApiKey(rec.APIKey)
+		}
+		akKey := maskedKey + "|" + rec.Model + "|" + nonEmpty(rec.Provider, "unknown")
 		accBucket(byApiKey, akKey, prompt, completion, cached, cost, tps)
 		if _, ok := modelMeta[akKey]; !ok {
 			kInfo, hasKey := apiKeyMap[rec.APIKey]
@@ -245,10 +252,10 @@ func (s *UsageService) StatsWithMeta(ctx context.Context, opts FullStatsOptions)
 		accBucket(byEndpoint, epKey, prompt, completion, cached, cost, tps)
 		if _, ok := modelMeta[epKey]; !ok {
 			modelMeta[epKey] = map[string]any{
-				"rawModel":  rec.Model,
-				"provider":  providerDisplay,
-				"endpoint":  endpoint,
-				"lastUsed":  formatRFC3339(rec.Timestamp),
+				"rawModel": rec.Model,
+				"provider": providerDisplay,
+				"endpoint": endpoint,
+				"lastUsed": formatRFC3339(rec.Timestamp),
 			}
 		}
 		updateLastUsed(lastUsed, epKey, rec.Timestamp)

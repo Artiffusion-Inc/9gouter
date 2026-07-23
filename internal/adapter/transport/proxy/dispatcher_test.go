@@ -38,6 +38,13 @@ func TestNormalizeProxyURL(t *testing.T) {
 		{"socks5", "socks5://192.168.1.1:1080", false, "socks5", "192.168.1.1", "1080", ""},
 		{"empty", "", true, "", "", "", ""},
 		{"unsupported", "ftp://1.2.3.4:21", true, "", "", "", ""},
+		// Port upstream d8c2298d (security audit): shell metacharacters and
+		// CR/LF must be rejected to prevent CRLF injection in CONNECT and
+		// env-write injection.
+		{"crlf injection", "http://127.0.0.1:8080\r\nX-Inject: yes", true, "", "", "", ""},
+		{"lf in host", "http://127.0.0.1\n:8080", true, "", "", "", ""},
+		{"backtick", "http://`id`:8080", true, "", "", "", ""},
+		{"dollar", "http://$HOME:8080", true, "", "", "", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -37,6 +37,14 @@ func NormalizeProxyURL(raw string) (*ParsedURL, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("empty proxy URL")
 	}
+	// Port upstream d8c2298d (security audit): reject shell metacharacters and
+	// line breaks before the URL is parsed/used. url.Parse is tolerant of
+	// control characters, so a raw value containing CR/LF could otherwise be
+	// smuggled into a CONNECT request line (CRLF injection), and `` $ `` would
+	// matter if a value were ever written to an environment string.
+	if strings.ContainsAny(raw, "\n\r`$") {
+		return nil, fmt.Errorf("proxy URL contains forbidden characters")
+	}
 	// Bare host:port inputs (e.g. "127.0.0.1:8080") parse as a URL path and
 	// produce no scheme; prepend http:// for those. Inputs with an unsupported
 	// scheme (e.g. "ftp://...") must still be rejected.

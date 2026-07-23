@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/capabilities"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
@@ -158,17 +159,19 @@ const (
 
 // kiroContextWindow resolves the model context window for usage synthesis,
 // mirroring getCapabilitiesForModel("kiro", capabilityModel).contextWindow || 200000
-// (kiro.js:581). The Go rewrite has no shared capabilities table, so the
-// per-credential contextWindow override wins, then a hardcoded GPT-5.6 = 272000
-// (KIRO_GPT_5_6_CAPABILITIES), then the 200000 default.
+// (kiro.js:581, upstream eb9728d0/49a3ec7a/a5363b83/5041494e). The
+// per-credential contextWindow override wins; otherwise the shared capabilities
+// table (internal/adapter/capabilities) resolves the provider+model — covering
+// the GPT-5.6 family (272000 / 372000-sol) and Claude Opus/Sonnet 4.6-4.8/5
+// (1000000) — falling back to the 200000 default.
 func kiroContextWindow(upstreamModel string, creds provider.Credentials) int {
 	if creds.ProviderSpecificData != nil {
 		if v, ok := creds.ProviderSpecificData["contextWindow"].(float64); ok && v > 0 {
 			return int(v)
 		}
 	}
-	if strings.Contains(upstreamModel, "gpt-5.6") || strings.Contains(upstreamModel, "gpt-5-6") {
-		return 272000
+	if cw := capabilities.GetCapabilitiesForModel("kiro", upstreamModel).ContextWindow; cw > 0 {
+		return cw
 	}
 	return 200000
 }

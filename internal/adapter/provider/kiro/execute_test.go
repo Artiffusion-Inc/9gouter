@@ -191,17 +191,31 @@ func TestResolveKiroUpstreamModel(t *testing.T) {
 }
 
 func TestKiroContextWindow(t *testing.T) {
-	// Default.
+	// Unknown model falls back to Default (200000).
+	if w := kiroContextWindow("some-unknown-model", domain.Credentials{}); w != 200000 {
+		t.Errorf("unknown model contextWindow=%d want 200000", w)
+	}
+	// claude-sonnet-4.5 has no exact/pattern ContextWindow overlay → Default 200000.
 	if w := kiroContextWindow("claude-sonnet-4.5", domain.Credentials{}); w != 200000 {
-		t.Errorf("default contextWindow=%d want 200000", w)
+		t.Errorf("claude-sonnet-4.5 contextWindow=%d want 200000 (no overlay)", w)
 	}
-	// GPT-5.6 = 272000.
-	if w := kiroContextWindow("gpt-5.6", domain.Credentials{}); w != 272000 {
-		t.Errorf("gpt-5.6 contextWindow=%d want 272000", w)
+	// Kiro provider override: gpt-5.6-sol = 272000 (kiroGPT56), the exact-id win
+	// over the *gpt-5* pattern (400000). Ports eb9728d0/5041494e.
+	if w := kiroContextWindow("gpt-5.6-sol", domain.Credentials{}); w != 272000 {
+		t.Errorf("gpt-5.6-sol contextWindow=%d want 272000 (kiro override)", w)
 	}
-	// Per-credential override wins.
+	// Bare gpt-5.6 has no kiro exact entry → falls through to *gpt-5* pattern
+	// (400000), matching upstream capabilities.js behaviour.
+	if w := kiroContextWindow("gpt-5.6", domain.Credentials{}); w != 400000 {
+		t.Errorf("gpt-5.6 contextWindow=%d want 400000 (gpt-5 pattern)", w)
+	}
+	// Claude Opus 4.8 exact id → 1M context (ports eb9728d0).
+	if w := kiroContextWindow("claude-opus-4.8", domain.Credentials{}); w != 1000000 {
+		t.Errorf("claude-opus-4.8 contextWindow=%d want 1000000", w)
+	}
+	// Per-credential override always wins.
 	creds := domain.Credentials{ProviderSpecificData: map[string]any{"contextWindow": float64(500000)}}
-	if w := kiroContextWindow("gpt-5.6", creds); w != 500000 {
+	if w := kiroContextWindow("gpt-5.6-sol", creds); w != 500000 {
 		t.Errorf("override contextWindow=%d want 500000", w)
 	}
 }

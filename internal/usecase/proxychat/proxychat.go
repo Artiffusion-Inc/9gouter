@@ -182,6 +182,15 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	// "ollama/gemma3:4b" in the body and the upstream 404s with "model not found".
 	bodyMap["model"] = req.Model
 
+	// Port upstream 28894096: OpenAI's reasoning_effort enum caps at "xhigh" (no
+	// "max"). Claude Code sends "max" (its top level); without a clamp, OpenAI
+	// upstreams reject with HTTP 400 "max effort not support". The JS pipeline
+	// applies this in thinkingUnified.applyFormat case "openai". Go has no
+	// central applyThinking — passthrough bodies reach upstream byte-for-byte —
+	// so clamp "max"→"xhigh" here for any OpenAI-native target format, mirroring
+	// FORMAT_TO_NATIVE (openai/openai-responses/codex all map to "openai").
+	clampReasoningEffortForOpenAINative(bodyMap, targetFormat)
+
 	// Token-saver pipeline, gated by X-9Gouter-Token-Saver header.
 	tokenSaverEnabled := isTokenSaverEnabled(req.Headers, h.deps.Config)
 	var headroomStats *headroomResult
@@ -549,6 +558,35 @@ func isTokenSaverEnabled(headers http.Header, cfg config.Config) bool {
 	}
 	v := strings.ToLower(headers.Get(headerName))
 	return v != "off"
+}
+
+// openAINativeThinkingFormats are the target formats whose provider-native
+// thinking representation is the OpenAI reasoning_effort enum, mirroring the
+// JS FORMAT_TO_NATIVE entries that map to "openai".
+var openAINativeThinkingFormats = map[format.Format]bool{
+	format.Openai:          true,
+	format.OpenaiResponses: true,
+	format.OpenaiResponse:  true,
+	format.Codex:           true,
+}
+
+// clampReasoningEffortForOpenAINative clamps a top-level reasoning_effort of
+// "max" down to "xhigh" for OpenAI-native target formats. OpenAI's
+// reasoning_effort enum has no "max" level (caps at "xhigh") and rejects "max"
+// with HTTP 400. Other levels pass through unchanged. This ports upstream
+// 28894096 (thinkingUnified.applyFormat case "openai"), applied here because Go
+// has no central applyThinking and passthrough bodies reach upstream verbatim.
+func clampReasoningEffortForOpenAINative(body map[string]any, targetFormat format.Format) {
+	if !openAINativeThinkingFormats[targetFormat] {
+		return
+	}
+	re, ok := body["reasoning_effort"].(string)
+	if !ok {
+		return
+	}
+	if strings.EqualFold(re, "max") {
+		body["reasoning_effort"] = "xhigh"
+	}
 }
 
 func isThinkingEnabled(body json.RawMessage, headers http.Header, model string) bool {

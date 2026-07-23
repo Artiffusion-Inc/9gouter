@@ -49,6 +49,20 @@ func (e *Executor) TransformRequest(model string, body json.RawMessage, stream b
 		delete(m, "reasoning_effort")
 		delete(m, "reasoning")
 		delete(m, "thinking")
+	} else {
+		// Port upstream 8c068a1f: Kimi/kimchi ride SGLang backends whose
+		// reasoning_effort enum only accepts low/medium/high/max. The client
+		// (or an OpenAI-format upstream) may send auto/minimal/xhigh, which
+		// SGLang rejects with HTTP 400. Normalize to the SGLang whitelist:
+		// auto→high, minimal→low, xhigh→max, {low,medium,high,max} pass
+		// through, any other value is dropped so the backend doesn't 400.
+		if raw, ok := m["reasoning_effort"].(string); ok && raw != "" {
+			if norm, ok := toKimiReasoningEffort(raw); ok {
+				m["reasoning_effort"] = norm
+			} else {
+				delete(m, "reasoning_effort")
+			}
+		}
 	}
 
 	if messages, ok := m["messages"].([]any); ok {
@@ -87,4 +101,23 @@ func (e *Executor) TransformRequest(model string, body json.RawMessage, stream b
 func isAnthropicBacked(model string) bool {
 	m := strings.ToLower(model)
 	return strings.Contains(m, "claude") || strings.Contains(m, "anthropic")
+}
+
+// toKimiReasoningEffort normalizes a client reasoning_effort to the Kimi/kimchi
+// SGLang backend enum {low, medium, high, max}, mirroring upstream 8c068a1f
+// (thinkingUnified.toKimiReasoningEffort). Returns ok=false for values outside
+// the whitelist so the caller drops the field instead of sending a value the
+// backend rejects.
+func toKimiReasoningEffort(level string) (string, bool) {
+	switch strings.ToLower(level) {
+	case "auto":
+		return "high", true
+	case "minimal":
+		return "low", true
+	case "xhigh":
+		return "max", true
+	case "low", "medium", "high", "max":
+		return strings.ToLower(level), true
+	}
+	return "", false
 }

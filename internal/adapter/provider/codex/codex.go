@@ -132,7 +132,13 @@ func (e *Executor) TransformRequest(model string, body json.RawMessage, stream b
 	if reasoning, ok := m["reasoning"].(map[string]any); !ok || reasoning == nil {
 		m["reasoning"] = map[string]any{"effort": effortOrDefault(effort, "low"), "summary": "auto"}
 	} else {
-		if reasoning["effort"] == nil && reasoning["effort"] == "" {
+		// 0c55d49a: normalize reasoning.effort max → xhigh (codex-only; the
+		// OpenAI Responses API rejects "max"). Previously this branch left
+		// effort untouched and the guard `effort == nil && effort == ""`
+		// could never be true, so an explicit "max" was forwarded verbatim.
+		if eff, _ := reasoning["effort"].(string); eff != "" {
+			reasoning["effort"] = normalizeReasoningEffort(eff)
+		} else {
 			reasoning["effort"] = effortOrDefault(effort, "low")
 		}
 		if reasoning["summary"] == nil || reasoning["summary"] == "" {
@@ -157,6 +163,16 @@ func (e *Executor) TransformRequest(model string, body json.RawMessage, stream b
 		}
 	}
 
+	// 0c55d49a: map service_tier=fast → priority; drop unsupported (non-priority)
+	// tiers so Codex does not 400 with routing_unsupported.
+	if tier, ok := m["service_tier"].(string); ok {
+		if tier == "fast" {
+			m["service_tier"] = "priority"
+		} else if tier != "priority" {
+			delete(m, "service_tier")
+		}
+	}
+
 	// Strip unsupported params.
 	for _, key := range []string{"temperature", "top_p", "frequency_penalty", "presence_penalty", "logprobs", "top_logprobs", "n", "seed", "max_tokens", "max_completion_tokens", "max_output_tokens", "user", "prompt_cache_retention", "metadata", "stream_options", "safety_identifier", "previous_response_id"} {
 		delete(m, key)
@@ -173,6 +189,17 @@ func effortOrDefault(v, def string) string {
 	if v == "" {
 		return def
 	}
+	if v == "max" {
+		return "xhigh"
+	}
+	return v
+}
+
+// normalizeReasoningEffort mirrors normalizeReasoningEffort in
+// open-sse/executors/codex.js (0c55d49a): the Codex/OpenAI Responses API caps
+// reasoning effort at xhigh and rejects "max", so clamp max → xhigh; every
+// other value passes through unchanged.
+func normalizeReasoningEffort(v string) string {
 	if v == "max" {
 		return "xhigh"
 	}

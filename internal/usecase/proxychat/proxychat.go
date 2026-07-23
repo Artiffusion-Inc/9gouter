@@ -188,7 +188,23 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	// copied model names (e.g. "claude-opus-4-8(high)"); strip it from the
 	// upstream body.model so providers no longer reject the request for an
 	// unknown model id. chatCore.js wraps the assignment in stripThinkingSuffix.
-	bodyMap["model"] = thinking.StripThinkingSuffix(req.Model)
+	baseModel := thinking.StripThinkingSuffix(req.Model)
+	bodyMap["model"] = baseModel
+
+	// Port upstream 940a35e0 (blackbox catalog overhaul): a catalog entry may
+	// declare an upstreamModelId that differs from its id (blackbox exposes
+	// "claude-opus-4.8" but the upstream expects "blackboxai/anthropic/
+	// claude-opus-4.8"). The JS chat path runs getModelUpstreamId before the
+	// upstream call; Go has no central applyFormat, so remap here after the
+	// suffix strip. UpstreamModelID re-appends the "(level)" suffix so the
+	// request keeps the UI's forced level on the resolved upstream id. When
+	// the provider has no catalog mapping for this model, UpstreamModelID
+	// returns the input unchanged — compare against the raw req.Model (not
+	// the suffix-stripped baseModel) so a no-op remap does not re-append the
+	// suffix the strip above just removed.
+	if upstream := reg.UpstreamModelID(providerID, req.Model); upstream != "" && upstream != req.Model {
+		bodyMap["model"] = upstream
+	}
 
 	// Port upstream 28894096: OpenAI's reasoning_effort enum caps at "xhigh" (no
 	// "max"). Claude Code sends "max" (its top level); without a clamp, OpenAI

@@ -142,3 +142,58 @@ func TestHandle_NoSuffixLeavesModelUnchanged(t *testing.T) {
 		t.Fatalf("upstream body.model = %q, want %q", gotModel, "gpt-4")
 	}
 }
+
+// TestHandle_BlackboxUpstreamModelRemap ports the 940a35e0 blackbox catalog
+// overhaul: a catalog entry's upstreamModelId is remapped onto the upstream
+// body.model before the call (blackbox "claude-opus-4.8" → "blackboxai/
+// anthropic/claude-opus-4.8"), and a trailing "(level)" suffix survives the
+// remap so the UI's forced level reaches the upstream.
+func TestHandle_BlackboxUpstreamModelRemap(t *testing.T) {
+	jsonBody := `{"id":"cmpl-x","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
+	exec := &capturingExecutor{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(bytes.NewReader([]byte(jsonBody))),
+		},
+	}
+
+	h := New(Dependencies{
+		Registry:   func(id string) (DomainProvider, error) { return &capturingProvider{id: "blackbox", exec: exec}, nil },
+		UsageRepo:  &inMemoryUsageRepo{},
+		StreamPipe: fakeStreamPiper{},
+		JSONToSSE:  fakeJSONToSSE{},
+		Config:     config.Config{StreamStallTimeout: config.DurationMs(180 * time.Second), StreamStallTimeoutReasoning: config.DurationMs(600 * time.Second), StreamReadinessMaxTimeout: config.DurationMs(900 * time.Second)},
+	})
+
+	cases := []struct {
+		name, model, want string
+	}{
+		{"bare", "claude-opus-4.8", "blackboxai/anthropic/claude-opus-4.8"},
+		{"with-suffix", "claude-opus-4.8(high)", "blackboxai/anthropic/claude-opus-4.8(high)"},
+		{"gpt-bare", "gpt-5.4", "blackboxai/openai/gpt-5.4"},
+		{"unknown-noop", "no-such-model", "no-such-model"},
+	}
+	for _, c := range cases {
+		exec.gotBody = nil
+		req := Request{
+			Ctx:        context.Background(),
+			Endpoint:   "/v1/chat/completions",
+			Body:       json.RawMessage(`{"model":"` + c.model + `","messages":[{"role":"user","content":"hi"}]}`),
+			ProviderID: "blackbox",
+			Model:      c.model,
+			Stream:     false,
+		}
+		if _, err := h.Handle(context.Background(), req); err != nil {
+			t.Fatalf("%s: Handle error: %v", c.name, err)
+		}
+		var upstream map[string]any
+		if err := json.Unmarshal(exec.gotBody, &upstream); err != nil {
+			t.Fatalf("%s: unmarshal: %v (body=%s)", c.name, err, string(exec.gotBody))
+		}
+		gotModel, _ := upstream["model"].(string)
+		if gotModel != c.want {
+			t.Errorf("%s: upstream body.model = %q, want %q", c.name, gotModel, c.want)
+		}
+	}
+}

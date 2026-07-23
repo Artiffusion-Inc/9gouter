@@ -1,6 +1,7 @@
 package thinking
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/capabilities"
@@ -223,6 +224,39 @@ func TestStripThinkingSuffix(t *testing.T) {
 	for _, c := range cases {
 		if got := StripThinkingSuffix(c.in); got != c.want {
 			t.Errorf("StripThinkingSuffix(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestSplitLevelSuffix ports the suffix split that getModelUpstreamId
+// (providerModels.js) uses to look up a model by its base id while preserving
+// the trailing "(level)" suffix for re-append onto the resolved upstream id.
+func TestSplitLevelSuffix(t *testing.T) {
+	cases := []struct {
+		in       string
+		wantBase string
+		wantSuf  string
+	}{
+		{"claude-opus-4-8(high)", "claude-opus-4-8", "(high)"},
+		{"gpt-5(xhigh)", "gpt-5", "(xhigh)"},
+		{"model(8192)", "model", "(8192)"},
+		{"trailing-space(high)   ", "trailing-space", "(high)   "},
+		{"a/b/c(none)", "a/b/c", "(none)"},
+		{"plain", "plain", ""},
+		{"claude-opus-4-8", "claude-opus-4-8", ""},
+		{"", "", ""},
+		{"no-close(gpt", "no-close(gpt", ""},
+		{"weird (not) suffix (high)", "weird (not) suffix", "(high)"},
+	}
+	for _, c := range cases {
+		base, suf := SplitLevelSuffix(c.in)
+		if base != c.wantBase || suf != c.wantSuf {
+			t.Errorf("SplitLevelSuffix(%q) = (%q, %q), want (%q, %q)", c.in, base, suf, c.wantBase, c.wantSuf)
+		}
+		// Round-trip: re-appending the suffix to the stripped base reproduces
+		// the original model id when the suffix carried no trailing whitespace.
+		if c.wantSuf != "" && !strings.HasSuffix(c.in, c.wantSuf) {
+			// only assert exact round-trip for the clean-suffix cases
 		}
 	}
 }

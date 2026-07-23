@@ -114,3 +114,99 @@ func TestNvidiaCatalog(t *testing.T) {
 		}
 	}
 }
+
+// TestBlackboxCatalog ports the 940a35e0 blackbox catalog overhaul: the
+// registry exposes 10 latest models with an upstreamModelId prefix (the id
+// the dashboard shows vs the raw upstream id the request is remapped to).
+func TestBlackboxCatalog(t *testing.T) {
+	cat, ok := Catalog("blackbox")
+	if !ok {
+		t.Fatalf("Catalog(blackbox) returned false; want a static catalog")
+	}
+	want := map[string]string{
+		"claude-fable-5":    "blackboxai/anthropic/claude-fable-5",
+		"claude-opus-4.8":   "blackboxai/anthropic/claude-opus-4.8",
+		"claude-sonnet-4.6": "blackboxai/anthropic/claude-sonnet-4.6",
+		"gpt-5.5":           "blackboxai/openai/gpt-5.5",
+		"gpt-5.4-pro":       "blackboxai/openai/gpt-5.4-pro",
+		"gpt-5.4":           "blackboxai/openai/gpt-5.4",
+		"gpt-5.3-codex":     "blackboxai/openai/gpt-5.3-codex",
+		"gpt-5.4-nano":      "blackboxai/openai/gpt-5.4-nano",
+		"deepseek-v4-flash": "blackboxai/deepseek/deepseek-v4-flash",
+		"grok-4.3":          "blackboxai/x-ai/grok-4.3",
+	}
+	got := map[string]string{}
+	for _, m := range cat.Models {
+		got[m.ID] = m.UpstreamModelID
+	}
+	if len(cat.Models) != len(want) {
+		t.Errorf("blackbox catalog has %d models, want %d", len(cat.Models), len(want))
+	}
+	for id, upstream := range want {
+		if g, ok := got[id]; !ok {
+			t.Errorf("blackbox catalog missing model %q", id)
+		} else if g != upstream {
+			t.Errorf("blackbox model %q upstreamModelId = %q, want %q", id, g, upstream)
+		}
+	}
+}
+
+// TestKilocodeCatalog ports the 713c5637 kilocode catalog: 8 hardcoded
+// upstream OpenRouter models as a fallback (the live 334-model catalog requires
+// a resolver not yet ported).
+func TestKilocodeCatalog(t *testing.T) {
+	cat, ok := Catalog("kilocode")
+	if !ok {
+		t.Fatalf("Catalog(kilocode) returned false; want a static catalog")
+	}
+	wantIDs := map[string]bool{
+		"anthropic/claude-sonnet-4-20250514": true,
+		"anthropic/claude-opus-4-20250514":   true,
+		"google/gemini-2.5-pro":              true,
+		"google/gemini-2.5-flash":            true,
+		"openai/gpt-4.1":                     true,
+		"openai/o3":                          true,
+		"deepseek/deepseek-chat":             true,
+		"deepseek/deepseek-reasoner":         true,
+	}
+	if len(cat.Models) != len(wantIDs) {
+		t.Errorf("kilocode catalog has %d models, want %d", len(cat.Models), len(wantIDs))
+	}
+	for _, m := range cat.Models {
+		if !wantIDs[m.ID] {
+			t.Errorf("kilocode catalog unexpected model %q", m.ID)
+		}
+	}
+}
+
+// TestUpstreamModelID ports the getModelUpstreamId resolution
+// (providerModels.js): a catalog entry's upstreamModelId is returned when the
+// model id matches, with a "(level)" suffix re-appended; providers without a
+// catalog or models without an upstreamModelId return the input unchanged.
+func TestUpstreamModelID(t *testing.T) {
+	cases := []struct {
+		provider, model, want string
+	}{
+		// blackbox remaps to the prefixed upstream id.
+		{"blackbox", "claude-opus-4.8", "blackboxai/anthropic/claude-opus-4.8"},
+		{"blackbox", "gpt-5.4", "blackboxai/openai/gpt-5.4"},
+		// Suffix is stripped for lookup then re-appended.
+		{"blackbox", "claude-opus-4.8(high)", "blackboxai/anthropic/claude-opus-4.8(high)"},
+		{"blackbox", "gpt-5.4(xhigh)", "blackboxai/openai/gpt-5.4(xhigh)"},
+		// nvidia models have no upstreamModelId → unchanged (id + suffix).
+		{"nvidia", "z-ai/glm-5.2", "z-ai/glm-5.2"},
+		{"nvidia", "z-ai/glm-5.2(high)", "z-ai/glm-5.2(high)"},
+		// Model not in catalog → unchanged.
+		{"blackbox", "no-such-model", "no-such-model"},
+		// Provider with no catalog → unchanged.
+		{"openai", "gpt-5", "gpt-5"},
+		// Empty model → empty.
+		{"blackbox", "", ""},
+	}
+	for _, c := range cases {
+		got := UpstreamModelID(c.provider, c.model)
+		if got != c.want {
+			t.Errorf("UpstreamModelID(%q, %q) = %q, want %q", c.provider, c.model, got, c.want)
+		}
+	}
+}

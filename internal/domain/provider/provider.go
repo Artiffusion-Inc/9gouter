@@ -62,13 +62,18 @@ type Provider interface {
 }
 
 // Model is a static catalog entry for a provider, mirroring the JS registry
-// `models: [{ id, name, kind? }]` shape. Kind is the service kind
-// ("llm"|"image"|"tts"|"embedding"|"stt"|"imageToText"|"video"|"webSearch"|
-// "webFetch"); empty defaults to "llm".
+// `models: [{ id, name, kind?, upstreamModelId? }]` shape. Kind is the service
+// kind ("llm"|"image"|"tts"|"embedding"|"stt"|"imageToText"|"video"|"webSearch"|
+// "webFetch"); empty defaults to "llm". UpstreamModelID, when set, is the raw
+// upstream model id the request body.model must be remapped to before the
+// upstream call (e.g. blackbox exposes "claude-opus-4.8" but the upstream
+// expects "blackboxai/anthropic/claude-opus-4.8"). Empty => use ID verbatim.
 type Model struct {
 	ID   string
 	Name string
 	Kind string
+	// UpstreamModelID is the upstream model id to send when it differs from ID.
+	UpstreamModelID string
 }
 
 // ProviderCatalog is the static, connection-independent metadata for a

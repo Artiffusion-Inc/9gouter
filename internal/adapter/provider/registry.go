@@ -29,6 +29,7 @@ import (
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/qwen"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/vertex"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/xiaomi-tokenplan"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/thinking"
 	domain "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
 
@@ -122,6 +123,23 @@ var configs = map[string]base.Config{
 	},
 	"blackbox": {
 		BaseURL: "https://api.blackbox.ai/v1/chat/completions",
+		Catalog: domain.ProviderCatalog{
+			ID:           "blackbox",
+			Alias:        "blackbox",
+			ServiceKinds: []string{"llm"},
+			Models: []domain.Model{
+				{ID: "claude-fable-5", Name: "Claude Fable 5", UpstreamModelID: "blackboxai/anthropic/claude-fable-5"},
+				{ID: "claude-opus-4.8", Name: "Claude Opus 4.8", UpstreamModelID: "blackboxai/anthropic/claude-opus-4.8"},
+				{ID: "claude-sonnet-4.6", Name: "Claude Sonnet 4.6", UpstreamModelID: "blackboxai/anthropic/claude-sonnet-4.6"},
+				{ID: "gpt-5.5", Name: "GPT-5.5", UpstreamModelID: "blackboxai/openai/gpt-5.5"},
+				{ID: "gpt-5.4-pro", Name: "GPT-5.4 Pro", UpstreamModelID: "blackboxai/openai/gpt-5.4-pro"},
+				{ID: "gpt-5.4", Name: "GPT-5.4", UpstreamModelID: "blackboxai/openai/gpt-5.4"},
+				{ID: "gpt-5.3-codex", Name: "GPT-5.3 Codex", UpstreamModelID: "blackboxai/openai/gpt-5.3-codex"},
+				{ID: "gpt-5.4-nano", Name: "GPT-5.4 Nano", UpstreamModelID: "blackboxai/openai/gpt-5.4-nano"},
+				{ID: "deepseek-v4-flash", Name: "DeepSeek V4 Flash", UpstreamModelID: "blackboxai/deepseek/deepseek-v4-flash"},
+				{ID: "grok-4.3", Name: "Grok 4.3", UpstreamModelID: "blackboxai/x-ai/grok-4.3"},
+			},
+		},
 	},
 	"byteplus": {
 		BaseURL: "https://ark.ap-southeast.bytepluses.com/api/coding/v3/chat/completions",
@@ -344,6 +362,26 @@ var configs = map[string]base.Config{
 	},
 	"kilocode": {
 		BaseURL: "https://api.kilo.ai/api/openrouter/chat/completions",
+		Auth:    base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+		Catalog: domain.ProviderCatalog{
+			ID:           "kilocode",
+			Alias:        "kc",
+			ServiceKinds: []string{"llm"},
+			// The 8 hardcoded upstream OpenRouter models are a fallback; the live
+			// catalog (334 models) is fetched from api.kilo.ai/api/gateway/models.
+			// The Go rewrite has no kilocode live resolver yet, so the static list
+			// is what /v1/models and the combo picker surface today.
+			Models: []domain.Model{
+				{ID: "anthropic/claude-sonnet-4-20250514", Name: "Claude Sonnet 4"},
+				{ID: "anthropic/claude-opus-4-20250514", Name: "Claude Opus 4"},
+				{ID: "google/gemini-2.5-pro", Name: "Gemini 2.5 Pro"},
+				{ID: "google/gemini-2.5-flash", Name: "Gemini 2.5 Flash"},
+				{ID: "openai/gpt-4.1", Name: "GPT-4.1"},
+				{ID: "openai/o3", Name: "o3"},
+				{ID: "deepseek/deepseek-chat", Name: "DeepSeek Chat"},
+				{ID: "deepseek/deepseek-reasoner", Name: "DeepSeek Reasoner"},
+			},
+		},
 	},
 	"kimchi": {
 		BaseURL: "https://llm.kimchi.dev/openai/v1/chat/completions",
@@ -813,6 +851,39 @@ func Catalog(providerID string) (domain.ProviderCatalog, bool) {
 		cat.ServiceKinds = []string{"llm"}
 	}
 	return cat, true
+}
+
+// UpstreamModelID resolves the raw upstream model id for a provider+model,
+// mirroring the JS getModelUpstreamId (open-sse/config/providerModels.js).
+// It strips a trailing "(level)" thinking suffix before lookup (so a model
+// copied with its level still resolves), looks up the catalog entry by id,
+// and returns UpstreamModelID when the entry defines one (e.g. blackbox
+// "claude-opus-4.8" → "blackboxai/anthropic/claude-opus-4.8"), re-appending
+// the suffix. When the provider has no catalog, the model id is not in it, or
+// the entry has no UpstreamModelID, it returns the input id unchanged.
+//
+// The suffix is re-appended so downstream thinking handling (which strips it
+// again from body.model via thinking.StripThinkingSuffix) still sees the
+// suffix on the resolved upstream id.
+func UpstreamModelID(providerID, model string) string {
+	if model == "" {
+		return model
+	}
+	// Strip a trailing "(level)" thinking suffix so lookup hits the base id.
+	base, suffix := thinking.SplitLevelSuffix(model)
+	cat, ok := Catalog(providerID)
+	if !ok {
+		return model
+	}
+	for _, m := range cat.Models {
+		if m.ID == base {
+			if m.UpstreamModelID != "" {
+				return m.UpstreamModelID + suffix
+			}
+			return base + suffix
+		}
+	}
+	return model
 }
 
 // AllCatalogs returns the static catalog for every configured provider.

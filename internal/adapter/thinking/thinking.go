@@ -41,6 +41,26 @@ func StripThinkingSuffix(model string) string {
 	return strings.TrimSpace(m[1])
 }
 
+// SplitLevelSuffix splits a model id into its base id and a trailing
+// "(level)" thinking-level suffix (including any surrounding whitespace),
+// mirroring the JS getModelUpstreamId suffix split. When no suffix is present
+// the base is the full input and the suffix is empty. The returned suffix is
+// the raw trailing bytes after the base (e.g. "(high)" or "(high)   ");
+// callers that re-append it preserve the exact bytes the UI emitted.
+func SplitLevelSuffix(model string) (base, suffix string) {
+	if model == "" {
+		return model, ""
+	}
+	loc := thinkingSuffixRe.FindStringSubmatchIndex(model)
+	if loc == nil {
+		return model, ""
+	}
+	// loc[2]/loc[3] = group 1 (base); the suffix is everything after the base.
+	base = strings.TrimSpace(model[loc[2]:loc[3]])
+	suffix = model[loc[3]:]
+	return base, suffix
+}
+
 // GeminiLevelOutputFloor mirrors GEMINI_LEVEL_OUTPUT_FLOOR in
 // thinkingUnified.js: the minimum maxOutputTokens Gemini 3 needs for a given
 // thinkingLevel, before being capped by the model's advertised maxOutput.

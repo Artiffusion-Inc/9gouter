@@ -156,8 +156,8 @@ func credsFromConnection(conn *settings.ProviderConnection) provider.Credentials
 }
 
 // staticCatalogModels returns the provider's static model catalog as the
-// {id,name} shape the dashboard expects. Returns (nil, false) when the
-// provider has no static catalog.
+// {id,name,upstreamModelId?} shape the dashboard expects. Returns (nil, false)
+// when the provider has no static catalog.
 func staticCatalogModels(providerID string) ([]map[string]any, bool) {
 	cat, ok := adapterprovider.Catalog(providerID)
 	if !ok || len(cat.Models) == 0 {
@@ -169,7 +169,11 @@ func staticCatalogModels(providerID string) ([]map[string]any, bool) {
 		if name == "" {
 			name = m.ID
 		}
-		out = append(out, map[string]any{"id": m.ID, "name": name})
+		entry := map[string]any{"id": m.ID, "name": name}
+		if m.UpstreamModelID != "" && m.UpstreamModelID != m.ID {
+			entry["upstreamModelId"] = m.UpstreamModelID
+		}
+		out = append(out, entry)
 	}
 	return out, true
 }

@@ -69,6 +69,13 @@ type h2AgentSession struct {
 	closed   bool
 	readCh   chan readResult
 	readDone chan struct{}
+	// stopCh is closed by Close to unblock pumpBody's channel sends when the
+	// consumer is not draining readCh (e.g. a non-2xx response the caller
+	// discards immediately). Without it, pumpBody fills the 1-buffered readCh
+	// then blocks forever trying to send the terminal error, while Close blocks
+	// on <-readDone — a deadlock. readDone is closed by pumpBody itself as the
+	// "pump finished" signal; stopCh is the "consumer gave up" signal.
+	stopCh chan struct{}
 }
 
 type readResult struct {
@@ -152,6 +159,7 @@ func OpenAgentSession(ctx context.Context, transport *http2.Transport, endpoint 
 		cancel:   deferCancel,
 		readCh:   make(chan readResult, 1),
 		readDone: make(chan struct{}),
+		stopCh:   make(chan struct{}),
 	}
 	// Pump resp.Body frames into readCh so Read is channel-driven and survives
 	// after the write side closes. A 1-buffered channel plus a fresh goroutine
@@ -171,7 +179,7 @@ func (s *h2AgentSession) pumpBody() {
 			copy(out, buf[:n])
 			select {
 			case s.readCh <- readResult{data: out, err: nil}:
-			case <-s.readDone:
+			case <-s.stopCh:
 				return
 			}
 		}
@@ -180,7 +188,7 @@ func (s *h2AgentSession) pumpBody() {
 			// are surfaced too so the executor can emit a terminal error.
 			select {
 			case s.readCh <- readResult{data: nil, err: err}:
-			case <-s.readDone:
+			case <-s.stopCh:
 			}
 			return
 		}
@@ -239,6 +247,10 @@ func (s *h2AgentSession) Close() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
+	// Signal pumpBody to give up on any in-flight channel send (the consumer
+	// is done draining readCh). Closing stopCh unblocks the select in pumpBody
+	// when the 1-buffered readCh is full and no one is reading.
+	close(s.stopCh)
 	<-s.readDone
 	return nil
 }

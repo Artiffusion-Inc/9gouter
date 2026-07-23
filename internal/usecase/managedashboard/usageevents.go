@@ -37,7 +37,27 @@ type EventTracker struct {
 	pendingT  map[string]*time.Timer // timerKey -> expiry timer
 	recent    []recentEntry
 	recentIdx map[string]bool
+	// statsEmitT debounce subscriber notifications to reduce SSE/UI churn
+	// (decolua/9router #2509 / 0d216689): one coalesced notify per kind within
+	// the debounce window. "update" fires after statsUpdateDebounce; "pending"
+	// after statsPendingDebounce. nil-safe: tests that need a synchronous notify
+	// use NotifyNow or set DebounceEnabled=false.
+	statsEmit       map[statsKind]*time.Timer
+	DebounceEnabled bool
 }
+
+// statsKind labels the two debounce channels the JS module exposed.
+type statsKind int
+
+const (
+	statsUpdate statsKind = iota
+	statsPending
+)
+
+const (
+	statsUpdateDebounce  = 250 * time.Millisecond
+	statsPendingDebounce = 150 * time.Millisecond
+)
 
 type pendingState struct {
 	ByModel   map[string]int            // "model (provider)" -> count
@@ -63,21 +83,24 @@ type recentEntry struct {
 type Subscriber func()
 
 const (
-	pendingTimeout = 60 * time.Second
+	pendingTimeout  = 60 * time.Second
 	recentRingCap   = 50
 	recentDedupeCap = 20
 	errProviderTTL  = 10 * time.Second
 )
 
-// NewEventTracker constructs a ready-to-use tracker.
+// NewEventTracker constructs a ready-to-use tracker. Debounce is enabled by
+// default so the SSE stream coalesces bursts of stats events into one frame.
 func NewEventTracker() *EventTracker {
 	return &EventTracker{
 		pending: pendingState{
 			ByModel:   map[string]int{},
 			ByAccount: map[string]map[string]int{},
 		},
-		pendingT:  map[string]*time.Timer{},
-		recentIdx: map[string]bool{},
+		pendingT:        map[string]*time.Timer{},
+		recentIdx:       map[string]bool{},
+		statsEmit:       map[statsKind]*time.Timer{},
+		DebounceEnabled: true,
 	}
 }
 
@@ -109,7 +132,7 @@ func (t *EventTracker) PublishStart(model, provider, connectionID string) {
 	})
 	t.mu.Unlock()
 
-	t.notify()
+	t.schedule(statsPending)
 }
 
 // PublishStop decrements the in-flight counters for a request that completed
@@ -147,7 +170,7 @@ func (t *EventTracker) PublishStop(model, provider, connectionID string, errored
 	}
 	t.mu.Unlock()
 
-	t.notify()
+	t.schedule(statsPending)
 }
 
 // PublishSave records a completed request into the recent-requests ring (the
@@ -191,7 +214,7 @@ func (t *EventTracker) PublishSave(model, provider, status string, prompt, compl
 	}
 	t.mu.Unlock()
 
-	t.notify()
+	t.schedule(statsUpdate)
 }
 
 // ActiveRequests returns the active-request array the dashboard's
@@ -328,6 +351,66 @@ func (t *EventTracker) notify() {
 			defer func() { _ = recover() }()
 			s()
 		}()
+	}
+}
+
+// schedule coalesces subscriber notifications per kind to reduce SSE/UI churn
+// (decolua/9router #2509 / 0d216689): if a notify for this kind is already
+// pending within the debounce window, the call is a no-op; otherwise arm a
+// timer that fires notify once after the kind's delay. When DebounceEnabled is
+// false, notify fires synchronously (used by tests that need deterministic
+// subscriber callbacks).
+func (t *EventTracker) schedule(kind statsKind) {
+	if t == nil {
+		return
+	}
+	if !t.DebounceEnabled {
+		t.notify()
+		return
+	}
+	delay := statsUpdateDebounce
+	if kind == statsPending {
+		delay = statsPendingDebounce
+	}
+	t.mu.Lock()
+	if t.statsEmit == nil {
+		t.statsEmit = map[statsKind]*time.Timer{}
+	}
+	if t.statsEmit[kind] != nil {
+		// A notify for this kind is already pending — coalesce.
+		t.mu.Unlock()
+		return
+	}
+	timer := time.AfterFunc(delay, func() {
+		t.mu.Lock()
+		delete(t.statsEmit, kind)
+		t.mu.Unlock()
+		t.notify()
+	})
+	t.statsEmit[kind] = timer
+	t.mu.Unlock()
+}
+
+// NotifyNow fires any pending debounced notifies immediately and cancels the
+// NotifyNow fires any pending debounced notifies immediately and cancels the
+// pending timers. One notify per pending kind (each coalesced frame is flushed
+// separately), so a burst that armed both the update and pending timers flushes
+// two frames. Used by tests and on shutdown to flush the coalesced frames.
+func (t *EventTracker) NotifyNow() {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	pending := len(t.statsEmit)
+	for kind, tm := range t.statsEmit {
+		if tm != nil {
+			tm.Stop()
+		}
+		delete(t.statsEmit, kind)
+	}
+	t.mu.Unlock()
+	for i := 0; i < pending; i++ {
+		t.notify()
 	}
 }
 

@@ -499,7 +499,13 @@ func (h *Handler) saveUsageWith(ctx context.Context, req Request, providerID str
 		TPS:              tps,
 		Tokens:           tokensBlob,
 	}
-	_ = h.deps.UsageRepo.Save(ctx, rec)
+	// Dedup identical usage writes (decolua/9router #2509 / 0d216689): SaveDedup
+	// skips the insert when an identical row already exists and returns
+	// inserted=false so we do not publish a stats update for a duplicate — that
+	// avoids re-broadcasting the same request to every dashboard SSE subscriber
+	// and churning the UI/runtime. PublishStop always fires (the in-flight
+	// counter must decrement regardless of dedup); PublishSave only on insert.
+	inserted, _ := h.deps.UsageRepo.SaveDedup(ctx, rec)
 	// Real-time analytics (#83): every completed request (success or error)
 	// decrements the in-flight counter and feeds the recent-requests ring, so
 	// the dashboard SSE stream can push an updated frame. errored = any status
@@ -507,7 +513,9 @@ func (h *Handler) saveUsageWith(ctx context.Context, req Request, providerID str
 	if h.deps.UsageEvents != nil {
 		errored := status != "success" && !strings.HasPrefix(status, "failed ")
 		h.deps.UsageEvents.PublishStop(req.Model, providerID, req.ConnectionID, errored)
-		h.deps.UsageEvents.PublishSave(req.Model, providerID, status, prompt, completion, start)
+		if inserted {
+			h.deps.UsageEvents.PublishSave(req.Model, providerID, status, prompt, completion, start)
+		}
 	}
 }
 

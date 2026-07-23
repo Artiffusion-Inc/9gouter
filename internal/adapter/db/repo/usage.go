@@ -24,9 +24,31 @@ type UsageRepo struct{ db *sql.DB }
 func NewUsageRepo(db *sql.DB) *UsageRepo { return &UsageRepo{db: db} }
 
 // Save writes a usageHistory row and updates the daily aggregate. It does not
-// compute cost (the JS cost calculation depends on the pricing provider stack);
-// callers must set UsageRecord.Cost.
+// dedup (every call inserts). It does not compute cost (the JS cost calculation
+// depends on the pricing provider stack); callers must set UsageRecord.Cost.
+// Prefer SaveDedup for the chat path, which skips identical rows.
 func (r *UsageRepo) Save(ctx context.Context, rec usage.UsageRecord) error {
+	inserted, err := r.saveImpl(ctx, rec, false)
+	if err != nil {
+		return err
+	}
+	_ = inserted
+	return nil
+}
+
+// SaveDedup inserts the record unless an identical row already exists in
+// usageHistory (decolua/9router #2509 / 0d216689). On a duplicate it backfills
+// the endpoint onto the existing row when needed and returns inserted=false so
+// the caller skips the stats update (avoiding UI/runtime churn on duplicate
+// writes). All three writes (history insert, daily upsert, lifetime counter)
+// stay in one transaction; better-sqlite3 is sync in JS, but the Go driver
+// (modernc.org/sqlite) also keeps a single connection's transaction atomic, so
+// no inter-process race here.
+func (r *UsageRepo) SaveDedup(ctx context.Context, rec usage.UsageRecord) (bool, error) {
+	return r.saveImpl(ctx, rec, true)
+}
+
+func (r *UsageRepo) saveImpl(ctx context.Context, rec usage.UsageRecord, dedup bool) (bool, error) {
 	if rec.Timestamp.IsZero() {
 		rec.Timestamp = now()
 	}
@@ -44,7 +66,7 @@ func (r *UsageRepo) Save(ctx context.Context, rec usage.UsageRecord) error {
 
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("usage save tx: %w", err)
+		return false, fmt.Errorf("usage save tx: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -57,36 +79,76 @@ func (r *UsageRepo) Save(ctx context.Context, rec usage.UsageRecord) error {
 		tps.Float64 = *rec.TPS
 	}
 
+	inserted := true
+	if dedup {
+		// Deduplicate identical usage writes: same timestamp + provider + model +
+		// connection + apiKey + prompt/completion tokens. Mirrors the JS
+		// saveRequestUsage pre-insert lookup. On a hit, only backfill the endpoint
+		// onto the existing row (when the existing row lacks one and the incoming
+		// record has one) and skip the insert + daily/lifetime updates.
+		var existingID int64
+		var existingEndpoint sql.NullString
+		err = tx.QueryRowContext(ctx,
+			`SELECT id, endpoint FROM usageHistory
+			 WHERE timestamp = ?
+			   AND COALESCE(provider, '') = COALESCE(?, '')
+			   AND COALESCE(model, '') = COALESCE(?, '')
+			   AND COALESCE(connectionId, '') = COALESCE(?, '')
+			   AND COALESCE(apiKey, '') = COALESCE(?, '')
+			   AND promptTokens = ?
+			   AND completionTokens = ?
+			 ORDER BY id DESC LIMIT 1`,
+			formatTime(rec.Timestamp), rec.Provider, rec.Model, rec.ConnectionID, rec.APIKey,
+			prompt, completion).Scan(&existingID, &existingEndpoint)
+		if err != nil && err != sql.ErrNoRows {
+			return false, fmt.Errorf("usage dedup lookup: %w", err)
+		}
+		if err == nil {
+			// Duplicate found — do not insert. Backfill endpoint if missing.
+			if !existingEndpoint.Valid || existingEndpoint.String == "" {
+				if rec.Endpoint != "" {
+					if _, err := tx.ExecContext(ctx, `UPDATE usageHistory SET endpoint = ? WHERE id = ?`, rec.Endpoint, existingID); err != nil {
+						return false, fmt.Errorf("usage dedup endpoint backfill: %w", err)
+					}
+				}
+			}
+			if err := tx.Commit(); err != nil {
+				return false, fmt.Errorf("usage dedup commit: %w", err)
+			}
+			return false, nil
+		}
+	}
+
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta, streamMs, tps)
 		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		formatTime(rec.Timestamp), rec.Provider, rec.Model, rec.ConnectionID, rec.APIKey, rec.Endpoint,
 		prompt, completion, rec.Cost, rec.Status, jsonText(rec.Tokens), jsonText(rec.Meta), streamMs, tps)
 	if err != nil {
-		return fmt.Errorf("usage save insert: %w", err)
+		return false, fmt.Errorf("usage save insert: %w", err)
 	}
 
 	dateKey := localDateKey(rec.Timestamp)
 	day, err := r.getDayTx(ctx, tx, dateKey)
 	if err != nil {
-		return err
+		return false, err
 	}
 	aggregateEntryToDay(day, rec)
 	data, err := json.Marshal(day)
 	if err != nil {
-		return fmt.Errorf("usage save marshal day: %w", err)
+		return false, fmt.Errorf("usage save marshal day: %w", err)
 	}
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO usageDaily(dateKey, data) VALUES(?, ?) ON CONFLICT(dateKey) DO UPDATE SET data = excluded.data`,
 		dateKey, string(data))
 	if err != nil {
-		return fmt.Errorf("usage save daily: %w", err)
+		return false, fmt.Errorf("usage save daily: %w", err)
 	}
 
 	cur := tx.QueryRowContext(ctx, `SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`)
 	var curVal string
 	if err := cur.Scan(&curVal); err != nil && err != sql.ErrNoRows {
-		return fmt.Errorf("usage save lifetime read: %w", err)
+		return false, fmt.Errorf("usage save lifetime read: %w", err)
 	}
 	next, _ := strconv.ParseInt(curVal, 10, 64)
 	next++
@@ -94,10 +156,13 @@ func (r *UsageRepo) Save(ctx context.Context, rec usage.UsageRecord) error {
 		`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 		strconv.FormatInt(next, 10))
 	if err != nil {
-		return fmt.Errorf("usage save lifetime: %w", err)
+		return false, fmt.Errorf("usage save lifetime: %w", err)
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("usage save commit: %w", err)
+	}
+	return inserted, nil
 }
 
 func (r *UsageRepo) Query(ctx context.Context, q usage.Query) ([]usage.UsageRecord, error) {

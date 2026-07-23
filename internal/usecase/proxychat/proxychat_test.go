@@ -28,6 +28,21 @@ func (r *inMemoryUsageRepo) Save(ctx context.Context, rec usage.UsageRecord) err
 	return nil
 }
 
+// SaveDedup mirrors the real UsageRepo.SaveDedup: dedup by (timestamp, provider,
+// model, connectionId, apiKey, prompt, completion) so the chat path tests that
+// assert a stats publish only fires on an inserted row behave like production.
+func (r *inMemoryUsageRepo) SaveDedup(ctx context.Context, rec usage.UsageRecord) (bool, error) {
+	for _, e := range r.records {
+		if e.Timestamp.Equal(rec.Timestamp) && e.Provider == rec.Provider && e.Model == rec.Model &&
+			e.ConnectionID == rec.ConnectionID && e.APIKey == rec.APIKey &&
+			e.PromptTokens == rec.PromptTokens && e.CompletionTokens == rec.CompletionTokens {
+			return false, nil
+		}
+	}
+	r.records = append(r.records, rec)
+	return true, nil
+}
+
 func (r *inMemoryUsageRepo) Query(ctx context.Context, q usage.Query) ([]usage.UsageRecord, error) {
 	return r.records, nil
 }
@@ -63,7 +78,7 @@ type stubProvider struct {
 	exec provider.Executor
 }
 
-func (s *stubProvider) ID() string             { return s.id }
+func (s *stubProvider) ID() string                  { return s.id }
 func (s *stubProvider) Executor() provider.Executor { return s.exec }
 
 // fakeStreamPiper just copies upstream to the SSE writer without the real stall logic.
@@ -105,21 +120,21 @@ func TestHandle_StreamingSSE(t *testing.T) {
 	exec := &stubExecutor{resp: makeSSEUpstream(upstreamBody)}
 
 	h := New(Dependencies{
-		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
-		UsageRepo: repo,
+		Registry:   func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
+		UsageRepo:  repo,
 		StreamPipe: fakeStreamPiper{},
-		JSONToSSE: fakeJSONToSSE{},
-		Config:    config.Config{StreamStallTimeout: config.DurationMs(180 * time.Second), StreamStallTimeoutReasoning: config.DurationMs(600 * time.Second), StreamReadinessMaxTimeout: config.DurationMs(900 * time.Second)},
+		JSONToSSE:  fakeJSONToSSE{},
+		Config:     config.Config{StreamStallTimeout: config.DurationMs(180 * time.Second), StreamStallTimeoutReasoning: config.DurationMs(600 * time.Second), StreamReadinessMaxTimeout: config.DurationMs(900 * time.Second)},
 	})
 
 	rec := httptest.NewRecorder()
 	req := Request{
-		Ctx:        context.Background(),
-		Endpoint:   "/v1/chat/completions",
-		Body:       json.RawMessage(`{"model":"gpt-4","messages":[{"role":"user","content":"hello"}],"stream":true}`),
-		ProviderID: "openai",
-		Model:      "gpt-4",
-		Stream:     true,
+		Ctx:            context.Background(),
+		Endpoint:       "/v1/chat/completions",
+		Body:           json.RawMessage(`{"model":"gpt-4","messages":[{"role":"user","content":"hello"}],"stream":true}`),
+		ProviderID:     "openai",
+		Model:          "gpt-4",
+		Stream:         true,
 		ResponseWriter: rec,
 	}
 
@@ -160,21 +175,21 @@ func TestHandle_UpstreamStall_ErrorSSEAndDoneAndUsage(t *testing.T) {
 	exec := &stubExecutor{resp: resp}
 
 	h := New(Dependencies{
-		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
-		UsageRepo: repo,
+		Registry:   func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
+		UsageRepo:  repo,
 		StreamPipe: pipeAdapter{}, // use real pipe for stall detection
-		JSONToSSE: fakeJSONToSSE{},
-		Config:    config.Config{StreamStallTimeout: config.DurationMs(50 * time.Millisecond), StreamStallTimeoutReasoning: config.DurationMs(100 * time.Millisecond), StreamReadinessMaxTimeout: config.DurationMs(900 * time.Second)},
+		JSONToSSE:  fakeJSONToSSE{},
+		Config:     config.Config{StreamStallTimeout: config.DurationMs(50 * time.Millisecond), StreamStallTimeoutReasoning: config.DurationMs(100 * time.Millisecond), StreamReadinessMaxTimeout: config.DurationMs(900 * time.Second)},
 	})
 
 	rec := httptest.NewRecorder()
 	req := Request{
-		Ctx:        context.Background(),
-		Endpoint:   "/v1/chat/completions",
-		Body:       json.RawMessage(`{"model":"gpt-4","messages":[{"role":"user","content":"hello"}],"stream":true}`),
-		ProviderID: "openai",
-		Model:      "gpt-4",
-		Stream:     true,
+		Ctx:            context.Background(),
+		Endpoint:       "/v1/chat/completions",
+		Body:           json.RawMessage(`{"model":"gpt-4","messages":[{"role":"user","content":"hello"}],"stream":true}`),
+		ProviderID:     "openai",
+		Model:          "gpt-4",
+		Stream:         true,
 		ResponseWriter: rec,
 	}
 
@@ -219,23 +234,23 @@ func TestHandle_JsonToSseSynthesis(t *testing.T) {
 	exec := &stubExecutor{resp: resp}
 
 	h := New(Dependencies{
-		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
-		UsageRepo: repo,
+		Registry:   func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
+		UsageRepo:  repo,
 		StreamPipe: fakeStreamPiper{},
 		JSONToSSE: synthesizerFunc(func(body []byte) (string, error) {
 			return "data: {\"id\":\"cmpl-x\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"delta\":{\"content\":\"hello\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n", nil
 		}),
-		Config:    config.Config{StreamStallTimeout: config.DurationMs(180 * time.Second), StreamStallTimeoutReasoning: config.DurationMs(600 * time.Second), StreamReadinessMaxTimeout: config.DurationMs(900 * time.Second)},
+		Config: config.Config{StreamStallTimeout: config.DurationMs(180 * time.Second), StreamStallTimeoutReasoning: config.DurationMs(600 * time.Second), StreamReadinessMaxTimeout: config.DurationMs(900 * time.Second)},
 	})
 
 	rec := httptest.NewRecorder()
 	req := Request{
-		Ctx:        context.Background(),
-		Endpoint:   "/v1/chat/completions",
-		Body:       json.RawMessage(`{"model":"gpt-4","messages":[{"role":"user","content":"hello"}],"stream":true}`),
-		ProviderID: "openai",
-		Model:      "gpt-4",
-		Stream:     true,
+		Ctx:            context.Background(),
+		Endpoint:       "/v1/chat/completions",
+		Body:           json.RawMessage(`{"model":"gpt-4","messages":[{"role":"user","content":"hello"}],"stream":true}`),
+		ProviderID:     "openai",
+		Model:          "gpt-4",
+		Stream:         true,
 		ResponseWriter: rec,
 	}
 
@@ -258,24 +273,24 @@ func TestHandle_TokenSaverHeaderOff(t *testing.T) {
 	exec := &stubExecutor{resp: makeSSEUpstream(upstreamBody)}
 
 	h := New(Dependencies{
-		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
-		UsageRepo: repo,
+		Registry:   func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
+		UsageRepo:  repo,
 		StreamPipe: fakeStreamPiper{},
-		JSONToSSE: fakeJSONToSSE{},
-		Config:    config.Config{StreamStallTimeout: config.DurationMs(180 * time.Second), StreamStallTimeoutReasoning: config.DurationMs(600 * time.Second), StreamReadinessMaxTimeout: config.DurationMs(900 * time.Second)},
+		JSONToSSE:  fakeJSONToSSE{},
+		Config:     config.Config{StreamStallTimeout: config.DurationMs(180 * time.Second), StreamStallTimeoutReasoning: config.DurationMs(600 * time.Second), StreamReadinessMaxTimeout: config.DurationMs(900 * time.Second)},
 	})
 
 	headers := http.Header{}
 	headers.Set("x-9gouter-token-saver", "off")
 	rec := httptest.NewRecorder()
 	req := Request{
-		Ctx:        context.Background(),
-		Endpoint:   "/v1/chat/completions",
-		Body:       json.RawMessage(`{"model":"gpt-4","messages":[{"role":"user","content":"hello"}],"stream":true}`),
-		ProviderID: "openai",
-		Model:      "gpt-4",
-		Stream:     true,
-		Headers:    headers,
+		Ctx:            context.Background(),
+		Endpoint:       "/v1/chat/completions",
+		Body:           json.RawMessage(`{"model":"gpt-4","messages":[{"role":"user","content":"hello"}],"stream":true}`),
+		ProviderID:     "openai",
+		Model:          "gpt-4",
+		Stream:         true,
+		Headers:        headers,
 		ResponseWriter: rec,
 	}
 
@@ -300,21 +315,21 @@ func TestHandle_NonStreaming(t *testing.T) {
 	exec := &stubExecutor{resp: resp}
 
 	h := New(Dependencies{
-		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
-		UsageRepo: repo,
+		Registry:   func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
+		UsageRepo:  repo,
 		StreamPipe: fakeStreamPiper{},
-		JSONToSSE: fakeJSONToSSE{},
-		Config:    config.Config{StreamStallTimeout: config.DurationMs(180 * time.Second), StreamStallTimeoutReasoning: config.DurationMs(600 * time.Second), StreamReadinessMaxTimeout: config.DurationMs(900 * time.Second)},
+		JSONToSSE:  fakeJSONToSSE{},
+		Config:     config.Config{StreamStallTimeout: config.DurationMs(180 * time.Second), StreamStallTimeoutReasoning: config.DurationMs(600 * time.Second), StreamReadinessMaxTimeout: config.DurationMs(900 * time.Second)},
 	})
 
 	rec := httptest.NewRecorder()
 	req := Request{
-		Ctx:        context.Background(),
-		Endpoint:   "/v1/chat/completions",
-		Body:       json.RawMessage(`{"model":"gpt-4","messages":[{"role":"user","content":"hello"}]}`),
-		ProviderID: "openai",
-		Model:      "gpt-4",
-		Stream:     false,
+		Ctx:            context.Background(),
+		Endpoint:       "/v1/chat/completions",
+		Body:           json.RawMessage(`{"model":"gpt-4","messages":[{"role":"user","content":"hello"}]}`),
+		ProviderID:     "openai",
+		Model:          "gpt-4",
+		Stream:         false,
 		ResponseWriter: rec,
 	}
 

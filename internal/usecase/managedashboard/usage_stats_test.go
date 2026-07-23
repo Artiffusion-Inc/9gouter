@@ -342,7 +342,9 @@ func TestEventTracker_PublishSave_ZeroTokensSkipped(t *testing.T) {
 }
 
 // TestEventTracker_SubscribeFanOut verifies subscribers are notified on each
-// publish and that unsubscribe stops further notifications.
+// publish and that unsubscribe stops further notifications. Since #2509
+// (0d216689) notifications are debounced per kind, so flush pending timers
+// with NotifyNow before asserting counts.
 func TestEventTracker_SubscribeFanOut(t *testing.T) {
 	tr := NewEventTracker()
 	var mu sync.Mutex
@@ -353,21 +355,24 @@ func TestEventTracker_SubscribeFanOut(t *testing.T) {
 		mu.Unlock()
 	})
 
-	tr.PublishStart("m", "p", "") // notify
-	tr.PublishSave("m", "p", "success", 1, 1, time.Now())
-	tr.PublishStop("m", "p", "", false)
+	tr.PublishStart("m", "p", "")                         // pending kind
+	tr.PublishSave("m", "p", "success", 1, 1, time.Now()) // update kind
+	tr.PublishStop("m", "p", "", false)                   // pending kind (coalesced with Start)
+	tr.NotifyNow()                                        // flush debounced timers
 
 	mu.Lock()
 	got := count
 	mu.Unlock()
-	if got < 3 {
-		t.Errorf("subscriber notified %d times, want >= 3", got)
+	// Start+Stop coalesce to one pending notify; Save fires one update notify → 2.
+	if got < 2 {
+		t.Errorf("subscriber notified %d times, want >= 2 (one per debounced kind)", got)
 	}
 
 	// After unsubscribe, no further notifications.
 	unsub()
 	before := count
 	tr.PublishStart("m2", "p2", "")
+	tr.NotifyNow()
 	mu.Lock()
 	after := count
 	mu.Unlock()

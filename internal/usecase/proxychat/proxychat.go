@@ -17,9 +17,9 @@ import (
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/pricing"
 	reg "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
-	httpstream "github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/shared"
+	httpstream "github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
 	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/usage"
@@ -28,18 +28,18 @@ import (
 // TokenSaverConfig holds the runtime token-saver switches. All stages are gated
 // by the X-9Gouter-Token-Saver request header (config.TOKEN_SAVER_HEADER).
 type TokenSaverConfig struct {
-	RtkEnabled              bool
-	HeadroomEnabled         bool
-	HeadroomURL             string
-	HeadroomCompressUser    bool
-	CavemanEnabled          bool
-	CavemanLevel            string
-	PonytailEnabled         bool
-	PonytailLevel           string
-	PxpipeEnabled           bool
-	PxpipeMinChars          int
-	PxpipeTimeoutMs         int
-	PxpipeTransform         func([]byte, string, int) ([]byte, error)
+	RtkEnabled           bool
+	HeadroomEnabled      bool
+	HeadroomURL          string
+	HeadroomCompressUser bool
+	CavemanEnabled       bool
+	CavemanLevel         string
+	PonytailEnabled      bool
+	PonytailLevel        string
+	PxpipeEnabled        bool
+	PxpipeMinChars       int
+	PxpipeTimeoutMs      int
+	PxpipeTransform      func([]byte, string, int) ([]byte, error)
 }
 
 // Request is the input to Handle.
@@ -360,18 +360,23 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 		opts := httpstream.PipeOpts{
 			StallTimeout:          readiness.TimeoutMs,
 			StallTimeoutReasoning: h.deps.Config.StreamStallTimeoutReasoning.Duration(),
-			IsThinkingModel:     isReasoning,
-			Reason:              "stream_stall_timeout",
-			Provider:            providerID,
-			Model:               req.Model,
-			FrameMode:           frameModeFor(targetFormat),
-			TranslateResponse:   translateStreamChunk(sourceFormat, targetFormat),
+			IsThinkingModel:       isReasoning,
+			Reason:                "stream_stall_timeout",
+			Provider:              providerID,
+			Model:                 req.Model,
+			FrameMode:             frameModeFor(targetFormat),
+			TranslateResponse:     translateStreamChunk(sourceFormat, targetFormat),
+			PassthroughSanitizer:  passthroughSanitizer(sourceFormat, targetFormat),
+			// Same-format OpenAI Responses passthrough must terminate with the
+			// OpenAI [DONE] sentinel on EOF (upstream a9785a5f); the sanitizer
+			// tracks terminal events so [DONE] is not duplicated (c22f11de).
+			EmitDoneOnEOF: sourceFormat == format.OpenaiResponses && targetFormat == format.OpenaiResponses,
 			// The Anthropic streaming format requires an "event: <type>\n" line
 			// before each "data: <json>\n\n" frame; the Claude SDK (Claude Code)
 			// rejects a stream that has only "data:" as malformed. Set the flag
 			// when the CLIENT source format is Claude, mirroring legacy
 			// streamHelpers.js formatSSE (sourceFormat === CLAUDE).
-			EmitEventPrefix:     sourceFormat == format.Claude,
+			EmitEventPrefix: sourceFormat == format.Claude,
 		}
 		err = h.deps.StreamPipe.Pipe(ctx, resp.Response.Body, w, opts)
 
@@ -436,12 +441,12 @@ func (h *Handler) saveUsageWith(ctx context.Context, req Request, providerID str
 	var tokensBlob json.RawMessage
 	if tok != nil {
 		b, err := json.Marshal(map[string]int{
-			"prompt_tokens":                tokens.PromptTokens,
-			"completion_tokens":             tokens.CompletionTokens,
-			"cached_tokens":                 tokens.CachedTokens,
-			"reasoning_tokens":              tokens.ReasoningTokens,
-			"cache_creation_input_tokens":   tokens.CacheCreationTokens,
-			"total_tokens":                  tokens.PromptTokens + tokens.CompletionTokens,
+			"prompt_tokens":               tokens.PromptTokens,
+			"completion_tokens":           tokens.CompletionTokens,
+			"cached_tokens":               tokens.CachedTokens,
+			"reasoning_tokens":            tokens.ReasoningTokens,
+			"cache_creation_input_tokens": tokens.CacheCreationTokens,
+			"total_tokens":                tokens.PromptTokens + tokens.CompletionTokens,
 		})
 		if err == nil {
 			tokensBlob = b
@@ -451,17 +456,17 @@ func (h *Handler) saveUsageWith(ctx context.Context, req Request, providerID str
 	rec := usage.UsageRecord{
 		Timestamp:        start,
 		Provider:         providerID,
-		Model:             req.Model,
-		ConnectionID:      req.ConnectionID,
-		APIKey:            req.APIKey,
-		Endpoint:          req.Endpoint,
-		PromptTokens:      prompt,
-		CompletionTokens:  completion,
-		Cost:              cost,
-		Status:            status,
-		StreamMs:          streamMs,
-		TPS:               tps,
-		Tokens:            tokensBlob,
+		Model:            req.Model,
+		ConnectionID:     req.ConnectionID,
+		APIKey:           req.APIKey,
+		Endpoint:         req.Endpoint,
+		PromptTokens:     prompt,
+		CompletionTokens: completion,
+		Cost:             cost,
+		Status:           status,
+		StreamMs:         streamMs,
+		TPS:              tps,
+		Tokens:           tokensBlob,
 	}
 	_ = h.deps.UsageRepo.Save(ctx, rec)
 	// Real-time analytics (#83): every completed request (success or error)
@@ -1305,12 +1310,12 @@ func (noopLogger) Debugf(format string, args ...any) {}
 
 // headroomResult carries the result of the headroom stage.
 type headroomResult struct {
-	saved          int
-	log            string
-	sizeLog        string
-	messagesLog    string
-	phantom        bool
-	skippedReason  string
-	tokensBefore   int
-	tokensAfter    int
+	saved         int
+	log           string
+	sizeLog       string
+	messagesLog   string
+	phantom       bool
+	skippedReason string
+	tokensBefore  int
+	tokensAfter   int
 }

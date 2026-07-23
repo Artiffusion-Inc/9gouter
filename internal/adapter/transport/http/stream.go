@@ -47,6 +47,31 @@ type PipeOpts struct {
 	// behaviour and what TestPipePassthrough asserts).
 	TranslateResponse func(frame []byte, state map[string]any) ([][]byte, error)
 
+	// PassthroughSanitizer, when non-nil AND TranslateResponse is nil, is
+	// applied to each de-framed upstream frame in passthrough (same-format)
+	// mode. It returns the already-SSE-framed client bytes to emit. This
+	// mirrors the JS stream.js passthrough-frame sanitization that raw byte
+	// passthrough otherwise lacks:
+	//   - skip non-JSON "data:" lines so upstream plain-text/HTML garbage does
+	//     not break downstream JSON decoders (upstream c22f11de);
+	//   - strip empty "tool_calls":[] arrays that trigger premature
+	//     reasoning-end in @ai-sdk/openai-compatible (upstream 602ee405);
+	//   - track OpenAI Responses terminal events so EOF does not double-emit
+	//     [DONE] (upstream a9785a5f).
+	// When both TranslateResponse and PassthroughSanitizer are nil, raw byte
+	// passthrough is used. The sanitizer shares the per-stream state map with
+	// the EOF [DONE] emitter via the "streamDoneSent" key.
+	PassthroughSanitizer func(frame []byte, state map[string]any) ([][]byte, error)
+
+	// EmitDoneOnEOF emits a "data: [DONE]\n\n" sentinel on normal upstream EOF
+	// when the stream has not already signalled completion (the per-stream
+	// state's "streamDoneSent" key is not true). This mirrors the JS stream.js
+	// flush-path [DONE] for OpenAI Responses passthrough (upstream a9785a5f):
+	// same-format Responses streams must terminate with the OpenAI sentinel so
+	// clients do not hang, but a [DONE] or terminal event already seen in the
+	// stream is not duplicated (upstream c22f11de dedup).
+	EmitDoneOnEOF bool
+
 	// EmitEventPrefix writes the Anthropic SSE "event: <type>\n" line before
 	// each "data: <json>\n\n" frame, where <type> is the chunk's "type" field.
 	// The Anthropic streaming format requires the event line; without it the
@@ -152,10 +177,13 @@ func Pipe(ctx context.Context, upstream io.Reader, w *Writer, opts PipeOpts) err
 	go func() {
 		defer close(writerDone)
 		// Per-stream translation state (mirrors translator.InitState on the
-		// JS side). Initialized lazily on the first translated frame.
+		// JS side). Initialized lazily on the first translated frame. The
+		// "streamDoneSent" key is shared between the passthrough sanitizer
+		// (terminal-event tracking) and the EOF [DONE] emitter so the sentinel
+		// is never duplicated (upstream c22f11de/a9785a5f).
 		var state map[string]any
 		for frame := range frameCh {
-			out, err := translateOrPassthrough(w, opts.TranslateResponse, opts.EmitEventPrefix, &state, frame)
+			out, err := translateOrPassthrough(w, opts.TranslateResponse, opts.PassthroughSanitizer, opts.EmitEventPrefix, &state, frame)
 			if err != nil {
 				errCh <- err
 				closeFrameCh()
@@ -171,6 +199,16 @@ func Pipe(ctx context.Context, upstream io.Reader, w *Writer, opts PipeOpts) err
 			select {
 			case resetCh <- struct{}{}:
 			default:
+			}
+		}
+		// Normal EOF: emit the OpenAI [DONE] sentinel for Responses passthrough
+		// (upstream a9785a5f) unless the stream already signalled completion
+		// (terminal event or an inline [DONE] — upstream c22f11de dedup). Best
+		// effort: bypass the context check like emitTerminal so a slow client
+		// flush still receives the terminator.
+		if opts.EmitDoneOnEOF {
+			if state == nil || state["streamDoneSent"] != true {
+				writeRawNoCtx(w, []byte("[DONE]"))
 			}
 		}
 	}()
@@ -420,20 +458,32 @@ func (a *autoFramer) NextFrame() ([]byte, error) {
 
 // translateOrPassthrough maps one de-framed upstream frame into client SSE
 // frames. With no translator (raw passthrough) the frame is re-terminated
-// with "\n\n" exactly as the historical Pipe did. With a translator each
-// produced chunk is wrapped as an OpenAI "data: <json>\n\n" event.
+// with "\n\n" exactly as the historical Pipe did — unless a passthrough
+// sanitizer is provided, in which case the frame is routed through it (so
+// non-JSON lines, empty tool_calls, and terminal-event tracking can be
+// applied in same-format mode). With a translator each produced chunk is
+// wrapped as an OpenAI "data: <json>\n\n" event.
 func translateOrPassthrough(
 	w *Writer,
 	translate func([]byte, map[string]any) ([][]byte, error),
+	passthroughSanitizer func([]byte, map[string]any) ([][]byte, error),
 	emitEventPrefix bool,
 	state *map[string]any,
 	frame []byte,
 ) ([][]byte, error) {
 	if translate == nil {
-		out := make([]byte, len(frame))
-		copy(out, frame)
-		out = append(out, '\n', '\n')
-		return [][]byte{out}, nil
+		if passthroughSanitizer == nil {
+			out := make([]byte, len(frame))
+			copy(out, frame)
+			out = append(out, '\n', '\n')
+			return [][]byte{out}, nil
+		}
+		if *state == nil {
+			*state = map[string]any{}
+		}
+		// Sanitizer returns already-SSE-framed client bytes (each element is
+		// a complete frame including its trailing terminator); emit as-is.
+		return passthroughSanitizer(frame, *state)
 	}
 	if *state == nil {
 		*state = map[string]any{}

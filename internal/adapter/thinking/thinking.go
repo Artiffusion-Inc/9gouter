@@ -143,6 +143,68 @@ func GeminiLevelFloor(level string) int {
 	return geminiLevelOutputFloor["high"]
 }
 
+// levelToBudget mirrors LEVEL_TO_BUDGET in thinking.js: maps a discrete thinking
+// level to a token budget for budget-style formats. Zero/missing → 0 (none).
+var levelToBudget = map[string]int{
+	"none":    0,
+	"minimal": 512,
+	"low":     1024,
+	"medium":  8192,
+	"high":    24576,
+	"xhigh":   32768,
+	"max":     128000,
+}
+
+// EffortToBudget mirrors effortToBudget in thinking.js: maps a reasoning_effort
+// string to a token budget via LEVEL_TO_BUDGET. Returns ok=false for an empty or
+// unrecognized effort (the JS function returns undefined in that case).
+func EffortToBudget(effort string) (int, bool) {
+	if effort == "" {
+		return 0, false
+	}
+	b, ok := levelToBudget[strings.ToLower(strings.TrimSpace(effort))]
+	if !ok {
+		return 0, false
+	}
+	return b, true
+}
+
+// clampBudget mirrors the range clamp in toBudget (thinkingUnified.js): when a
+// ThinkingRange is present, the budget is clamped to [min,max]. A nil range or
+// zero field means no bound on that side.
+func clampBudget(budget int, r *capabilities.ThinkingRange) int {
+	if r == nil {
+		return budget
+	}
+	if r.Min != 0 && budget < r.Min {
+		budget = r.Min
+	}
+	if r.Max != 0 && budget > r.Max {
+		budget = r.Max
+	}
+	return budget
+}
+
+// GeminiBudgetFloor mirrors geminiBudgetOutputFloor in thinkingUnified.js
+// (7610f28f): the minimum maxOutputTokens a gemini-budget model needs for a
+// given thinking budget, before being capped by the model's advertised
+// maxOutput. -1 (auto / no budget) and non-finite budgets → 32768.
+func GeminiBudgetFloor(budget int) int {
+	if budget == -1 {
+		return 32768
+	}
+	if budget <= 1024 {
+		return 8192
+	}
+	if budget <= 8192 {
+		return 16384
+	}
+	if budget <= 24576 {
+		return 32768
+	}
+	return 65535
+}
+
 // ApplyGeminiLevelThinking ports the case "gemini-level" branch of
 // thinkingUnified.applyFormat (c4f80d30). It resolves the thinking level from
 // the OpenAI reasoning_effort carried on the body, clamps it to the Gemini 3
@@ -178,6 +240,58 @@ func ApplyGeminiLevelThinking(body map[string]any, model string, caps capabiliti
 		"includeThoughts": level != "minimal",
 	})
 	EnsureGeminiOutputFloor(body, GeminiLevelFloor(level), caps.MaxOutput)
+}
+
+// ApplyGeminiBudgetThinking ports the case "gemini-budget" branch of
+// thinkingUnified.applyFormat (7610f28f). Gemini-budget models (gemini-2.5)
+// take a numeric thinkingBudget instead of the discrete thinkingLevel enum.
+// It resolves the budget from the OpenAI reasoning_effort on the body (via
+// EffortToBudget, clamped to the model's ThinkingRange), writes
+// generationConfig.thinkingConfig = { thinkingBudget, includeThoughts }, and
+// raises maxOutputTokens to GeminiBudgetFloor (capped by the model's
+// advertised maxOutput).
+//
+// reasoning_effort none/off (thinking disabled) maps to thinkingBudget:0 and
+// includeThoughts:false when the model can disable thinking; otherwise a
+// disabled-but-cannot-disable request still gets a minimal budget so Gemini
+// does not reject it. Auto / no budget → thinkingBudget:-1 (dynamic) with the
+// 32768 floor.
+//
+// Like ApplyGeminiLevelThinking this is a no-op when reasoning_effort is absent
+// AND thinking is not disabled, to avoid mutating passthrough Gemini bodies
+// that already set thinkingConfig.
+func ApplyGeminiBudgetThinking(body map[string]any, model string, caps capabilities.Capabilities) {
+	reasoningEffort, _ := body["reasoning_effort"].(string)
+	none := strings.EqualFold(reasoningEffort, "none") || strings.EqualFold(reasoningEffort, "off")
+
+	if reasoningEffort == "" && !none {
+		return
+	}
+
+	if none && caps.ThinkingCanDisable {
+		SetGeminiThinking(body, map[string]any{
+			"thinkingBudget":  0,
+			"includeThoughts": false,
+		})
+		EnsureGeminiOutputFloor(body, GeminiBudgetFloor(0), caps.MaxOutput)
+		return
+	}
+
+	// auto (or no resolvable budget) → -1 (dynamic). The JS toBudget returns -1
+	// for mode "auto"; reasoning_effort "auto" is not in LEVEL_TO_BUDGET so
+	// EffortToBudget reports not-ok and we treat it as the dynamic -1 path.
+	budget := -1
+	if !none {
+		if b, ok := EffortToBudget(reasoningEffort); ok {
+			budget = clampBudget(b, caps.ThinkingRange)
+		}
+	}
+
+	SetGeminiThinking(body, map[string]any{
+		"thinkingBudget":  budget,
+		"includeThoughts": true,
+	})
+	EnsureGeminiOutputFloor(body, GeminiBudgetFloor(budget), caps.MaxOutput)
 }
 
 // numberOrZero reads a numeric body field as a float64, tolerating int/int64.

@@ -226,3 +226,175 @@ func TestStripThinkingSuffix(t *testing.T) {
 		}
 	}
 }
+
+// TestEffortToBudget ports effortToBudget (thinking.js): level → token budget
+// via LEVEL_TO_BUDGET; empty/unrecognized → not-ok.
+func TestEffortToBudget(t *testing.T) {
+	cases := []struct {
+		in     string
+		budget int
+		ok     bool
+	}{
+		{"none", 0, true},
+		{"minimal", 512, true},
+		{"low", 1024, true},
+		{"medium", 8192, true},
+		{"high", 24576, true},
+		{"xhigh", 32768, true},
+		{"max", 128000, true},
+		{"  High  ", 24576, true}, // trimmed + lowercased
+		{"", 0, false},
+		{"auto", 0, false}, // not in LEVEL_TO_BUDGET → dynamic path
+		{"bogus", 0, false},
+	}
+	for _, c := range cases {
+		b, ok := EffortToBudget(c.in)
+		if ok != c.ok || (ok && b != c.budget) {
+			t.Errorf("EffortToBudget(%q) = (%d, %v), want (%d, %v)", c.in, b, ok, c.budget, c.ok)
+		}
+	}
+}
+
+// TestGeminiBudgetFloor ports geminiBudgetOutputFloor (7610f28f): the
+// budget-derived maxOutputTokens floor for gemini-budget models.
+func TestGeminiBudgetFloor(t *testing.T) {
+	cases := map[int]int{
+		-1:     32768, // auto / no budget
+		0:      8192,  // 0 ≤ 1024
+		1024:   8192,  // boundary low end
+		1025:   16384, // > 1024, ≤ 8192
+		8192:   16384, // boundary
+		8193:   32768, // > 8192, ≤ 24576
+		24576:  32768, // boundary
+		24577:  65535, // > 24576
+		128000: 65535,
+	}
+	for budget, want := range cases {
+		if got := GeminiBudgetFloor(budget); got != want {
+			t.Errorf("GeminiBudgetFloor(%d) = %d, want %d", budget, got, want)
+		}
+	}
+}
+
+// TestApplyGeminiBudgetThinkingHigh ports the gemini-budget happy path
+// (7610f28f): reasoning_effort high → budget 24576, clamped by the model's
+// ThinkingRange (max 24576), thinkingConfig.thinkingBudget=24576,
+// includeThoughts=true, and maxOutputTokens raised to GeminiBudgetFloor(24576)
+// = 32768 (capped by caps.MaxOutput 65536, so 32768 wins).
+func TestApplyGeminiBudgetThinkingHigh(t *testing.T) {
+	body := map[string]any{"reasoning_effort": "high"}
+	caps := capabilities.Capabilities{
+		ThinkingFormat: capabilities.ThinkingGeminiBudget,
+		ThinkingRange:  &capabilities.ThinkingRange{Min: 0, Max: 24576},
+		MaxOutput:      65536,
+	}
+	ApplyGeminiBudgetThinking(body, "gemini-2.5-pro", caps)
+	tc := body["generationConfig"].(map[string]any)["thinkingConfig"].(map[string]any)
+	if tc["thinkingBudget"] != int(24576) {
+		t.Errorf("thinkingBudget = %v, want 24576 (high, clamped by range max)", tc["thinkingBudget"])
+	}
+	if tc["includeThoughts"] != true {
+		t.Errorf("includeThoughts = %v, want true", tc["includeThoughts"])
+	}
+	if mt, _ := body["generationConfig"].(map[string]any)["maxOutputTokens"].(float64); mt != 32768 {
+		t.Errorf("maxOutputTokens = %v, want 32768 (GeminiBudgetFloor(24576))", mt)
+	}
+}
+
+// TestApplyGeminiBudgetThinkingMaxClampedByRange verifies the budget is clamped
+// down by the model's ThinkingRange max, then the floor follows the clamped
+// budget.
+func TestApplyGeminiBudgetThinkingMaxClampedByRange(t *testing.T) {
+	body := map[string]any{"reasoning_effort": "max"} // budget 128000
+	caps := capabilities.Capabilities{
+		ThinkingFormat: capabilities.ThinkingGeminiBudget,
+		ThinkingRange:  &capabilities.ThinkingRange{Min: 0, Max: 24576},
+		MaxOutput:      65536,
+	}
+	ApplyGeminiBudgetThinking(body, "gemini-2.5-pro", caps)
+	tc := body["generationConfig"].(map[string]any)["thinkingConfig"].(map[string]any)
+	if tc["thinkingBudget"] != int(24576) {
+		t.Errorf("thinkingBudget = %v, want 24576 (max clamped by range max 24576)", tc["thinkingBudget"])
+	}
+	if mt, _ := body["generationConfig"].(map[string]any)["maxOutputTokens"].(float64); mt != 32768 {
+		t.Errorf("maxOutputTokens = %v, want 32768 (floor of clamped budget)", mt)
+	}
+}
+
+// TestApplyGeminiBudgetThinkingAutoDynamic verifies auto (no resolvable budget)
+// → thinkingBudget=-1 (dynamic) with the 32768 floor.
+func TestApplyGeminiBudgetThinkingAutoDynamic(t *testing.T) {
+	body := map[string]any{"reasoning_effort": "auto"}
+	caps := capabilities.Capabilities{ThinkingFormat: capabilities.ThinkingGeminiBudget, MaxOutput: 65536}
+	ApplyGeminiBudgetThinking(body, "gemini-2.5-pro", caps)
+	tc := body["generationConfig"].(map[string]any)["thinkingConfig"].(map[string]any)
+	if tc["thinkingBudget"] != int(-1) {
+		t.Errorf("thinkingBudget = %v, want -1 (dynamic)", tc["thinkingBudget"])
+	}
+	if tc["includeThoughts"] != true {
+		t.Errorf("includeThoughts = %v, want true", tc["includeThoughts"])
+	}
+	if mt, _ := body["generationConfig"].(map[string]any)["maxOutputTokens"].(float64); mt != 32768 {
+		t.Errorf("maxOutputTokens = %v, want 32768 (GeminiBudgetFloor(-1))", mt)
+	}
+}
+
+// TestApplyGeminiBudgetThinkingNoneCanDisable verifies reasoning_effort none on
+// a model that can disable thinking → thinkingBudget:0, includeThoughts:false.
+func TestApplyGeminiBudgetThinkingNoneCanDisable(t *testing.T) {
+	body := map[string]any{"reasoning_effort": "none"}
+	caps := capabilities.Capabilities{ThinkingFormat: capabilities.ThinkingGeminiBudget, ThinkingCanDisable: true, MaxOutput: 65536}
+	ApplyGeminiBudgetThinking(body, "gemini-2.5-pro", caps)
+	tc := body["generationConfig"].(map[string]any)["thinkingConfig"].(map[string]any)
+	if tc["thinkingBudget"] != int(0) {
+		t.Errorf("thinkingBudget = %v, want 0 (disabled)", tc["thinkingBudget"])
+	}
+	if tc["includeThoughts"] != false {
+		t.Errorf("includeThoughts = %v, want false (disabled)", tc["includeThoughts"])
+	}
+}
+
+// TestApplyGeminiBudgetThinkingFloorCappedByMaxOutput verifies the floor is
+// capped by the model's advertised maxOutput when it is lower than the floor.
+func TestApplyGeminiBudgetThinkingFloorCappedByMaxOutput(t *testing.T) {
+	body := map[string]any{"reasoning_effort": "high"} // budget 24576 → floor 32768
+	caps := capabilities.Capabilities{
+		ThinkingFormat: capabilities.ThinkingGeminiBudget,
+		ThinkingRange:  &capabilities.ThinkingRange{Min: 0, Max: 24576},
+		MaxOutput:      10000, // below floor 32768 → capped
+	}
+	ApplyGeminiBudgetThinking(body, "gemini-2.5-pro", caps)
+	if mt, _ := body["generationConfig"].(map[string]any)["maxOutputTokens"].(float64); mt != 10000 {
+		t.Errorf("maxOutputTokens = %v, want 10000 (floor capped by maxOutput)", mt)
+	}
+}
+
+// TestApplyGeminiBudgetThinkingNoOpWithoutReasoningEffort verifies the spot-fix
+// does not invent a thinkingConfig when the body carries no reasoning_effort.
+func TestApplyGeminiBudgetThinkingNoOpWithoutReasoningEffort(t *testing.T) {
+	body := map[string]any{}
+	caps := capabilities.Capabilities{ThinkingFormat: capabilities.ThinkingGeminiBudget}
+	ApplyGeminiBudgetThinking(body, "gemini-2.5-pro", caps)
+	if _, has := body["generationConfig"]; has {
+		t.Error("no-op body should not get generationConfig")
+	}
+}
+
+// TestApplyGeminiBudgetThinkingEnvelope verifies the gemini-cli/antigravity
+// request.generationConfig envelope is targeted when present.
+func TestApplyGeminiBudgetThinkingEnvelope(t *testing.T) {
+	body := map[string]any{
+		"reasoning_effort": "medium",
+		"request":          map[string]any{},
+	}
+	caps := capabilities.Capabilities{ThinkingFormat: capabilities.ThinkingGeminiBudget, MaxOutput: 65536}
+	ApplyGeminiBudgetThinking(body, "gemini-2.5-pro", caps)
+	req := body["request"].(map[string]any)
+	tc := req["generationConfig"].(map[string]any)["thinkingConfig"].(map[string]any)
+	if tc["thinkingBudget"] != int(8192) {
+		t.Errorf("envelope thinkingBudget = %v, want 8192 (medium)", tc["thinkingBudget"])
+	}
+	if _, has := body["generationConfig"]; has {
+		t.Error("top-level generationConfig should not be created with envelope present")
+	}
+}

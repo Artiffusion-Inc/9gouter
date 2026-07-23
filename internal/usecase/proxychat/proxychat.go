@@ -199,7 +199,7 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	// FORMAT_TO_NATIVE (openai/openai-responses/codex all map to "openai").
 	clampReasoningEffortForOpenAINative(bodyMap, targetFormat)
 
-	// Port upstream c4f80d30: Gemini 3 thinking-level clamp. Gemini 3's
+	// Port upstream c4f80d30 + 7610f28f: Gemini thinking clamp. Gemini 3's
 	// thinkingLevel enum is minimal|low|medium|high — it has no xhigh/max and
 	// cannot fully disable thinking. OpenAI reasoning_effort values carried on a
 	// passthrough/translated body (max/xhigh → high, auto → high, none/off →
@@ -209,8 +209,12 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	// thinkingUnified.applyFormat case "gemini-level"; Go has no central
 	// applyThinking so it is a spot-fix here. Only fires for Gemini-family target
 	// formats whose resolved capabilities ThinkingFormat is gemini-level
-	// (gemini-3-pro etc.; gemini-2.5 uses gemini-budget and is left alone).
+	// (gemini-3-pro etc.); gemini-budget models (gemini-2.5) take the budget
+	// branch via applyGeminiBudgetThinking.
 	applyGeminiLevelThinking(bodyMap, req.Model, targetFormat)
+	// 7610f28f part 2: gemini-budget models take a numeric thinkingBudget + a
+	// budget-derived output floor instead of the discrete thinkingLevel enum.
+	applyGeminiBudgetThinking(bodyMap, req.Model, targetFormat)
 
 	// Strip/clamp request params the upstream provider/model rejects, mirroring
 	// open-sse/translator/concerns/paramSupport.js stripUnsupportedParams
@@ -743,6 +747,22 @@ func applyGeminiLevelThinking(body map[string]any, model string, targetFormat fo
 		return
 	}
 	thinking.ApplyGeminiLevelThinking(body, model, caps)
+}
+
+// applyGeminiBudgetThinking applies the gemini-budget thinking clamp (7610f28f)
+// when the target format is Gemini-family and the model's resolved capabilities
+// ThinkingFormat is gemini-budget. gemini-level models are handled by
+// applyGeminiLevelThinking above; this only fires for budget models (gemini-2.5).
+// No-op otherwise.
+func applyGeminiBudgetThinking(body map[string]any, model string, targetFormat format.Format) {
+	if !geminiLevelThinkingFormats[targetFormat] {
+		return
+	}
+	caps := capabilities.GetCapabilitiesForModel("", model)
+	if caps.ThinkingFormat != capabilities.ThinkingGeminiBudget {
+		return
+	}
+	thinking.ApplyGeminiBudgetThinking(body, model, caps)
 }
 
 func isThinkingEnabled(body json.RawMessage, headers http.Header, model string) bool {

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/capabilities"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
@@ -34,7 +35,10 @@ import (
 //   - live-model resolvers (kiro/qoder/kimchi/copilot/clinepass/grok-cli) —
 //     this is why the list does not update when thinking mode changes (#2702)
 //   - fetchCompatibleModelIds for openai/anthropic-compatible providers
-//   - capabilities metadata
+//
+// PORTED (cluster #109): capabilities metadata is now populated per entry via
+// capsForModel (capabilities.FromServiceKind for non-LLM, then
+// capabilities.GetCapabilitiesForModel for LLMs) — upstream 2629218b.
 //
 // The handler is session-agnostic on purpose: the JS /v1/models route did
 // not require a dashboard session, but it DID honor requireApiKey (the same
@@ -48,6 +52,52 @@ func modelKind(k string) string {
 		return "llm"
 	}
 	return k
+}
+
+// capsForModel resolves the capabilities to surface on /v1/models for a model
+// entry, mirroring the JS route.js fallback chain (upstream 2629218b):
+//
+//	liveCapabilitiesById || capabilitiesFromServiceKind(kind)
+//	  || (kind === LLM ? getCapabilitiesForModel(provider, id) : null)
+//
+// In Go the live resolver's synthetic variant flags (resolver.Capabilities)
+// are not model capabilities, so the chain is: service-kind delta first (for
+// non-LLM kinds like image/embedding/stt/tts), then, for LLMs, the shared
+// capabilities table keyed on provider+model. Returns nil when neither applies
+// (unknown LLM with no service-kind delta → the JS route omits the field).
+func capsForModel(providerID, modelID, kind string) *capabilities.Capabilities {
+	mk := modelKind(kind)
+	if mk != "llm" {
+		if c := capabilities.FromServiceKind(mk); c != nil {
+			return c
+		}
+	}
+	if mk == "llm" {
+		c := capabilities.GetCapabilitiesForModel(providerID, modelID)
+		// Only attach when the resolved entry carries real signal beyond the
+		// bare Default floor (e.g. a known model with vision/reasoning/limits).
+		// The Default floor alone is not useful to clients and would attach a
+		// capabilities blob to every unknown model id, matching the JS route
+		// which only sets model.capabilities when getCapabilitiesForModel
+		// returns a non-null override.
+		if hasCapabilitySignal(c) {
+			return &c
+		}
+	}
+	return nil
+}
+
+// hasCapabilitySignal reports whether a resolved Capabilities carries any
+// non-default signal worth surfacing on /v1/models. The Default floor alone
+// (Tools+ThinkingCanDisable true, 200k/64k limits, nothing else) is treated as
+// "no signal" so unknown LLM ids do not get a redundant capabilities blob.
+func hasCapabilitySignal(c capabilities.Capabilities) bool {
+	return c.Vision || c.PDF || c.AudioInput || c.VideoInput ||
+		c.ImageOutput || c.AudioOutput || c.Search || c.Reasoning ||
+		c.ThinkingFormat != capabilities.ThinkingNone ||
+		!c.ThinkingCanDisable ||
+		c.ContextWindow != capabilities.Default.ContextWindow ||
+		c.MaxOutput != capabilities.Default.MaxOutput
 }
 
 // kindFilterFromPath returns the requested service kinds for a /v1/models
@@ -66,10 +116,11 @@ func kindFilterFromPath(kind string) []string {
 
 // oaiModel is the OpenAI /v1/models object entry.
 type oaiModel struct {
-	ID      string `json:"id"`
-	Object  string `json:"object"`
-	OwnedBy string `json:"owned_by"`
-	Kind    string `json:"kind,omitempty"`
+	ID           string                     `json:"id"`
+	Object       string                     `json:"object"`
+	OwnedBy      string                     `json:"owned_by"`
+	Kind         string                     `json:"kind,omitempty"`
+	Capabilities *capabilities.Capabilities `json:"capabilities,omitempty"`
 }
 
 func (h *v1Handler) handleModels(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +221,7 @@ func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string) []
 
 	out := []oaiModel{}
 	seen := map[string]bool{}
-	add := func(id, ownedBy, kind string) {
+	add := func(id, ownedBy, kind string, caps *capabilities.Capabilities) {
 		mk := modelKind(kind)
 		if kindFilter != nil {
 			match := false
@@ -192,6 +243,7 @@ func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string) []
 		if mk != "llm" {
 			entry.Kind = mk
 		}
+		entry.Capabilities = caps
 		out = append(out, entry)
 	}
 
@@ -268,7 +320,7 @@ func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string) []
 			if disabled[alias] != nil && disabled[alias][m.ID] {
 				continue
 			}
-			add(alias+"/"+m.ID, alias, m.Kind)
+			add(alias+"/"+m.ID, alias, m.Kind, capsForModel(cat.ID, m.ID, m.Kind))
 		}
 		// Custom models for this provider alias (LLM-only by current schema).
 		// Skip custom LLM models too when a live catalog is present.
@@ -277,7 +329,7 @@ func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string) []
 				if disabled[alias] != nil && disabled[alias][id] {
 					continue
 				}
-				add(alias+"/"+id, alias, "llm")
+				add(alias+"/"+id, alias, "llm", capsForModel(cat.ID, id, "llm"))
 			}
 		}
 	}
@@ -301,7 +353,7 @@ func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string) []
 			if disabled[alias] != nil && disabled[alias][m.ID] {
 				continue
 			}
-			add(alias+"/"+m.ID, alias, "llm")
+			add(alias+"/"+m.ID, alias, "llm", capsForModel(providerID, m.ID, "llm"))
 		}
 	}
 

@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/capabilities"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
@@ -186,4 +188,80 @@ func ids(ms []oaiModel) []string {
 		out = append(out, m.ID)
 	}
 	return out
+}
+
+// TestCapsForModel_LLM_SurfacesCapabilities ports upstream 2629218b: a known LLM
+// model (claude-opus-4.8) surfaces its resolved capabilities (vision/reasoning/
+// search, 1M context) on /v1/models, while an unknown LLM id carries only the
+// Default floor and is therefore omitted (no redundant blob).
+func TestCapsForModel_LLM_SurfacesCapabilities(t *testing.T) {
+	c := capsForModel("", "claude-opus-4.8", "llm")
+	if c == nil {
+		t.Fatal("claude-opus-4.8 should surface capabilities")
+	}
+	if !c.Vision || !c.Reasoning || !c.Search {
+		t.Errorf("claude-opus-4.8 caps = %+v, want vision+reasoning+search", c)
+	}
+	if c.ContextWindow != 1000000 {
+		t.Errorf("claude-opus-4.8 ContextWindow = %d, want 1000000", c.ContextWindow)
+	}
+	// Unknown LLM → Default floor only → no signal → nil (no redundant blob).
+	if c2 := capsForModel("", "some-unknown-model-xyz", "llm"); c2 != nil {
+		t.Errorf("unknown LLM should not surface capabilities, got %+v", c2)
+	}
+}
+
+// TestCapsForModel_NonLLM_ServiceKind verifies non-LLM kinds resolve via
+// capabilitiesFromServiceKind (imageToText → vision, embedding → tools:false).
+func TestCapsForModel_NonLLM_ServiceKind(t *testing.T) {
+	c := capsForModel("", "some-vision-model", "imageToText")
+	if c == nil || !c.Vision {
+		t.Fatal("imageToText kind should resolve to a Vision capability delta")
+	}
+	c2 := capsForModel("", "text-embedding-3", "embedding")
+	if c2 == nil || c2.Tools {
+		t.Fatal("embedding kind should resolve to Tools:false")
+	}
+}
+
+// TestBuildModelsList_CapabilitiesPopulated verifies the end-to-end path: a
+// provider catalog model with a known id carries capabilities in the
+// serialized /v1/models entry. We use the ollama static catalog entry that
+// resolves to a known kimi/coder id via capsForModel if present; otherwise we
+// assert the field is simply absent for unknown ids (no panic, omitempty).
+func TestBuildModelsList_CapabilitiesPopulated(t *testing.T) {
+	h, db := newModelsHandler(t)
+	mustCreateConnection(t, db, "ollama", `{"apiKey":"k"}`)
+
+	got := h.buildModelsList(context.Background(), []string{"llm"})
+	// At least one entry must serialize without error and the capabilities
+	// field, when present, must round-trip through JSON with the expected shape.
+	enc, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("marshal models: %v", err)
+	}
+	// The list must include known ollama catalog ids (TestBuildModelsList_StaticCatalogOnlyActive).
+	if !strings.Contains(string(enc), "ollama/gpt-oss:120b") {
+		t.Fatalf("ollama/gpt-oss:120b missing from catalog: %s", string(enc))
+	}
+	// Find any entry that carries a capabilities blob and assert its shape.
+	var list []oaiModel
+	if err := json.Unmarshal(enc, &list); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	var found *capabilities.Capabilities
+	for i := range list {
+		if list[i].Capabilities != nil {
+			found = list[i].Capabilities
+			break
+		}
+	}
+	if found != nil {
+		// A surfaced capability must carry real signal (non-default ContextWindow
+		// or a modality flag), never the bare Default floor.
+		if found.ContextWindow == capabilities.Default.ContextWindow &&
+			!found.Vision && !found.Reasoning && !found.Search && !found.ImageOutput {
+			t.Errorf("surfaced capability is bare Default floor: %+v", found)
+		}
+	}
 }

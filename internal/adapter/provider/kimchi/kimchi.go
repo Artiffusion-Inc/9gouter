@@ -20,6 +20,12 @@ var topLevelDrops = []string{
 	"top_k",
 }
 
+// reasoningPlaceholderMaxLen bounds the reasoning_content placeholder that
+// DefaultExecutor.injectReasoning may insert for upstream validation. Real
+// thinking blocks echoed by clients far exceed this; the placeholder is kept
+// so stripping it would not re-trigger upstream "missing reasoning" complaints.
+const reasoningPlaceholderMaxLen = 8
+
 // Executor extends DefaultExecutor with Kimchi request cleanup.
 type Executor struct {
 	*defexec.DefaultExecutor
@@ -80,6 +86,22 @@ func (e *Executor) TransformRequest(model string, body json.RawMessage, stream b
 					}
 					delete(part, "cache_control")
 					delete(part, "signature")
+				}
+			}
+			// Port upstream 7afaecd6: OpenAI-compatible SDKs echo the full
+			// message history each turn, including reasoning_content from
+			// prior thinking-model turns. The Kimchi OpenAI gateway counts
+			// that scratch text as input tokens, so multi-turn conversations
+			// balloon to 100k+ tokens and the model returns empty content.
+			// Strip reasoning_content from assistant messages — but only when
+			// it is a real thinking block. DefaultExecutor.injectReasoning
+			// may insert a 1-char (" ") placeholder for upstream validation;
+			// stripping that would re-trigger upstream complaints about
+			// missing reasoning on the next turn, so keep anything ≤ the
+			// placeholder threshold.
+			if role, _ := msg["role"].(string); role == "assistant" {
+				if rc, ok := msg["reasoning_content"].(string); ok && len(rc) > reasoningPlaceholderMaxLen {
+					delete(msg, "reasoning_content")
 				}
 			}
 		}

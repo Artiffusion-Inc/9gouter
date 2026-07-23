@@ -137,3 +137,75 @@ func TestTransformRequestKimiReasoningEffortNormalize(t *testing.T) {
 		}
 	})
 }
+
+// TestTransformRequestStripsReasoningContentEcho ports upstream 7afaecd6:
+// OpenAI-compatible SDKs echo the full message history each turn, including
+// reasoning_content from prior thinking-model turns. The Kimchi gateway counts
+// that scratch text as input tokens, so multi-turn conversations balloon and
+// the model returns empty content. Strip reasoning_content from assistant
+// messages when it exceeds the placeholder threshold; keep the short placeholder
+// that injectReasoning may insert so stripping it doesn't re-trigger upstream
+// "missing reasoning" complaints.
+func TestTransformRequestStripsReasoningContentEcho(t *testing.T) {
+	e := &Executor{DefaultExecutor: defexec.New("kimchi", base.Config{})}
+
+	body, _ := json.Marshal(map[string]any{
+		"model": "kimi-k2.5",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "solve x+5=12"},
+			map[string]any{
+				"role":              "assistant",
+				"content":           "x = 7",
+				"reasoning_content": "Let me solve this step by step. Subtract 5 from both sides to isolate x.",
+			},
+			map[string]any{"role": "user", "content": "now y+5=12"},
+		},
+	})
+	out, err := e.TransformRequest("kimi-k2.5", body, true, provider.Credentials{})
+	if err != nil {
+		t.Fatalf("TransformRequest: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	msgs, _ := m["messages"].([]any)
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(msgs))
+	}
+	asst, _ := msgs[1].(map[string]any)
+	if _, has := asst["reasoning_content"]; has {
+		t.Fatalf("long reasoning_content should be stripped from assistant message, got %q", asst["reasoning_content"])
+	}
+	// content must remain intact.
+	if got, _ := asst["content"].(string); got != "x = 7" {
+		t.Fatalf("assistant content = %q, want \"x = 7\"", got)
+	}
+}
+
+// TestTransformRequestKeepsReasoningContentPlaceholder verifies the short
+// placeholder (≤ reasoningPlaceholderMaxLen) that injectReasoning may insert is
+// NOT stripped, so upstream doesn't complain about missing reasoning.
+func TestTransformRequestKeepsReasoningContentPlaceholder(t *testing.T) {
+	e := &Executor{DefaultExecutor: defexec.New("kimchi", base.Config{})}
+
+	body, _ := json.Marshal(map[string]any{
+		"model": "kimi-k2.5",
+		"messages": []any{
+			map[string]any{
+				"role":              "assistant",
+				"content":           "ok",
+				"reasoning_content": " ", // 1-char placeholder
+			},
+		},
+	})
+	out, _ := e.TransformRequest("kimi-k2.5", body, true, provider.Credentials{})
+	var m map[string]any
+	json.Unmarshal(out, &m)
+	msgs, _ := m["messages"].([]any)
+	asst, _ := msgs[0].(map[string]any)
+	if rc, has := asst["reasoning_content"].(string); !has || rc != " " {
+		t.Fatalf("short reasoning_content placeholder should be kept, got %v", asst["reasoning_content"])
+	}
+}

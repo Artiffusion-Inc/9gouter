@@ -99,10 +99,10 @@ func TestSupportsClaudeAdaptiveThinking(t *testing.T) {
 		{"claude-sonnet-4-7", true},
 		{"claude-opus-4-6-20250827", true},
 		{"anthropic/claude-opus-4-6", true},
-		{"claude-3-5-sonnet", false},   // 3.x
-		{"claude-opus-4-5", false},     // 4.5 boundary excluded
-		{"claude-opus-4", false},       // 4.0 no minor
-		{"gpt-4o", false},              // not claude
+		{"claude-3-5-sonnet", false}, // 3.x
+		{"claude-opus-4-5", false},   // 4.5 boundary excluded
+		{"claude-opus-4", false},     // 4.0 no minor
+		{"gpt-4o", false},            // not claude
 		{"claude-haiku-4-5-20250827", false},
 		{"claude-sonnet-4-5", false},
 		{"claude-opus-4-6-something", true},
@@ -169,7 +169,7 @@ func TestConvertOpenAIToolChoice(t *testing.T) {
 	}
 	// named function
 	got = convertOpenAIToolChoice(map[string]any{
-		"type": "function",
+		"type":     "function",
 		"function": map[string]any{"name": "get_weather"},
 	})
 	if got["type"] != "tool" || got["name"] != "get_weather" {
@@ -250,6 +250,23 @@ func TestOpenAIToClaudeRequestBasic(t *testing.T) {
 	m := msgs[0].(map[string]any)
 	if m["role"] != "user" {
 		t.Errorf("role = %v, want user", m["role"])
+	}
+}
+
+// TestOpenAIToClaudeRequestDropsTemperature pins upstream 9173c29b: temperature
+// must be dropped for ALL Claude models (not just claude-opus-4) to avoid the
+// Anthropic 400 on OpenAI-compatible routes.
+func TestOpenAIToClaudeRequestDropsTemperature(t *testing.T) {
+	for _, model := range []string{"claude-opus-4-6", "claude-sonnet-4-5", "claude-3-5-sonnet", "claude-haiku-4-5"} {
+		body := `{"messages":[{"role":"user","content":"hi"}],"temperature":0.7}`
+		out, err := openaiToClaudeRequest(model, json.RawMessage(body), false)
+		if err != nil {
+			t.Fatalf("%s: err: %v", model, err)
+		}
+		v := mustUnmarshal(t, out)
+		if _, has := v["temperature"]; has {
+			t.Errorf("%s: temperature = %v present, want dropped (upstream 9173c29b)", model, v["temperature"])
+		}
 	}
 }
 

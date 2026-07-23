@@ -111,9 +111,11 @@ func openaiToClaudeRequest(model string, raw json.RawMessage, stream bool) (json
 		"stream":     stream,
 	}
 
-	if temp, ok := body["temperature"]; ok {
-		result["temperature"] = temp
-	}
+	// Port upstream 9173c29b: temperature is deprecated/rejected upstream for ALL
+	// Claude models (Anthropic 400 on OpenAI-compatible routes). This is the
+	// OpenAI→Claude request translator, so model is always a Claude model — drop
+	// temperature unconditionally rather than forwarding it.
+	_ = body["temperature"]
 
 	// Port reasoning_effort handling for Claude adaptive-thinking models (4.6+).
 	if supportsClaudeAdaptiveThinking(model) {
@@ -248,7 +250,6 @@ func openaiToClaudeRequest(model string, raw json.RawMessage, stream bool) (json
 		}
 	}
 
-
 	claudeCodePrompt := map[string]any{"type": claudeBlockText, "text": claudeSystemPrompt}
 	systemBlocks := []map[string]any{claudeCodePrompt}
 	if len(systemParts) > 0 {
@@ -285,8 +286,8 @@ func openaiToClaudeRequest(model string, raw json.RawMessage, stream bool) (json
 				params = map[string]any{"type": "object", "properties": map[string]any{}, "required": []any{}}
 			}
 			tools = append(tools, map[string]any{
-				"name":        name,
-				"description": desc,
+				"name":         name,
+				"description":  desc,
 				"input_schema": params,
 			})
 		}
@@ -586,6 +587,7 @@ func adjustMaxTokens(body map[string]any) int {
 	}
 	return maxTokens
 }
+
 const maxCallIDLen = 64
 
 func clampCallID(id any) any {
@@ -826,9 +828,9 @@ func openaiToOpenaiResponsesRequest(model string, raw json.RawMessage, stream bo
 				output = marshalJSONString(c)
 			}
 			result["input"] = append(result["input"].([]any), map[string]any{
-				"type":      responsesItemFunctionCallOutput,
-				"call_id":   clampCallID(msg["tool_call_id"]),
-				"output":    output,
+				"type":    responsesItemFunctionCallOutput,
+				"call_id": clampCallID(msg["tool_call_id"]),
+				"output":  output,
 			})
 			continue
 		}

@@ -75,6 +75,27 @@ func (e *Executor) TransformRequest(model string, body json.RawMessage, stream b
 		"model":   model,
 		"request": m,
 	}
+	// Port upstream 7610f28f (#2486): emit toolConfig.functionCallingConfig.mode
+	// = VALIDATED for Gemini CLI tool requests so the backend validates tool call
+	// shapes instead of returning MALFORMED_FUNCTION_CALL. The JS wrapper writes
+	// toolConfig into envelope.request; here `m` IS envelope.request, so the
+	// toolConfig lands at request.toolConfig (matching the upstream placement).
+	if hasGeminiTools(m) {
+		m["toolConfig"] = map[string]any{
+			"functionCallingConfig": map[string]any{"mode": "VALIDATED"},
+		}
+	}
 	b, _ := json.Marshal(out)
 	return b, nil
+}
+
+// hasGeminiTools reports whether the translated Gemini body carries a non-empty
+// tools array (functionDeclarations), mirroring the `geminiCLI.tools?.length > 0`
+// guard in openai-to-gemini.js wrapInCloudCodeEnvelope.
+func hasGeminiTools(m map[string]any) bool {
+	tools, ok := m["tools"].([]any)
+	if !ok || len(tools) == 0 {
+		return false
+	}
+	return true
 }

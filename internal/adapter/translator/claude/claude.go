@@ -481,19 +481,26 @@ func openaiToClaudeResponse(chunk map[string]any, state map[string]any) []map[st
 			if v, ok := tc["index"].(float64); ok {
 				idx = int(v)
 			}
-			if tc["id"] != nil {
+			// Port upstream 52623587: GLM/fireworks repeats id+null-name on every
+			// argument chunk. Open the tool_use content_block only once per index —
+			// gate on "id present AND this idx not already opened" so the block
+			// start is emitted exactly once; subsequent arg chunks fall through
+			// to the arguments-append branch below.
+			if state["toolCalls"] == nil {
+				state["toolCalls"] = map[string]any{}
+			}
+			toolCalls := state["toolCalls"].(map[string]any)
+			idxKey := fmt.Sprintf("%d", idx)
+			if tc["id"] != nil && toolCalls[idxKey] == nil {
 				stopThinkingBlock(state, &results)
 				stopTextBlock(state, &results)
 				toolBlockIndex := state["nextBlockIndex"].(int)
 				state["nextBlockIndex"] = toolBlockIndex + 1
-				if state["toolCalls"] == nil {
-					state["toolCalls"] = map[string]any{}
-				}
 				toolName := ""
 				if fn, ok := tc["function"].(map[string]any); ok {
 					toolName, _ = fn["name"].(string)
 				}
-				state["toolCalls"].(map[string]any)[fmt.Sprintf("%d", idx)] = map[string]any{
+				toolCalls[idxKey] = map[string]any{
 					"id":         tc["id"],
 					"name":       toolName,
 					"blockIndex": toolBlockIndex,

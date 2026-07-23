@@ -650,7 +650,7 @@ func TestGoldenURLHeaderAll25Providers(t *testing.T) {
 				"Accept":        "text/event-stream",
 				"Authorization": "Bearer <TOK>",
 				"Content-Type":  "application/json",
-				"User-Agent":    "google-api-nodejs-client/9.15.1",
+				"User-Agent":    "antigravity/ide/2.1.1 darwin/arm64",
 			},
 		},
 		{

@@ -106,7 +106,11 @@ var configs = map[string]base.Config{
 		BaseURLs: []string{"https://cloudcode-pa.googleapis.com"},
 		Format:   "antigravity",
 		Headers: map[string]string{
-			"User-Agent": "google-api-nodejs-client/9.15.1",
+			// Port 71cd5b2f: align with Antigravity IDE Desktop 2.1.1 fingerprint
+			// (captured from macOS arm64). Keep the IDE UA static regardless of the
+			// server host — the provider profile intentionally matches the IDE
+			// client, not 9router's host.
+			"User-Agent": "antigravity/ide/2.1.1 darwin/arm64",
 		},
 		Retry: map[int]base.RetryEntry{
 			429: {Attempts: 6, DelayMs: 2000},

@@ -401,6 +401,15 @@ func (e *DefaultExecutor) TransformRequest(model string, body json.RawMessage, s
 		delete(m, "client_metadata")
 	}
 
+	// Port upstream 9e386665 (filterToOpenAIFormat): strip `signature` from
+	// every messages[].content block and strip `cache_control` unless the
+	// provider opts in via the PreserveCacheControl quirk (DashScope alicode
+	// / alicode-intl / alims-intl, which use cache_control for prompt
+	// caching). Non-OpenAI content fields must not reach an OpenAI-compat
+	// upstream. Applied here because Go has no central format-normalization
+	// step — passthrough/translated bodies reach this transform verbatim.
+	stripNonOpenAIBodyFields(m, e.Config.Quirks.PreserveCacheControl)
+
 	// Inject reasoning placeholder when configured.
 	if e.Config.ReasoningInject != nil {
 		m = e.injectReasoning(m, e.Config.ReasoningInject.Scope)

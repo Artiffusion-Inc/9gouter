@@ -183,7 +183,7 @@ var configs = map[string]base.Config{
 			"x-requested-with":    "XMLHttpRequest",
 			"x-codebuddy-request": "1",
 		},
-		Auth:       base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+		Auth:        base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
 		ForceStream: true,
 	},
 	"codex": {
@@ -434,6 +434,24 @@ var configs = map[string]base.Config{
 	},
 	"nvidia": {
 		BaseURL: "https://integrate.api.nvidia.com/v1/chat/completions",
+		Catalog: domain.ProviderCatalog{
+			ID:           "nvidia",
+			Alias:        "nvidia",
+			ServiceKinds: []string{"llm", "tts", "embedding"},
+			Models: []domain.Model{
+				{ID: "minimaxai/minimax-m2.7", Name: "MiniMax M2.7"},
+				{ID: "minimaxai/minimax-m3", Name: "MiniMax M3"},
+				{ID: "z-ai/glm-5.2", Name: "GLM 5.2"},
+				{ID: "deepseek-ai/deepseek-v4-pro", Name: "DeepSeek V4 Pro"},
+				{ID: "deepseek-ai/deepseek-v4-flash", Name: "DeepSeek V4 Flash"},
+				{ID: "moonshotai/kimi-k2.6", Name: "Kimi K2.6"},
+				{ID: "nvidia/nemotron-3-ultra-550b-a55b", Name: "Nemotron 3 Ultra"},
+				{ID: "nvidia/nv-embedqa-e5-v5", Name: "NV EmbedQA E5 v5", Kind: "embedding"},
+				{ID: "nvidia/parakeet-ctc-1.1b-asr", Name: "Parakeet CTC 1.1B", Kind: "stt"},
+				{ID: "fastpitch", Name: "FastPitch", Kind: "tts"},
+				{ID: "tacotron2", Name: "Tacotron2", Kind: "tts"},
+			},
+		},
 	},
 	"ollama": {
 		BaseURL: "https://ollama.com/api/chat",
@@ -463,7 +481,7 @@ var configs = map[string]base.Config{
 		},
 	},
 	"openai": {
-		BaseURL:    "https://api.openai.com/v1/chat/completions",
+		BaseURL:     "https://api.openai.com/v1/chat/completions",
 		ForceStream: true,
 	},
 	"opencode": {

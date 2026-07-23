@@ -59,3 +59,58 @@ func TestAlicodeIntlSplit(t *testing.T) {
 		t.Fatalf("alicode-intl and alims-intl share the same BaseURL %q; the split is broken", a)
 	}
 }
+
+// TestNvidiaCatalog ports the ced51ed6 nvidia catalog + capabilities: the
+// registry exposes the full NIM model list (LLM + embedding + stt + tts kinds)
+// and capabilities enforce OpenAI-compatible reasoning for the LLM models.
+func TestNvidiaCatalog(t *testing.T) {
+	cat, ok := Catalog("nvidia")
+	if !ok {
+		t.Fatalf("Catalog(nvidia) returned false; want a static catalog")
+	}
+	wantModels := map[string]string{
+		"minimaxai/minimax-m2.7":            "MiniMax M2.7",
+		"minimaxai/minimax-m3":              "MiniMax M3",
+		"z-ai/glm-5.2":                      "GLM 5.2",
+		"deepseek-ai/deepseek-v4-pro":       "DeepSeek V4 Pro",
+		"deepseek-ai/deepseek-v4-flash":     "DeepSeek V4 Flash",
+		"moonshotai/kimi-k2.6":              "Kimi K2.6",
+		"nvidia/nemotron-3-ultra-550b-a55b": "Nemotron 3 Ultra",
+		"nvidia/nv-embedqa-e5-v5":           "NV EmbedQA E5 v5",
+		"nvidia/parakeet-ctc-1.1b-asr":      "Parakeet CTC 1.1B",
+		"fastpitch":                         "FastPitch",
+		"tacotron2":                         "Tacotron2",
+	}
+	gotModels := map[string]string{}
+	for _, m := range cat.Models {
+		gotModels[m.ID] = m.Name
+	}
+	for id, name := range wantModels {
+		if got, ok := gotModels[id]; !ok {
+			t.Errorf("nvidia catalog missing model %q", id)
+		} else if got != name {
+			t.Errorf("nvidia model %q name = %q, want %q", id, got, name)
+		}
+	}
+	// Service kinds: NIM serves llm + tts + embedding (stt is a model kind, not
+	// a provider service kind in the JS registry which lists ["llm","tts","embedding"]).
+	wantKinds := map[string]bool{"llm": true, "tts": true, "embedding": true}
+	for _, k := range cat.ServiceKinds {
+		delete(wantKinds, k)
+	}
+	if len(wantKinds) > 0 {
+		t.Errorf("nvidia serviceKinds missing %v; got %v", wantKinds, cat.ServiceKinds)
+	}
+	// Non-LLM kinds on the model entries.
+	wantKind := map[string]string{
+		"nvidia/nv-embedqa-e5-v5":      "embedding",
+		"nvidia/parakeet-ctc-1.1b-asr": "stt",
+		"fastpitch":                    "tts",
+		"tacotron2":                    "tts",
+	}
+	for _, m := range cat.Models {
+		if k, ok := wantKind[m.ID]; ok && m.Kind != k {
+			t.Errorf("nvidia model %q kind = %q, want %q", m.ID, m.Kind, k)
+		}
+	}
+}

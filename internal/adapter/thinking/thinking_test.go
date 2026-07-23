@@ -199,3 +199,30 @@ func TestGeminiLevelFloor(t *testing.T) {
 		}
 	}
 }
+
+// TestStripThinkingSuffix ports stripThinkingSuffix (b10b8070): the UI appends
+// a "(level)" suffix to copied model names; the server strips it from upstream
+// body.model so providers do not reject the request for an unknown model id.
+func TestStripThinkingSuffix(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"claude-opus-4-8(high)", "claude-opus-4-8"},
+		{"gpt-5(xhigh)", "gpt-5"},
+		{"gemini-3-pro(none)", "gemini-3-pro"},
+		{"model(8192)", "model"},                            // numeric budget suffix is also stripped
+		{"model(auto)", "model"},                            // auto suffix stripped
+		{"claude-opus-4-8", "claude-opus-4-8"},              // no suffix → unchanged
+		{"plain", "plain"},                                  // no parens → unchanged
+		{"", ""},                                            // empty → unchanged
+		{"a/b/c(high)", "a/b/c"},                            // slashes preserved, suffix stripped
+		{"weird (not) suffix (high)", "weird (not) suffix"}, // only trailing parens stripped
+		{"trailing-space(high)   ", "trailing-space"},       // trailing whitespace trimmed
+		{"no-close(gpt", "no-close(gpt"},                    // no closing paren → unchanged
+	}
+	for _, c := range cases {
+		if got := StripThinkingSuffix(c.in); got != c.want {
+			t.Errorf("StripThinkingSuffix(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

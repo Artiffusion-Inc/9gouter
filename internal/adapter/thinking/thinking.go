@@ -10,10 +10,36 @@
 package thinking
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/capabilities"
 )
+
+// thinkingSuffixRe mirrors stripThinkingSuffix in thinkingUnified.js (b10b8070):
+// a trailing "(value)" suffix the UI appends to a copied model name to force a
+// thinking level across all formats — e.g. "claude-opus-4-8(high)". The captured
+// value is ignored here; the strip keeps the upstream from rejecting the request
+// for an unknown model id. Greedy group, anchored at end; the inner [^()]+ keeps
+// it from matching across nested parens.
+var thinkingSuffixRe = regexp.MustCompile(`^(.*)\([^()]+\)\s*$`)
+
+// StripThinkingSuffix removes a trailing "(value)" thinking-level suffix from a
+// model name, returning the clean upstream model id. A no-op when the suffix is
+// absent. Non-string input (already-typed callers pass strings) is returned
+// unchanged. Ports stripThinkingSuffix from thinkingUnified.js (b10b8070): the
+// chat path forces body.model = StripThinkingSuffix(upstreamModel) so providers
+// no longer reject requests carrying the UI's forced-level suffix.
+func StripThinkingSuffix(model string) string {
+	if model == "" {
+		return model
+	}
+	m := thinkingSuffixRe.FindStringSubmatch(model)
+	if m == nil {
+		return model
+	}
+	return strings.TrimSpace(m[1])
+}
 
 // GeminiLevelOutputFloor mirrors GEMINI_LEVEL_OUTPUT_FLOOR in
 // thinkingUnified.js: the minimum maxOutputTokens Gemini 3 needs for a given

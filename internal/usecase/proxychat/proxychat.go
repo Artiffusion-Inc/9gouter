@@ -183,7 +183,12 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	// carries the namespace). Without this, a passthrough/no-op translation
 	// (e.g. OpenAI→Ollama has no request translator) leaves the client's
 	// "ollama/gemma3:4b" in the body and the upstream 404s with "model not found".
-	bodyMap["model"] = req.Model
+	//
+	// Port upstream b10b8070: the UI appends a "(level)" thinking-level suffix to
+	// copied model names (e.g. "claude-opus-4-8(high)"); strip it from the
+	// upstream body.model so providers no longer reject the request for an
+	// unknown model id. chatCore.js wraps the assignment in stripThinkingSuffix.
+	bodyMap["model"] = thinking.StripThinkingSuffix(req.Model)
 
 	// Port upstream 28894096: OpenAI's reasoning_effort enum caps at "xhigh" (no
 	// "max"). Claude Code sends "max" (its top level); without a clamp, OpenAI

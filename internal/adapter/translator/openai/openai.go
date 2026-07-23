@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/capabilities"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/shared"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/format"
@@ -105,9 +106,14 @@ func openaiToClaudeRequest(model string, raw json.RawMessage, stream bool) (json
 		return nil, fmt.Errorf("unmarshal body: %w", err)
 	}
 
+	// Resolve the per-model output ceiling from the capabilities table so
+	// high-output Claude models (Opus/Sonnet 4.6-4.8/5 = 128000) are not
+	// pre-clamped to the 64000 default. Ports upstream 46e6c01a.
+	modelCeiling := capabilities.GetCapabilitiesForModel("", model).MaxOutput
+
 	result := map[string]any{
 		"model":      model,
-		"max_tokens": adjustMaxTokens(body),
+		"max_tokens": adjustMaxTokens(body, modelCeiling),
 		"stream":     stream,
 	}
 
@@ -558,8 +564,24 @@ func supportsClaudeAdaptiveThinking(model string) bool {
 	return true
 }
 
-func adjustMaxTokens(body map[string]any) int {
-	maxTokens := defaultMaxTokens
+// adjustMaxTokens resolves the max_tokens for a Claude request, mirroring the
+// upstream open-sse/translator/formats/maxTokens.js adjustMaxTokens plus the
+// prepareClaudeRequest reconcile (upstream 46e6c01a). ceiling is the model's
+// maxOutput from the capabilities table (or defaultMaxTokens when unknown).
+//
+// Steps:
+//  1. Read max_tokens from the body (float64 or json.Number); default to ceiling.
+//  2. Floor at defaultMinTokens when tools are present (room for tool output).
+//  3. If thinking.budget_tokens leaves no room for output (max_tokens <= budget),
+//     raise max_tokens to budget+1024.
+//  4. Clamp to ceiling.
+//  5. Reconcile: if thinking.budget_tokens still >= max_tokens, trim the budget
+//     to max(1024, max_tokens-1024) so there is always output room (46e6c01a).
+func adjustMaxTokens(body map[string]any, ceiling int) int {
+	if ceiling <= 0 {
+		ceiling = defaultMaxTokens
+	}
+	maxTokens := ceiling
 	if mt, ok := body["max_tokens"].(float64); ok {
 		maxTokens = int(mt)
 	} else if mt, ok := body["max_tokens"].(json.Number); ok {
@@ -582,9 +604,26 @@ func adjustMaxTokens(body map[string]any) int {
 		}
 	}
 
-	if maxTokens > defaultMaxTokens {
-		maxTokens = defaultMaxTokens
+	if maxTokens > ceiling {
+		maxTokens = ceiling
 	}
+
+	// Reconcile budget vs max_tokens (upstream 46e6c01a): after clamping, if the
+	// thinking budget still leaves no room for output, trim the budget so the
+	// request is valid. Mirrors prepareClaudeRequest's
+	// budget_tokens = max(1024, max_tokens - 1024).
+	if thinking, ok := body["thinking"].(map[string]any); ok {
+		if budget, ok := thinking["budget_tokens"].(float64); ok {
+			if int(budget) >= maxTokens {
+				trimmed := maxTokens - 1024
+				if trimmed < 1024 {
+					trimmed = 1024
+				}
+				thinking["budget_tokens"] = float64(trimmed)
+			}
+		}
+	}
+
 	return maxTokens
 }
 

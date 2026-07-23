@@ -39,28 +39,28 @@ func asArray(t *testing.T, v map[string]any, key string) []any {
 // --- adjustMaxTokens ---
 
 func TestAdjustMaxTokensDefault(t *testing.T) {
-	got := adjustMaxTokens(map[string]any{})
+	got := adjustMaxTokens(map[string]any{}, 0)
 	if got != defaultMaxTokens {
 		t.Fatalf("default = %d, want %d", got, defaultMaxTokens)
 	}
 }
 
 func TestAdjustMaxTokensExplicit(t *testing.T) {
-	got := adjustMaxTokens(map[string]any{"max_tokens": float64(1024)})
+	got := adjustMaxTokens(map[string]any{"max_tokens": float64(1024)}, 0)
 	if got != 1024 {
 		t.Fatalf("explicit = %d, want 1024", got)
 	}
 }
 
 func TestAdjustMaxTokensJSONNumber(t *testing.T) {
-	got := adjustMaxTokens(map[string]any{"max_tokens": json.Number("2048")})
+	got := adjustMaxTokens(map[string]any{"max_tokens": json.Number("2048")}, 0)
 	if got != 2048 {
 		t.Fatalf("json.Number = %d, want 2048", got)
 	}
 }
 
 func TestAdjustMaxTokensClampsToDefault(t *testing.T) {
-	got := adjustMaxTokens(map[string]any{"max_tokens": float64(999_999)})
+	got := adjustMaxTokens(map[string]any{"max_tokens": float64(999_999)}, 0)
 	if got != defaultMaxTokens {
 		t.Fatalf("over-limit = %d, want clamped %d", got, defaultMaxTokens)
 	}
@@ -71,7 +71,7 @@ func TestAdjustMaxTokensToolsFloor(t *testing.T) {
 	got := adjustMaxTokens(map[string]any{
 		"max_tokens": float64(100),
 		"tools":      []any{map[string]any{"type": "function"}},
-	})
+	}, 0)
 	if got != defaultMinTokens {
 		t.Fatalf("tools floor = %d, want %d", got, defaultMinTokens)
 	}
@@ -82,9 +82,73 @@ func TestAdjustMaxTokensThinkingBudget(t *testing.T) {
 	got := adjustMaxTokens(map[string]any{
 		"max_tokens": float64(2000),
 		"thinking":   map[string]any{"budget_tokens": float64(4000)},
-	})
+	}, 0)
 	if got != 4000+1024 {
 		t.Fatalf("thinking budget = %d, want %d", got, 4000+1024)
+	}
+}
+
+// TestAdjustMaxTokensModelCeiling ports upstream 46e6c01a: a high-output model
+// ceiling (e.g. Claude Opus 4.8 = 128000) lifts the clamp above the 64000
+// default, so a request asking for 100000 tokens is honoured instead of
+// truncated to 64000.
+func TestAdjustMaxTokensModelCeiling(t *testing.T) {
+	got := adjustMaxTokens(map[string]any{"max_tokens": float64(100000)}, 128000)
+	if got != 100000 {
+		t.Fatalf("model ceiling = %d, want 100000 (lifted above 64000 default)", got)
+	}
+	// Still clamps to the model ceiling, not the global default.
+	got = adjustMaxTokens(map[string]any{"max_tokens": float64(999_999)}, 128000)
+	if got != 128000 {
+		t.Fatalf("over model ceiling = %d, want 128000", got)
+	}
+}
+
+// TestAdjustMaxTokensBudgetReconcile ports upstream 46e6c01a reconcile: when
+// thinking.budget_tokens leaves no room for output AFTER clamping to the
+// ceiling, the budget is trimmed to max(1024, max_tokens-1024) rather than
+// leaving an invalid request.
+func TestAdjustMaxTokensBudgetReconcile(t *testing.T) {
+	body := map[string]any{
+		"max_tokens": float64(200000),
+		"thinking":   map[string]any{"budget_tokens": float64(199000)},
+	}
+	// ceiling = 128000 → max_tokens clamps to 128000; budget 199000 >= 128000,
+	// so budget is trimmed to 128000-1024 = 126976.
+	got := adjustMaxTokens(body, 128000)
+	if got != 128000 {
+		t.Fatalf("reconcile max_tokens = %d, want 128000", got)
+	}
+	trimmed, _ := body["thinking"].(map[string]any)["budget_tokens"].(float64)
+	if want := float64(128000 - 1024); trimmed != want {
+		t.Fatalf("reconcile budget = %d, want %d", int(trimmed), int(want))
+	}
+}
+
+// TestAdjustMaxTokensBudgetReconcileFloorAt1024 verifies the reconcile never
+// trims the budget below 1024.
+func TestAdjustMaxTokensBudgetReconcileFloorAt1024(t *testing.T) {
+	body := map[string]any{
+		"max_tokens": float64(1500),
+		"thinking":   map[string]any{"budget_tokens": float64(1500)},
+	}
+	// ceiling = 128000; max_tokens 1500 <= budget 1500 → raised to 1500+1024=2524,
+	// then no clamp; reconcile: budget 1500 < 2524 → no trim. max_tokens stays 2524.
+	got := adjustMaxTokens(body, 128000)
+	if got != 2524 {
+		t.Fatalf("got = %d, want 2524", got)
+	}
+	// Now force the clamp-then-trim floor: ceiling so low that max_tokens-1024 < 1024.
+	body2 := map[string]any{
+		"max_tokens": float64(2000),
+		"thinking":   map[string]any{"budget_tokens": float64(2000)},
+	}
+	// ceiling = 1500 → max_tokens clamps to 1500; budget 2000 >= 1500 → trim to
+	// max(1024, 1500-1024=476) = 1024.
+	adjustMaxTokens(body2, 1500)
+	trimmed, _ := body2["thinking"].(map[string]any)["budget_tokens"].(float64)
+	if trimmed != 1024 {
+		t.Fatalf("reconcile floor = %d, want 1024", int(trimmed))
 	}
 }
 

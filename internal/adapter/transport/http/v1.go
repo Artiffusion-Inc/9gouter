@@ -1292,9 +1292,12 @@ func resolveStream(body []byte, headers http.Header, providerID string) bool {
 	}
 	_ = json.Unmarshal(body, &req)
 
-	// Provider force-streaming list.
-	forceStream := map[string]bool{}
-	if forceStream[providerID] {
+	// Port upstream c842dc8f: a stream-only provider (forceStream, e.g. codex /
+	// commandcode / grok-cli / codebuddy-cn / openai) must keep stream=true even
+	// when a JSON client did not request streaming. This short-circuits BEFORE
+	// the prefersJSON branch so a JSON client on a stream-only provider still
+	// streams (the upstream ignores stream:false and returns SSE anyway).
+	if provider.ProviderForceStream(providerID) {
 		return true
 	}
 

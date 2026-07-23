@@ -183,7 +183,8 @@ var configs = map[string]base.Config{
 			"x-requested-with":    "XMLHttpRequest",
 			"x-codebuddy-request": "1",
 		},
-		Auth: base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+		Auth:       base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+		ForceStream: true,
 	},
 	"codex": {
 		BaseURL: "https://chatgpt.com/backend-api/codex/responses",
@@ -192,7 +193,8 @@ var configs = map[string]base.Config{
 			"originator": "codex_cli_rs",
 			"User-Agent": "codex_cli_rs/0.136.0",
 		},
-		Auth: base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+		Auth:        base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+		ForceStream: true,
 	},
 	"cohere": {
 		BaseURL: "https://api.cohere.ai/v1/chat/completions",
@@ -204,7 +206,8 @@ var configs = map[string]base.Config{
 			"x-command-code-version": "0.25.7",
 			"x-cli-environment":      "cli",
 		},
-		Auth: base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+		Auth:        base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+		ForceStream: true,
 	},
 	"cursor": {
 		BaseURL:   "https://api2.cursor.sh",
@@ -313,7 +316,8 @@ var configs = map[string]base.Config{
 			"x-grok-client-identifier": "grok-shell",
 			"x-grok-client-version":    "0.2.99",
 		},
-		Auth: base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+		Auth:        base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
+		ForceStream: true,
 		Retry: map[int]base.RetryEntry{
 			429: {Attempts: 2, DelayMs: 2000},
 			502: {Attempts: 2, DelayMs: 1500},
@@ -459,7 +463,8 @@ var configs = map[string]base.Config{
 		},
 	},
 	"openai": {
-		BaseURL: "https://api.openai.com/v1/chat/completions",
+		BaseURL:    "https://api.openai.com/v1/chat/completions",
+		ForceStream: true,
 	},
 	"opencode": {
 		BaseURL: "https://opencode.ai",
@@ -747,6 +752,22 @@ func ChatBaseURL(providerID string) string {
 		return ""
 	}
 	return cfg.BaseURL
+}
+
+// ProviderForceStream reports whether the provider's upstream only accepts
+// streaming requests (mirrors JS PROVIDERS[id].forceStream). Callers use it to
+// force stream=true for JSON clients that would otherwise send a non-streaming
+// request to a stream-only endpoint.
+func ProviderForceStream(providerID string) bool {
+	id, ok := aliases[providerID]
+	if !ok {
+		return false
+	}
+	cfg, ok := configs[id]
+	if !ok {
+		return false
+	}
+	return cfg.ForceStream
 }
 
 // Catalog returns the static provider catalog (alias, models, serviceKinds)

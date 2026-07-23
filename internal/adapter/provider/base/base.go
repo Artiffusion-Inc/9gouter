@@ -113,7 +113,13 @@ type Config struct {
 	URLSuffix       string
 	Headers         map[string]string
 	NoAuth          bool
-	Auth            AuthDescriptor
+	// ForceStream marks a provider whose upstream only accepts streaming
+	// requests (it ignores stream:false and always returns SSE). Mirrors the
+	// JS PROVIDERS[id].forceStream transport field. When true, resolveStream
+	// forces stream=true even for JSON clients that did not request streaming,
+	// so the request isn't sent non-streaming and then mis-handled upstream.
+	ForceStream bool
+	Auth        AuthDescriptor
 	Retry           map[int]RetryEntry
 	TimeoutMs       int
 	Quirks          Quirks

@@ -172,14 +172,14 @@ type TtsHandler interface {
 
 // TtsRequest carries a parsed TTS call into the usecase.
 type TtsRequest struct {
-	Ctx             context.Context
-	ProviderID      string
-	Model           string
-	Input           string
-	Language        string
-	ResponseFormat  string
-	Credentials     domainProv.Credentials
-	UserAgent       string
+	Ctx            context.Context
+	ProviderID     string
+	Model          string
+	Input          string
+	Language       string
+	ResponseFormat string
+	Credentials    domainProv.Credentials
+	UserAgent      string
 }
 
 // TtsResult carries the synthesized audio response back to the HTTP layer.
@@ -213,8 +213,8 @@ type ImageRequest struct {
 	ResponseFormat string // "url" | "b64_json" | "binary"
 	OutputFormat   string // "png" | "jpeg" | "webp"
 	Background     string
-	Credentials     domainProv.Credentials
-	UserAgent       string
+	Credentials    domainProv.Credentials
+	UserAgent      string
 }
 
 // ImageResult carries the generated image response back to the HTTP layer.
@@ -640,12 +640,12 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 
 		sseWriter := New(w, ctx)
 		req := ChatRequest{
-			Ctx:         ctx,
-			Body:        body,
-			Endpoint:    r.URL.Path,
-			Headers:     r.Header.Clone(),
+			Ctx:          ctx,
+			Body:         body,
+			Endpoint:     r.URL.Path,
+			Headers:      r.Header.Clone(),
 			ProviderID:   modelInfo.Provider,
-			Model:       modelInfo.Model,
+			Model:        modelInfo.Model,
 			Credentials:  creds,
 			Stream:       stream,
 			APIKey:       apiKey,
@@ -851,12 +851,27 @@ func (h *v1Handler) resolveCredentials(ctx context.Context, providerID, model st
 func (h *v1Handler) resolveCredentialsWithOpts(ctx context.Context, providerID, model string, excludedIDs map[string]struct{}, preferredConnectionID string) (domainProv.Credentials, error) {
 	// No-auth providers use a virtual public connection.
 	if isNoAuthProvider(providerID) {
+		psd := map[string]any{
+			"connectionProxyEnabled": false,
+		}
+		// decolua/9router #2409 (e1f3399b): for no-auth free providers the
+		// dashboard can select a per-provider rotateStrategy (round-robin /
+		// random) that distributes traffic across all active proxy pools with a
+		// proxyUrl, avoiding per-IP rate limits. When the strategy is not
+		// "none", pick a pool id, write it to psd["proxyPoolId"], and resolve
+		// the pool's proxyUrl/strictProxy into psd so the executor routes the
+		// call through the rotated pool. A settings read failure degrades
+		// silently to the default (no rotation, direct).
+		if s, err := h.deps.SettingsRepo.Get(ctx); err == nil {
+			var sd map[string]any
+			if json.Unmarshal(s.Data, &sd) == nil {
+				h.resolveNoAuthProxyRotation(ctx, psd, sd, providerID)
+			}
+		}
 		return domainProv.Credentials{
-			APIKey:      "public",
-			AccessToken: "public",
-			ProviderSpecificData: map[string]any{
-				"connectionProxyEnabled": false,
-			},
+			APIKey:               "public",
+			AccessToken:          "public",
+			ProviderSpecificData: psd,
 		}, nil
 	}
 
@@ -1133,6 +1148,7 @@ func (h *v1Handler) reactiveRefreshConnection(ctx context.Context, providerID, c
 		"provider", providerID, "connectionId", connectionID)
 	return true
 }
+
 // refresh (Fix 2a/2c) needs from a connection's providerSpecificData. It reads
 // the same keys the provider executor turns into proxy.ProxyFetchOptions so the
 // refresh call takes the same route as the chat call — a strict route must not

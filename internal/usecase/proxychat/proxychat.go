@@ -325,6 +325,28 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 					return h.serveSynthesizedSSE(ctx, req, synthesized)
 				}
 			}
+			// Port upstream cb0135b6: when the upstream returns HTML/plain-text
+			// instead of SSE (e.g. a Cloudflare 5xx error page), piping it
+			// through the SSE transform pipe forwards the tags as garbage frames
+			// to the client (or trips the frame-size limit). Read the body,
+			// pull a short human-readable message from <title>, sanitize it
+			// (strip HTML tags, collapse whitespace, clamp 160), and return a
+			// clean JSON error instead. Only fires when the content-type is
+			// neither text/event-stream nor application/json (NDJSON upstreams
+			// are already gated above).
+			if contentType != "" && !strings.Contains(contentType, "text/event-stream") && !strings.Contains(contentType, "application/json") {
+				bodyBytes, _ := io.ReadAll(resp.Response.Body)
+				shortMsg := sanitizeNonSSEBody(string(bodyBytes), contentType)
+				status := resp.Response.StatusCode
+				if status == 0 {
+					status = http.StatusBadGateway
+				}
+				if h.deps.Logger != nil {
+					h.deps.Logger.Warnf("STREAM %s | %s | blocked pipe: %s [%d]", providerID, req.Model, shortMsg, status)
+				}
+				h.saveUsage(ctx, req, providerID, start, 0, 0, "error", nil, nil)
+				return h.errorResult(status, fmt.Sprintf("[%d]: %s", status, shortMsg), start)
+			}
 		}
 
 		w := req.SSEWriter
@@ -546,6 +568,86 @@ func translateStreamChunk(sourceFormat, targetFormat format.Format) func([]byte,
 
 func isOpenAIFormatted(f format.Format) bool {
 	return f == format.Openai || f == format.OpenaiResponses
+}
+
+// sanitizeNonSSEBody extracts a short human-readable message from an upstream
+// HTML/text body (e.g. a Cloudflare 5xx error page), mirroring upstream
+// cb0135b6. It pulls the <title> content if present, strips HTML tags, collapses
+// whitespace, and clamps to 160 characters so untrusted upstream text never
+// reaches the client verbatim (the UI may render error.message as HTML). Falls
+// back to the stripped body when it is short enough, else a generic
+// content-type notice. The result is always non-empty.
+func sanitizeNonSSEBody(body, contentType string) string {
+	shortMsg := ""
+
+	if title := extractHTMLTitle(body); title != "" {
+		shortMsg = clampText(stripHTMLTags(title), 160)
+	}
+
+	if shortMsg == "" {
+		stripped := strings.TrimSpace(stripHTMLTags(body))
+		if len(stripped) < 200 {
+			shortMsg = clampText(stripped, 160)
+		}
+	}
+
+	if shortMsg == "" {
+		shortMsg = fmt.Sprintf("Upstream returned non-SSE response (%s)", contentType)
+	}
+	return shortMsg
+}
+
+// extractHTMLTitle returns the content of the first <title>...</title> in body
+// (case-insensitive), without regexp. Empty when absent.
+func extractHTMLTitle(body string) string {
+	low := strings.ToLower(body)
+	open := strings.Index(low, "<title")
+	if open < 0 {
+		return ""
+	}
+	// Skip to the end of the opening tag.
+	gt := strings.IndexByte(low[open:], '>')
+	if gt < 0 {
+		return ""
+	}
+	start := open + gt + 1
+	close := strings.Index(low[start:], "</title>")
+	if close < 0 {
+		return ""
+	}
+	return body[start : start+close]
+}
+
+// stripHTMLTags removes everything between < and > (tag contents). It is a
+// coarse sanitizer suitable for untrusted upstream error text — not a full
+// HTML parser. Adjacent runs of whitespace/CR/LF are collapsed to single
+// spaces.
+func stripHTMLTags(s string) string {
+	var b strings.Builder
+	inTag := false
+	for _, r := range s {
+		switch {
+		case r == '<':
+			inTag = true
+		case r == '>':
+			inTag = false
+			b.WriteByte(' ')
+		case !inTag:
+			b.WriteRune(r)
+		}
+	}
+	out := strings.Join(strings.Fields(b.String()), " ")
+	return out
+}
+
+// clampText trims s to at most max runes, appending nothing (the upstream JS
+// uses slice(0,160) which silently truncates).
+func clampText(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max])
 }
 
 func isTokenSaverEnabled(headers http.Header, cfg config.Config) bool {

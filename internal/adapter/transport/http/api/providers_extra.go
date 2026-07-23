@@ -75,9 +75,9 @@ func (h *providersExtraHandler) models(w http.ResponseWriter, r *http.Request) {
 		}
 		if result != nil && len(result.Models) > 0 {
 			resp := map[string]any{
-				"provider":      providerID,
-				"connectionId":  id,
-				"models":        resolvedModelsToAPI(result.Models),
+				"provider":     providerID,
+				"connectionId": id,
+				"models":       resolvedModelsToAPI(result.Models),
 			}
 			if warning != "" {
 				resp["warning"] = warning
@@ -91,10 +91,10 @@ func (h *providersExtraHandler) models(w http.ResponseWriter, r *http.Request) {
 		}
 		if staticModels, ok := staticCatalogModels(providerID); ok {
 			resp := map[string]any{
-				"provider":      providerID,
-				"connectionId":  id,
-				"models":         staticModels,
-				"warning":        warning,
+				"provider":     providerID,
+				"connectionId": id,
+				"models":       staticModels,
+				"warning":      warning,
 			}
 			writeJSON(w, http.StatusOK, resp)
 			return
@@ -102,9 +102,9 @@ func (h *providersExtraHandler) models(w http.ResponseWriter, r *http.Request) {
 		// No static catalog either — return the (possibly empty) live result
 		// with the warning so the dashboard can surface the failure.
 		resp := map[string]any{
-			"provider":      providerID,
-			"connectionId":  id,
-			"models":         []any{},
+			"provider":     providerID,
+			"connectionId": id,
+			"models":       []any{},
 		}
 		if warning != "" {
 			resp["warning"] = warning
@@ -116,9 +116,9 @@ func (h *providersExtraHandler) models(w http.ResponseWriter, r *http.Request) {
 	// No live resolver: static catalog, if any.
 	if models, ok := staticCatalogModels(providerID); ok {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"provider":      providerID,
-			"connectionId":  id,
-			"models":         models,
+			"provider":     providerID,
+			"connectionId": id,
+			"models":       models,
 		})
 		return
 	}
@@ -308,9 +308,9 @@ func (h *providersExtraHandler) test(w http.ResponseWriter, r *http.Request) {
 	}
 	valid := connectionLooksValid(c)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"success":   true,
-		"id":        id,
-		"valid":     valid,
+		"success":    true,
+		"id":         id,
+		"valid":      valid,
 		"testStatus": "ok",
 	})
 }
@@ -553,7 +553,7 @@ func (h *providersExtraHandler) testBatch(w http.ResponseWriter, r *http.Request
 				"connectionId":   it.connectionID,
 				"connectionName": it.connectionName,
 				"provider":       it.provider,
-				"valid":           true,
+				"valid":          true,
 			})
 			continue
 		}
@@ -562,8 +562,8 @@ func (h *providersExtraHandler) testBatch(w http.ResponseWriter, r *http.Request
 			"connectionId":   it.connectionID,
 			"connectionName": it.connectionName,
 			"provider":       it.provider,
-			"valid":           false,
-			"diagnosis":       map[string]any{"type": "NO_CREDENTIALS"},
+			"valid":          false,
+			"diagnosis":      map[string]any{"type": "NO_CREDENTIALS"},
 		})
 	}
 
@@ -579,7 +579,34 @@ func (h *providersExtraHandler) testBatch(w http.ResponseWriter, r *http.Request
 }
 
 func (h *providersExtraHandler) validate(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"valid": true})
+	var body validateRequest
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
+	url := validateURLForProvider(body.Provider, body.ProviderSpecificData)
+	if url == "" {
+		// Unknown provider / no registered BaseURL — degrade to the previous
+		// stub behaviour (unconditional-true) rather than blocking the UI. The
+		// dashboard's validate button stays green; a real probe lands when the
+		// provider registry gains an entry.
+		writeJSON(w, http.StatusOK, validateResponse{Valid: true, Provider: body.Provider})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), validateTimeout)
+	defer cancel()
+	status, err := validateProbe(ctx, url, body.APIKey)
+	if err != nil {
+		// Transport failure (DNS / connection refused / timeout): the key is
+		// unprovable, not necessarily invalid. Report invalid with the error
+		// so the dashboard surfaces it instead of silently green-lighting.
+		writeJSON(w, http.StatusOK, validateResponse{Valid: false, Provider: body.Provider, Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, validateResponse{
+		Valid:    evaluateValidateStatus(body.Provider, status),
+		Provider: body.Provider,
+		Status:   status,
+	})
 }
 
 // connectionLooksValid reports whether a stored connection is plausibly

@@ -109,7 +109,7 @@ func TestNormalizeHaikuAdaptiveDowngrade(t *testing.T) {
 		"thinking": map[string]any{"type": "adaptive"},
 		"messages": []any{},
 	}
-	NormalizeClaudePassthrough(body, "claude-haiku-4.5")
+	NormalizeClaudePassthrough(body, "claude-haiku-4.5", "claude")
 	th, ok := body["thinking"].(map[string]any)
 	if !ok {
 		t.Fatalf("thinking = %#v", body["thinking"])
@@ -128,7 +128,7 @@ func TestNormalizeNonHaikuKeepsAdaptive(t *testing.T) {
 		"thinking": map[string]any{"type": "adaptive"},
 		"messages": []any{},
 	}
-	NormalizeClaudePassthrough(body, "claude-opus-4.8")
+	NormalizeClaudePassthrough(body, "claude-opus-4.8", "claude")
 	if th, _ := body["thinking"].(map[string]any); th["type"] != "adaptive" {
 		t.Errorf("non-Haiku adaptive downgraded to %v", th["type"])
 	}
@@ -142,7 +142,7 @@ func TestNormalizeHaikuStripsEffort(t *testing.T) {
 		"output_config": map[string]any{"effort": "high", "max_tokens": 1024},
 		"messages":      []any{},
 	}
-	NormalizeClaudePassthrough(body, "claude-haiku-4.5")
+	NormalizeClaudePassthrough(body, "claude-haiku-4.5", "claude")
 	oc, ok := body["output_config"].(map[string]any)
 	if !ok {
 		t.Fatal("output_config should survive with remaining fields")
@@ -159,7 +159,7 @@ func TestNormalizeHaikuStripsEffort(t *testing.T) {
 		"output_config": map[string]any{"effort": "high"},
 		"messages":      []any{},
 	}
-	NormalizeClaudePassthrough(body2, "claude-haiku-4.5")
+	NormalizeClaudePassthrough(body2, "claude-haiku-4.5", "claude")
 	if _, has := body2["output_config"]; has {
 		t.Error("empty output_config should be dropped for Haiku")
 	}
@@ -176,7 +176,7 @@ func TestNormalizeHoistSystemMessages(t *testing.T) {
 			map[string]any{"role": "assistant", "content": "hello"},
 		},
 	}
-	NormalizeClaudePassthrough(body, "claude-opus-4.8")
+	NormalizeClaudePassthrough(body, "claude-opus-4.8", "claude")
 	sys, ok := body["system"].([]any)
 	if !ok {
 		t.Fatalf("system = %#v, want array", body["system"])
@@ -214,7 +214,7 @@ func TestNormalizeHoistSystemBlocks(t *testing.T) {
 			map[string]any{"role": "user", "content": "ok"},
 		},
 	}
-	NormalizeClaudePassthrough(body, "claude-opus-4.8")
+	NormalizeClaudePassthrough(body, "claude-opus-4.8", "claude")
 	sys := body["system"].([]any)
 	if len(sys) != 1 {
 		t.Fatalf("len(system) = %d, want 1", len(sys))
@@ -240,7 +240,7 @@ func TestNormalizeDropForeignThinkingSignature(t *testing.T) {
 			},
 		},
 	}
-	NormalizeClaudePassthrough(body, "claude-opus-4.8")
+	NormalizeClaudePassthrough(body, "claude-opus-4.8", "claude")
 	msgs := body["messages"].([]any)
 	content := msgs[0].(map[string]any)["content"].([]any)
 	if len(content) != 1 {
@@ -267,7 +267,7 @@ func TestNormalizeKeepValidThinkingSignature(t *testing.T) {
 			},
 		},
 	}
-	NormalizeClaudePassthrough(body, "claude-opus-4.8")
+	NormalizeClaudePassthrough(body, "claude-opus-4.8", "claude")
 	content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
 	if len(content) != 2 {
 		t.Fatalf("len(content) = %d, want 2 (valid thinking kept)", len(content))
@@ -293,7 +293,7 @@ func TestNormalizeReinsertPlaceholderForToolUse(t *testing.T) {
 			},
 		},
 	}
-	NormalizeClaudePassthrough(body, "claude-opus-4.8")
+	NormalizeClaudePassthrough(body, "claude-opus-4.8", "claude")
 	content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
 	// placeholder + tool_use.
 	if len(content) != 2 {
@@ -331,7 +331,7 @@ func TestNormalizeNoPlaceholderWhenThinkingDisabled(t *testing.T) {
 			},
 		},
 	}
-	NormalizeClaudePassthrough(body, "claude-opus-4.8")
+	NormalizeClaudePassthrough(body, "claude-opus-4.8", "claude")
 	content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
 	if len(content) != 1 {
 		t.Fatalf("len(content) = %d, want 1 (no placeholder when disabled)", len(content))
@@ -357,7 +357,7 @@ func TestNormalizeNoPlaceholderWhenNoToolUse(t *testing.T) {
 			},
 		},
 	}
-	NormalizeClaudePassthrough(body, "claude-opus-4.8")
+	NormalizeClaudePassthrough(body, "claude-opus-4.8", "claude")
 	content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
 	if len(content) != 1 {
 		t.Fatalf("len(content) = %d, want 1 (no placeholder without tool_use)", len(content))
@@ -383,7 +383,7 @@ func TestNormalizeHaikuAdaptiveThenPlaceholder(t *testing.T) {
 			},
 		},
 	}
-	NormalizeClaudePassthrough(body, "claude-haiku-4.5")
+	NormalizeClaudePassthrough(body, "claude-haiku-4.5", "claude")
 	content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
 	if len(content) != 2 {
 		t.Fatalf("len(content) = %d, want 2 (placeholder inserted after adaptive→enabled)", len(content))
@@ -395,12 +395,12 @@ func TestNormalizeHaikuAdaptiveThenPlaceholder(t *testing.T) {
 
 // TestNormalizeNilBodyNoPanic verifies the nil/non-map guards.
 func TestNormalizeNilBodyNoPanic(t *testing.T) {
-	if got := NormalizeClaudePassthrough(nil, "claude-opus-4.8"); got != nil {
+	if got := NormalizeClaudePassthrough(nil, "claude-opus-4.8", "claude"); got != nil {
 		t.Errorf("nil body should return nil, got %#v", got)
 	}
 	// Empty body is a no-op.
 	body := map[string]any{}
-	NormalizeClaudePassthrough(body, "")
+	NormalizeClaudePassthrough(body, "", "claude")
 	if len(body) != 0 {
 		t.Errorf("empty body mutated: %#v", body)
 	}
@@ -416,7 +416,7 @@ func TestNormalizeEmptySystemStringNotHoisted(t *testing.T) {
 			map[string]any{"role": "user", "content": "hi"},
 		},
 	}
-	NormalizeClaudePassthrough(body, "claude-opus-4.8")
+	NormalizeClaudePassthrough(body, "claude-opus-4.8", "claude")
 	// No non-empty system blocks → system not assigned, messages keep user only.
 	if sys, has := body["system"]; has {
 		if arr, ok := sys.([]any); ok && len(arr) > 0 {
@@ -448,7 +448,7 @@ func TestNormalizeRedactedThinkingDropped(t *testing.T) {
 			},
 		},
 	}
-	NormalizeClaudePassthrough(body, "claude-opus-4.8")
+	NormalizeClaudePassthrough(body, "claude-opus-4.8", "claude")
 	content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
 	if len(content) != 1 || content[0].(map[string]any)["type"] != "text" {
 		t.Errorf("redacted_thinking not dropped: %#v", content)
@@ -458,12 +458,145 @@ func TestNormalizeRedactedThinkingDropped(t *testing.T) {
 // guard: ensure we didn't accidentally ship a placeholder that fails validation
 // (regression on the bundled constant).
 func TestPlaceholderSignatureValid(t *testing.T) {
-	ph := buildThinkingPlaceholder()
+	ph := buildThinkingPlaceholder("claude")
 	sig, _ := ph["signature"].(string)
 	if !isValidClaudeSignature(sig) {
 		t.Fatal("buildThinkingPlaceholder signature must pass isValidClaudeSignature")
 	}
 	if !strings.HasPrefix(sig, "E") {
 		t.Errorf("placeholder signature should be E-form, got prefix %q", sig[:1])
+	}
+}
+
+// --- c4f80d30: DeepSeek + anthropic-compatible thinking-block policies ---
+
+// TestNormalizeDeepSeekKeepsForeignThinking ports the DeepSeek branch: DeepSeek
+// does not validate Anthropic signatures, so a foreign-signed thinking block is
+// kept as-is (not dropped).
+func TestNormalizeDeepSeekKeepsForeignThinking(t *testing.T) {
+	body := map[string]any{
+		"thinking": map[string]any{"type": "enabled"},
+		"messages": []any{
+			map[string]any{
+				"role": "assistant",
+				"content": []any{
+					map[string]any{"type": "thinking", "thinking": "hmm", "signature": "CiQBforeign"},
+					map[string]any{"type": "text", "text": "answer"},
+				},
+			},
+		},
+	}
+	NormalizeClaudePassthrough(body, "deepseek-chat", "deepseek")
+	content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("DeepSeek should keep foreign thinking, len = %d", len(content))
+	}
+	if content[0].(map[string]any)["type"] != "thinking" {
+		t.Errorf("first block = %#v, want thinking kept", content[0])
+	}
+	if sig, _ := content[0].(map[string]any)["signature"].(string); sig != "CiQBforeign" {
+		t.Errorf("DeepSeek altered signature: %q", sig)
+	}
+}
+
+// TestNormalizeDeepSeekPlaceholderUnsigned ports the DeepSeek placeholder: when
+// thinking is enabled, all thinking was dropped/absent, and a tool_use remains,
+// an UNSIGNED placeholder (no signature) is unshifted.
+func TestNormalizeDeepSeekPlaceholderUnsigned(t *testing.T) {
+	body := map[string]any{
+		"thinking": map[string]any{"type": "enabled"},
+		"messages": []any{
+			map[string]any{
+				"role": "assistant",
+				"content": []any{
+					map[string]any{"type": "tool_use", "id": "tu_1", "name": "f", "input": map[string]any{}},
+				},
+			},
+		},
+	}
+	NormalizeClaudePassthrough(body, "deepseek-chat", "deepseek")
+	content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("len = %d, want 2 (unsigned placeholder + tool_use)", len(content))
+	}
+	ph := content[0].(map[string]any)
+	if ph["type"] != "thinking" || ph["thinking"] != "." {
+		t.Errorf("placeholder = %#v", ph)
+	}
+	if _, hasSig := ph["signature"]; hasSig {
+		t.Error("DeepSeek placeholder must NOT carry a signature")
+	}
+}
+
+// TestNormalizeAnthropicCompatibleReplacesSignature ports the
+// anthropic-compatible branch: every thinking block's signature is replaced
+// with the default (safe fallback), regardless of original validity.
+func TestNormalizeAnthropicCompatibleReplacesSignature(t *testing.T) {
+	body := map[string]any{
+		"thinking": map[string]any{"type": "enabled"},
+		"messages": []any{
+			map[string]any{
+				"role": "assistant",
+				"content": []any{
+					map[string]any{"type": "thinking", "thinking": "hmm", "signature": "CiQBforeign"},
+					map[string]any{"type": "text", "text": "answer"},
+				},
+			},
+		},
+	}
+	NormalizeClaudePassthrough(body, "some-model", "anthropic-compatible-foo")
+	content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("anthropic-compatible should keep thinking (replace sig), len = %d", len(content))
+	}
+	sig, _ := content[0].(map[string]any)["signature"].(string)
+	if sig != defaultThinkingClaudeSignature {
+		t.Errorf("anthropic-compatible signature not replaced with default: %q", sig)
+	}
+}
+
+// TestNormalizeNonThinkingProviderSkipsStep3 verifies that a provider that does
+// not handle Claude thinking blocks skips step 3 entirely — a foreign-signed
+// thinking block is left untouched.
+func TestNormalizeNonThinkingProviderSkipsStep3(t *testing.T) {
+	body := map[string]any{
+		"thinking": map[string]any{"type": "enabled"},
+		"messages": []any{
+			map[string]any{
+				"role": "assistant",
+				"content": []any{
+					map[string]any{"type": "thinking", "thinking": "hmm", "signature": "CiQBforeign"},
+					map[string]any{"type": "tool_use", "id": "tu_1", "name": "f", "input": map[string]any{}},
+				},
+			},
+		},
+	}
+	NormalizeClaudePassthrough(body, "some-model", "openai")
+	content := body["messages"].([]any)[0].(map[string]any)["content"].([]any)
+	// Step 3 skipped: foreign thinking kept, no placeholder inserted.
+	if len(content) != 2 {
+		t.Fatalf("len = %d, want 2 (step 3 skipped for non-thinking provider)", len(content))
+	}
+	if content[0].(map[string]any)["signature"] != "CiQBforeign" {
+		t.Errorf("non-thinking provider should not touch thinking blocks: %#v", content[0])
+	}
+}
+
+// TestHandlesThinkingBlocks covers the provider gate.
+func TestHandlesThinkingBlocks(t *testing.T) {
+	cases := map[string]bool{
+		"claude":                        true,
+		"deepseek":                      true,
+		"anthropic-compatible-foo":      true,
+		"anthropic-compatible":          true,
+		"openai":                        false,
+		"gemini":                        false,
+		"":                              false,
+		"anthropic-compatible-deepseek": true,
+	}
+	for provider, want := range cases {
+		if got := handlesThinkingBlocks(provider); got != want {
+			t.Errorf("handlesThinkingBlocks(%q) = %v, want %v", provider, got, want)
+		}
 	}
 }

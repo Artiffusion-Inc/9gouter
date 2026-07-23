@@ -32,21 +32,43 @@ func matchesAdaptiveUnsupported(model string) bool {
 }
 
 // buildThinkingPlaceholder returns a minimal valid thinking block used to
-// re-insert thinking ahead of a tool_use after foreign-signed thinking was
-// dropped. Mirrors buildThinkingPlaceholder(provider) in JS; the "claude" branch
-// always sets the signature (DeepSeek's branch is not used here).
-func buildThinkingPlaceholder() map[string]any {
-	return map[string]any{
-		"type":      claudeBlockThinking,
-		"thinking":  ".",
-		"signature": defaultThinkingClaudeSignature,
+// re-insert thinking ahead of a tool_use after a thinking block was dropped.
+// Mirrors buildThinkingPlaceholder(provider) in JS (c4f80d30): the "claude" and
+// anthropic-compatible branches set the Anthropic signed-thinking fallback
+// signature; the DeepSeek branch omits it (DeepSeek's Anthropic-compatible
+// endpoint requires a thinking block in thinking mode but not the signed
+// fallback).
+func buildThinkingPlaceholder(provider string) map[string]any {
+	block := map[string]any{
+		"type":     claudeBlockThinking,
+		"thinking": ".",
 	}
+	if provider != "deepseek" {
+		block["signature"] = defaultThinkingClaudeSignature
+	}
+	return block
+}
+
+// handlesThinkingBlocks reports whether a provider's Anthropic-compatible
+// endpoint handles Claude thinking blocks, mirroring handlesThinkingBlocks in
+// JS (c4f80d30). claude, anthropic-compatible*, and deepseek all do; anything
+// else does not and the thinking-block pass is skipped.
+func handlesThinkingBlocks(provider string) bool {
+	return provider == "claude" || provider == "deepseek" ||
+		strings.HasPrefix(provider, "anthropic-compatible")
 }
 
 // NormalizeClaudePassthrough normalizes a native Claude passthrough body in place
-// and returns it. It mirrors open-sse/translator/formats/claude.js step-for-step.
-// A non-map body is returned unchanged.
-func NormalizeClaudePassthrough(body map[string]any, model string) map[string]any {
+// and returns it. It mirrors open-sse/translator/formats/claude.js step-for-step:
+// steps 1, 2a, 2b are the OAuth-shape normalization (Haiku adaptive downgrade,
+// output_config.effort strip, role:system hoist) and run unconditionally; step 3
+// (c4f80d30) is the provider-aware thinking-block pass from prepareClaudeRequest
+// pass 2 — only runs when handlesThinkingBlocks(provider), and the per-provider
+// behavior diverges (claude native: validate+drop; anthropic-compatible: replace
+// signature; deepseek: keep as-is + unsigned placeholder).
+//
+// A nil body is returned unchanged.
+func NormalizeClaudePassthrough(body map[string]any, model string, provider string) map[string]any {
 	if body == nil {
 		return body
 	}
@@ -99,10 +121,14 @@ func NormalizeClaudePassthrough(body map[string]any, model string) map[string]an
 		}
 	}
 
-	// 3. Drop thinking blocks whose signature is not Claude's, and re-insert a
-	// placeholder when a tool_use is left without a preceding thinking block.
+	// 3. (c4f80d30) Provider-aware thinking-block pass. Only providers whose
+	// Anthropic-compatible endpoint handles Claude thinking blocks run this;
+	// the behavior diverges per provider (see normalizeAssistantThinking).
 	// thinkingEnabled is measured AFTER step 1, so a Haiku that came in as
 	// "adaptive" now reads "enabled".
+	if !handlesThinkingBlocks(provider) {
+		return body
+	}
 	thinkingEnabled := false
 	if thinking, ok := body["thinking"].(map[string]any); ok {
 		if t, _ := thinking["type"].(string); t == "enabled" {
@@ -122,39 +148,70 @@ func NormalizeClaudePassthrough(body map[string]any, model string) map[string]an
 			if !ok {
 				continue
 			}
-			hasToolUse := false
-			hasKeptThinking := false
-			kept := make([]any, 0, len(blocks))
-			for _, b := range blocks {
-				block, ok := b.(map[string]any)
-				if !ok {
-					kept = append(kept, b)
-					continue
-				}
-				typ, _ := block["type"].(string)
-				if typ == claudeBlockThinking || typ == claudeBlockRedactedThinking {
-					sig, _ := block["signature"].(string)
-					if isValidClaudeSignature(sig) {
-						hasKeptThinking = true
-						kept = append(kept, block)
-					}
-					// Invalid/foreign signature: drop the block.
-					continue
-				}
-				if typ == claudeBlockToolUse {
-					hasToolUse = true
-				}
-				kept = append(kept, block)
-			}
-			msg["content"] = kept
-			if thinkingEnabled && !hasKeptThinking && hasToolUse {
-				// unshift: placeholder first, then the kept blocks.
-				msg["content"] = append([]any{buildThinkingPlaceholder()}, kept...)
-			}
+			normalizeAssistantThinking(msg, blocks, provider, thinkingEnabled)
 		}
 	}
 
 	return body
+}
+
+// normalizeAssistantThinking walks one assistant message's content blocks and
+// applies the provider-specific thinking-block policy (c4f80d30 pass 2):
+//
+//   - claude native: preserve blocks with a valid Claude signature, drop the
+//     rest (foreign signatures leak in via combos and Anthropic rejects them).
+//   - anthropic-compatible: replace every thinking block's signature with the
+//     default (safe fallback for lenient upstreams).
+//   - deepseek: keep existing thinking blocks as-is (no signature validation).
+//
+// In all three branches, when thinking is enabled and the message carries a
+// tool_use but no kept thinking block, a placeholder is unshifted ahead of the
+// tool_use so Anthropic's "thinking must precede tool_use" rule holds.
+func normalizeAssistantThinking(msg map[string]any, blocks []any, provider string, thinkingEnabled bool) {
+	isClaudeNative := provider == "claude"
+	isDeepSeek := provider == "deepseek"
+	hasToolUse := false
+	hasKeptThinking := false
+	kept := make([]any, 0, len(blocks))
+	for _, b := range blocks {
+		block, ok := b.(map[string]any)
+		if !ok {
+			kept = append(kept, b)
+			continue
+		}
+		typ, _ := block["type"].(string)
+		if typ == claudeBlockThinking || typ == claudeBlockRedactedThinking {
+			if isClaudeNative {
+				sig, _ := block["signature"].(string)
+				if isValidClaudeSignature(sig) {
+					hasKeptThinking = true
+					kept = append(kept, block)
+				}
+				// Invalid/foreign signature: drop the block.
+				continue
+			}
+			if isDeepSeek {
+				// Keep as-is; DeepSeek does not validate Anthropic signatures.
+				hasKeptThinking = true
+				kept = append(kept, block)
+				continue
+			}
+			// anthropic-compatible: replace signature with the default fallback.
+			block["signature"] = defaultThinkingClaudeSignature
+			hasKeptThinking = true
+			kept = append(kept, block)
+			continue
+		}
+		if typ == claudeBlockToolUse {
+			hasToolUse = true
+		}
+		kept = append(kept, block)
+	}
+	msg["content"] = kept
+	if thinkingEnabled && !hasKeptThinking && hasToolUse {
+		// unshift: placeholder first, then the kept blocks.
+		msg["content"] = append([]any{buildThinkingPlaceholder(provider)}, kept...)
+	}
 }
 
 // systemMessageText collapses a role:system message's content (string or block

@@ -14,10 +14,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/capabilities"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/paramsupport"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/pricing"
 	reg "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/thinking"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/shared"
 	httpstream "github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http"
@@ -191,6 +193,19 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	// so clamp "max"→"xhigh" here for any OpenAI-native target format, mirroring
 	// FORMAT_TO_NATIVE (openai/openai-responses/codex all map to "openai").
 	clampReasoningEffortForOpenAINative(bodyMap, targetFormat)
+
+	// Port upstream c4f80d30: Gemini 3 thinking-level clamp. Gemini 3's
+	// thinkingLevel enum is minimal|low|medium|high — it has no xhigh/max and
+	// cannot fully disable thinking. OpenAI reasoning_effort values carried on a
+	// passthrough/translated body (max/xhigh → high, auto → high, none/off →
+	// minimal) must be clamped and written into generationConfig.thinkingConfig,
+	// and maxOutputTokens raised to the level floor (capped by the model's
+	// advertised maxOutput). The JS pipeline applies this in
+	// thinkingUnified.applyFormat case "gemini-level"; Go has no central
+	// applyThinking so it is a spot-fix here. Only fires for Gemini-family target
+	// formats whose resolved capabilities ThinkingFormat is gemini-level
+	// (gemini-3-pro etc.; gemini-2.5 uses gemini-budget and is left alone).
+	applyGeminiLevelThinking(bodyMap, req.Model, targetFormat)
 
 	// Strip/clamp request params the upstream provider/model rejects, mirroring
 	// open-sse/translator/concerns/paramSupport.js stripUnsupportedParams
@@ -701,6 +716,28 @@ func clampReasoningEffortForOpenAINative(body map[string]any, targetFormat forma
 	if strings.EqualFold(re, "max") {
 		body["reasoning_effort"] = "xhigh"
 	}
+}
+
+// geminiLevelThinkingFormats are the Gemini-family target formats eligible for
+// the gemini-level thinking clamp. Gemini/Vertex/GeminiCli/Antigravity all
+// resolve to format.Gemini as their target format (see resolveTargetFormat).
+var geminiLevelThinkingFormats = map[format.Format]bool{
+	format.Gemini: true,
+}
+
+// applyGeminiLevelThinking applies the Gemini 3 thinking-level clamp (c4f80d30)
+// when the target format is Gemini-family and the model's resolved capabilities
+// ThinkingFormat is gemini-level. gemini-budget models (gemini-2.5) are left
+// alone — they use thinkingBudget, not the thinkingLevel enum. No-op otherwise.
+func applyGeminiLevelThinking(body map[string]any, model string, targetFormat format.Format) {
+	if !geminiLevelThinkingFormats[targetFormat] {
+		return
+	}
+	caps := capabilities.GetCapabilitiesForModel("", model)
+	if caps.ThinkingFormat != capabilities.ThinkingGeminiLevel {
+		return
+	}
+	thinking.ApplyGeminiLevelThinking(body, model, caps)
 }
 
 func isThinkingEnabled(body json.RawMessage, headers http.Header, model string) bool {

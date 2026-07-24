@@ -171,6 +171,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Logger:         logger,
 		DB:             db,
 		Version:        cfg.Version,
+		ProxyOpts:       proxyOpts,
 	}
 	api.RegisterHealth(mux)
 	api.RegisterVersion(mux, cfg.Version)

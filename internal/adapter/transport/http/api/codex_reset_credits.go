@@ -3,43 +3,37 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
-// codex_reset_credits.go ports the GET half of 5cc4f222 (codex #2290):
-// a read-only upstream fetch of the Codex per-credit rate-limit reset
-// inventory so the dashboard Quota Tracker can render status / granted /
-// expiry / remaining. Mirrors open-sse/services/usage/codex.js
-// getCodexRateLimitResetCredits: GET {resetCreditsUrl} with the codex
-// fingerprint headers (Authorization Bearer, OpenAI-Beta codex-1, originator
-// codex_cli_rs, ChatGPT-Account-ID from the connection's account id), then
-// map data.credits[] → {status, grantedAt, expiresAt} and data.available_count.
-//
-// The consume POST (spend 1 credit) stays a stub — it is irreversible and out
-// of scope for the read-only #2290 view.
-//
-// Proxy-awareness is deferred: the JS handler routes through proxyAwareFetch
-// using the connection's proxy options. The dashboard Deps does not expose a
-// proxy-aware HTTP client to usage handlers today, so this uses a plain
-// timeout client. When a proxy-aware fetcher is wired into Deps, swap the
-// client here.
+// codex_reset_credits.go ports 5cc4f222 (codex #2290): both the read-only GET
+// (reset-credits inventory) and the irreversible POST (consume one credit).
+// Mirrors open-sse/services/usage/codex.js getCodexRateLimitResetCredits +
+// consumeCodexRateLimitResetCredit and the JS route's response shaping
+// (getResponseForConsumeResult). Both upstream calls route through the proxy
+// stack via connectionProxyFetch (proxy-awareness was the deferred half of
+// #154); the route handler (usage_extra.go) drives them.
 
-// codexResetCreditsURL is the upstream endpoint. It is a var (not a const) so
-// tests can point it at an httptest.Server.
+// codexResetCreditsURL is the GET endpoint (inventory). A var so tests can
+// point it at an httptest.Server.
 var codexResetCreditsURL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
 
-// codexResetCreditsClient is the upstream HTTP client. Overridable in tests.
-var codexResetCreditsClient = &http.Client{Timeout: 30 * time.Second}
+// codexResetCreditsConsumeURL is the POST endpoint (spend 1 credit,
+// irreversible). A var for the same reason.
+var codexResetCreditsConsumeURL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume"
 
 // fetchCodexResetCredits fetches the live reset-credits inventory for a codex
-// OAuth connection. Returns the dashboard-shaped payload (credits + available
-// count) or an error carrying a user-facing message.
-func fetchCodexResetCredits(ctx context.Context, conn *settings.ProviderConnection) (map[string]any, error) {
+// OAuth connection through the proxy stack. Returns the dashboard-shaped
+// payload (credits + available count) or a user-facing message payload.
+func fetchCodexResetCredits(ctx context.Context, pools *repo.ProxyPoolRepo, proxyOpts proxy.Options, conn *settings.ProviderConnection) (map[string]any, error) {
 	token, accountID, ok := codexConnectionCreds(conn)
 	if !ok || token == "" {
 		return map[string]any{
@@ -53,15 +47,9 @@ func fetchCodexResetCredits(ctx context.Context, conn *settings.ProviderConnecti
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("OpenAI-Beta", "codex-1")
-	req.Header.Set("originator", "codex_cli_rs")
-	if accountID != "" {
-		req.Header.Set("ChatGPT-Account-ID", accountID)
-	}
+	codexFingerprintHeaders(req, token, accountID)
 
-	resp, err := codexResetCreditsClient.Do(req)
+	resp, err := connectionProxyFetch(ctx, pools, proxyOpts, conn, req)
 	if err != nil {
 		return map[string]any{
 			"credits":      []any{},
@@ -70,7 +58,7 @@ func fetchCodexResetCredits(ctx context.Context, conn *settings.ProviderConnecti
 		}, nil
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	body := readBodySafe(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return map[string]any{
@@ -81,6 +69,123 @@ func fetchCodexResetCredits(ctx context.Context, conn *settings.ProviderConnecti
 	}
 
 	return parseCodexResetCredits(body, conn.ID), nil
+}
+
+// consumeCodexResetCredits spends one reset credit via POST. redeemRequestID
+// is a server-generated UUID (the JS route uses crypto.randomUUID) so a
+// client cannot control the redeem id for replay. Returns the dashboard
+// consume-response shape + the HTTP status the JS route's
+// getResponseForConsumeResult maps to:
+//   - ok (code=="reset" or windows_reset>0): 200 {code, reset:true, windows_reset, redeemRequestId, credit}
+//   - no_credit (ok && code=="no_credit"): 409 {code:"no_credit", reset:false, windows_reset, message}
+//   - else: 502 (or the upstream 4xx) {code||"unknown_response", reset:false, windows_reset, message}
+func consumeCodexResetCredits(ctx context.Context, pools *repo.ProxyPoolRepo, proxyOpts proxy.Options, conn *settings.ProviderConnection, redeemRequestID string) (map[string]any, int) {
+	token, accountID, ok := codexConnectionCreds(conn)
+	if !ok || token == "" {
+		return map[string]any{
+			"code":          "no_token",
+			"reset":         false,
+			"windows_reset": 0,
+			"message":       "No Codex access token available. Please re-authorize the connection.",
+			"connectionId":  conn.ID,
+		}, http.StatusUnauthorized
+	}
+
+	body, _ := json.Marshal(map[string]any{"redeem_request_id": redeemRequestID})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, codexResetCreditsConsumeURL, strings.NewReader(string(body)))
+	if err != nil {
+		return map[string]any{
+			"code":          "request_error",
+			"reset":         false,
+			"windows_reset": 0,
+			"message":       "Failed to build Codex consume request: " + err.Error(),
+			"connectionId":  conn.ID,
+		}, http.StatusInternalServerError
+	}
+	codexFingerprintHeaders(req, token, accountID)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := connectionProxyFetch(ctx, pools, proxyOpts, conn, req)
+	if err != nil {
+		return map[string]any{
+			"code":          "request_error",
+			"reset":         false,
+			"windows_reset": 0,
+			"message":       "Codex consume API request failed: " + err.Error(),
+			"connectionId":  conn.ID,
+		}, http.StatusBadGateway
+	}
+	defer resp.Body.Close()
+	respBody := readBodySafe(resp.Body)
+
+	var data map[string]any
+	_ = json.Unmarshal(respBody, &data)
+
+	code, _ := data["code"].(string)
+	windowsReset := toFiniteInt(data["windows_reset"], data["windowsReset"])
+	success := resp.StatusCode == http.StatusOK && (code == "reset" || windowsReset > 0)
+	noCredit := resp.StatusCode == http.StatusOK && code == "no_credit"
+
+	if success {
+		credit, _ := data["credit"].(map[string]any)
+		return map[string]any{
+			"code":            code,
+			"reset":           true,
+			"windows_reset":   windowsReset,
+			"redeemRequestId": redeemRequestID,
+			"credit":          credit,
+			"connectionId":    conn.ID,
+		}, http.StatusOK
+	}
+	if noCredit {
+		return map[string]any{
+			"code":          "no_credit",
+			"reset":         false,
+			"windows_reset": windowsReset,
+			"message":       "No Codex reset credits available.",
+			"connectionId":  conn.ID,
+		}, http.StatusConflict
+	}
+	// Unexpected response: mirror getResponseForConsumeResult — 4xx upstream
+	// passes through, else 502.
+	status := http.StatusBadGateway
+	if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		status = resp.StatusCode
+	}
+	msg, _ := data["message"].(string)
+	if msg == "" {
+		msg = "Codex reset credit consume returned an unexpected response."
+	}
+	if code == "" {
+		code = "unknown_response"
+	}
+	return map[string]any{
+		"code":          code,
+		"reset":         false,
+		"windows_reset": windowsReset,
+		"message":       msg,
+		"connectionId":  conn.ID,
+	}, status
+}
+
+// codexFingerprintHeaders sets the codex fingerprint headers both the GET and
+// POST consume calls share (Authorization Bearer, Accept JSON, OpenAI-Beta
+// codex-1, originator codex_cli_rs, ChatGPT-Account-ID from the connection).
+func codexFingerprintHeaders(req *http.Request, token, accountID string) {
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("OpenAI-Beta", "codex-1")
+	req.Header.Set("originator", "codex_cli_rs")
+	if accountID != "" {
+		req.Header.Set("ChatGPT-Account-ID", accountID)
+	}
+}
+
+// codexNewRedeemRequestID returns a fresh server-generated redeem request id
+// (the JS route uses crypto.randomUUID). A server-generated id prevents a
+// client from controlling the redeem id for replay.
+func codexNewRedeemRequestID() string {
+	return uuid.NewString()
 }
 
 // parseCodexResetCredits maps the upstream JSON into the dashboard shape:

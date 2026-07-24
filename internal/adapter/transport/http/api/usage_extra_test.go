@@ -211,7 +211,9 @@ func TestUsageExtra_ByConnection(t *testing.T) {
 }
 
 // TestUsageExtra_CodexResetCredits covers the GET and POST codex reset credits
-// routes.
+// routes. POST is now a real consume call (5cc4f222 / #154): a missing
+// connection → 404 (not the old always-200 stub); a real codex connection
+// with a no_credit upstream → 409.
 func TestUsageExtra_CodexResetCredits(t *testing.T) {
 	db := mustOpenDB(t)
 	deps := buildDeps(t, db)
@@ -219,7 +221,8 @@ func TestUsageExtra_CodexResetCredits(t *testing.T) {
 	RegisterUsageExtra(mux, deps)
 	ck := authCookie(t, deps.SessionStore.(*adapterauth.CookieStore))
 
-	// GET.
+	// GET for a missing connection → 200 + "Connection not found." payload
+	// (the UI renders the no-credits state, not a crash).
 	req := httptest.NewRequest("GET", "/api/usage/conn-1/codex-reset-credits", nil)
 	req.Header.Set("Cookie", "auth_token="+ck)
 	rec := httptest.NewRecorder()
@@ -235,20 +238,46 @@ func TestUsageExtra_CodexResetCredits(t *testing.T) {
 		t.Fatal("expected credits field")
 	}
 
-	// POST.
+	// POST for a missing connection → 404 (the old always-200 stub is gone).
 	req = httptest.NewRequest("POST", "/api/usage/conn-1/codex-reset-credits", strings.NewReader(`{}`))
 	req.Header.Set("Cookie", "auth_token="+ck)
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("codex reset POST status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("codex reset POST (missing) status = %d, want 404; body=%s", rec.Code, rec.Body.String())
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal POST: %v", err)
+		t.Fatalf("unmarshal POST (missing): %v", err)
+	}
+	if resp["code"] != "not_found" {
+		t.Fatalf("POST (missing) code = %v, want not_found", resp["code"])
+	}
+
+	// POST for a real codex connection whose upstream returns no_credit → 409.
+	connRow := *codexConn("conn-real", "tok", "acct")
+	connRow.AuthType = "oauth"
+	if _, err := deps.Connections.Create(context.Background(), connRow); err != nil {
+		t.Fatalf("create codex conn: %v", err)
+	}
+	srv, _, _, _ := codexConsumeServer(t, http.StatusOK, `{"code":"no_credit","windows_reset":0}`)
+	prev := codexResetCreditsConsumeURL
+	codexResetCreditsConsumeURL = srv.URL
+	t.Cleanup(func() { codexResetCreditsConsumeURL = prev })
+
+	req = httptest.NewRequest("POST", "/api/usage/conn-real/codex-reset-credits", strings.NewReader(`{}`))
+	req.Header.Set("Cookie", "auth_token="+ck)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("codex reset POST (no_credit) status = %d, want 409; body=%s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal POST (no_credit): %v", err)
 	}
 	if resp["code"] != "no_credit" {
-		t.Fatalf("POST code = %v, want no_credit", resp["code"])
+		t.Fatalf("POST (no_credit) code = %v, want no_credit", resp["code"])
 	}
 }
 
@@ -257,7 +286,7 @@ func TestUsageExtra_CodexResetCredits(t *testing.T) {
 func TestUsageExtra_isUsageEligible(t *testing.T) {
 	cases := []struct {
 		provider, authType string
-		want              bool
+		want               bool
 	}{
 		{"openai", "oauth", true},
 		{"openai", "apikey", false},

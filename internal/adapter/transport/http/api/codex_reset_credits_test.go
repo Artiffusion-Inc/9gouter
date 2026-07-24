@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
@@ -141,7 +142,7 @@ func TestFetchCodexResetCredits_RealUpstream(t *testing.T) {
 	codexResetCreditsURL = srv.URL
 	defer func() { codexResetCreditsURL = prev }()
 
-	out, err := fetchCodexResetCredits(context.Background(), codexConn("c1", "tok-xyz", "acct-7"))
+	out, err := fetchCodexResetCredits(context.Background(), nil, proxy.Options{}, codexConn("c1", "tok-xyz", "acct-7"))
 	if err != nil {
 		t.Fatalf("fetch err: %v", err)
 	}
@@ -174,7 +175,7 @@ func TestFetchCodexResetCredits_RealUpstream(t *testing.T) {
 // instead of attempting the upstream call.
 func TestFetchCodexResetCredits_NoToken(t *testing.T) {
 	conn := codexConn("c2", "", "")
-	out, err := fetchCodexResetCredits(context.Background(), conn)
+	out, err := fetchCodexResetCredits(context.Background(), nil, proxy.Options{}, conn)
 	if err != nil {
 		t.Fatalf("fetch err: %v", err)
 	}
@@ -200,7 +201,7 @@ func TestFetchCodexResetCredits_UpstreamError(t *testing.T) {
 	codexResetCreditsURL = srv.URL
 	defer func() { codexResetCreditsURL = prev }()
 
-	out, err := fetchCodexResetCredits(context.Background(), codexConn("c3", "tok", "acct"))
+	out, err := fetchCodexResetCredits(context.Background(), nil, proxy.Options{}, codexConn("c3", "tok", "acct"))
 	if err != nil {
 		t.Fatalf("fetch err: %v", err)
 	}

@@ -229,25 +229,37 @@ func isUsageEligible(provider, authType string) bool {
 
 func (h *usageExtraHandler) codexResetCredits(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("connectionId")
-	// Frontend (ProviderLimits → handleViewCodexResetCredits) reads:
-	//   result.credits  → array of { expiresAt, ... }
-	//   result.message / result.error → user-facing error string
-	// On error it throws `result.error || result.message || "Failed to load Codex reset credits"`.
+	// Frontend (ProviderLimits → handleViewCodexResetCredits / handleConsumeCodexResetCredit)
+	// reads:
+	//   GET  result.credits / result.message
+	//   POST result.code / result.reset / result.windows_reset / result.message
 	if r.Method == http.MethodPost {
-		writeJSON(w, http.StatusOK, map[string]any{
-			"code":          "no_credit",
-			"reset":         false,
-			"windows_reset": 0,
-			"message":       "No Codex reset credits available.",
-			"connectionId":  strings.TrimPrefix(id, "/"),
-		})
+		// POST (consume) — port 5cc4f222 / #154: spend one reset credit via the
+		// upstream consume endpoint, routed through the proxy stack. The redeem
+		// request id is server-generated (the JS route uses crypto.randomUUID)
+		// so a client cannot control it for replay.
+		conn, err := h.deps.Connections.GetByID(r.Context(), id)
+		if err != nil || conn == nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{
+				"code":          "not_found",
+				"reset":         false,
+				"windows_reset": 0,
+				"message":       "Connection not found.",
+				"connectionId":  strings.TrimPrefix(id, "/"),
+			})
+			return
+		}
+		redeemID := codexNewRedeemRequestID()
+		payload, status := consumeCodexResetCredits(r.Context(), h.deps.ProxyPools, h.deps.ProxyOpts, conn, redeemID)
+		writeJSON(w, status, payload)
 		return
 	}
 	// GET (view-credits) — port 5cc4f222: fetch the live reset-credits
-	// inventory from the Codex upstream for this connection. Falls back to a
-	// parseable empty payload (with a user-facing message) when the connection
-	// is missing, not codex, has no token, or the upstream errors — so the UI
-	// renders the "no credits" state instead of crashing on `undefined`.
+	// inventory from the Codex upstream for this connection, routed through the
+	// proxy stack. Falls back to a parseable empty payload (with a user-facing
+	// message) when the connection is missing, not codex, has no token, or the
+	// upstream errors — so the UI renders the "no credits" state instead of
+	// crashing on `undefined`.
 	conn, err := h.deps.Connections.GetByID(r.Context(), id)
 	if err != nil || conn == nil {
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -257,6 +269,6 @@ func (h *usageExtraHandler) codexResetCredits(w http.ResponseWriter, r *http.Req
 		})
 		return
 	}
-	payload, _ := fetchCodexResetCredits(r.Context(), conn)
+	payload, _ := fetchCodexResetCredits(r.Context(), h.deps.ProxyPools, h.deps.ProxyOpts, conn)
 	writeJSON(w, http.StatusOK, payload)
 }

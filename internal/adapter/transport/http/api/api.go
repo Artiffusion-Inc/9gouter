@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
 	domainauth "github.com/Artiffusion-Inc/9gouter/internal/domain/auth"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/managedashboard"
 )
@@ -85,6 +86,13 @@ type Deps struct {
 	// without re-implementing them. nil leaves the passthrough routes as
 	// not-available stubs.
 	V1Dispatch func(http.ResponseWriter, *http.Request)
+
+	// ProxyOpts carries the proxy-stack timeout/behaviour config used by the
+	// proxy-aware usage handlers (codex reset-credits GET/POST) to route their
+	// upstream calls through the same proxy pipeline as the chat path
+	// (proxy.ProxyAwareFetch). Zero-value when unset → those handlers fall back
+	// to a plain timeout client (the pre-#154 behaviour).
+	ProxyOpts proxy.Options
 }
 
 // writeJSON writes a JSON response with the given status code.

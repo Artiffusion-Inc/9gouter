@@ -100,11 +100,51 @@ func (h *oauthHandler) codexBulkImportAccounts(w http.ResponseWriter, r *http.Re
 			continue
 		}
 
+		// Backfill missing identity fields from the JWT (idToken preferred,
+		// else the accessToken) the same way the JS bulk-import route does
+		// (extractCodexAccountInfo): email, chatgptAccountId, chatgptPlanType.
+		// The chatgptAccountId is what the c73c419d dedup rule keys on — without
+		// it a re-import of the same account would create a duplicate row.
+		psd, _ := raw["providerSpecificData"].(map[string]any)
+		if psd == nil {
+			psd = map[string]any{}
+		}
+		info := extractCodexAccountInfo(idToken)
+		if info.Email == "" {
+			info = extractCodexAccountInfo(accessToken)
+		}
+		if email == "" {
+			email = info.Email
+		}
+		if _, has := psd["chatgptAccountId"]; !has && info.ChatGPTAccountID != "" {
+			psd["chatgptAccountId"] = info.ChatGPTAccountID
+		}
+		if _, has := psd["chatgptPlanType"]; !has && info.ChatGPTPlanType != "" {
+			psd["chatgptPlanType"] = info.ChatGPTPlanType
+		}
+
+		// Compute expiresAt from expiresIn when absent (JS:
+		// new Date(Date.now()+expiresIn*1000).toISOString()).
+		expiresAt, _ := raw["expiresAt"].(string)
+		if expiresAt == "" {
+			if expiresIn, ok := raw["expiresIn"].(float64); ok {
+				expiresAt = codexExpiresAtFromExpiresIn(expiresIn, now)
+			}
+		}
+
 		data := map[string]any{
-			"accessToken":  accessToken,
-			"refreshToken": refreshToken,
-			"idToken":      idToken,
-			"email":        email,
+			"accessToken":   accessToken,
+			"refreshToken":  refreshToken,
+			"idToken":       idToken,
+			"email":         email,
+			"testStatus":    "active",
+			"lastRefreshAt": now.UTC().Format(time.RFC3339),
+		}
+		if expiresAt != "" {
+			data["expiresAt"] = expiresAt
+		}
+		if len(psd) > 0 {
+			data["providerSpecificData"] = psd
 		}
 		dataJSON, err := json.Marshal(data)
 		if err != nil {

@@ -34,7 +34,6 @@ func TestOAuth_AllRoutes(t *testing.T) {
 		{"POST", "/api/oauth/kiro/api-key", `{"apiKey":"k-xxx"}`},
 		{"POST", "/api/oauth/kiro/auto-import", `{"tokens":""}`},
 		{"POST", "/api/oauth/kiro/import", `{"tokens":""}`},
-		{"POST", "/api/oauth/kiro/import-cli-proxy", `{"tokens":""}`},
 		{"POST", "/api/oauth/kiro/social-authorize", `{}`},
 		{"POST", "/api/oauth/kiro/social-exchange", `{"code":"c"}`},
 	}
@@ -55,6 +54,28 @@ func TestOAuth_AllRoutes(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("%s %s status = %d, want 200; body=%s", c.method, c.path, rec.Code, rec.Body.String())
 		}
+	}
+
+	// import-cli-proxy is a real (non-stub) handler now: a tokens-less body
+	// is rejected with 400 (Normalize error), and a valid CLIProxyAuth blob is
+	// accepted with 200. See kiro_import_test.go for the full contract.
+	cliBody, _ := json.Marshal(map[string]any{"cliProxyAuth": validCliProxyAuth("all-routes@contoso.com")})
+	cliReq := httptest.NewRequest("POST", "/api/oauth/kiro/import-cli-proxy", strings.NewReader(string(cliBody)))
+	cliReq.Header.Set("Cookie", "auth_token="+ck)
+	cliReq.Header.Set("Content-Type", "application/json")
+	cliRec := httptest.NewRecorder()
+	mux.ServeHTTP(cliRec, cliReq)
+	if cliRec.Code != http.StatusOK {
+		t.Fatalf("import-cli-proxy valid blob status = %d, want 200; body=%s", cliRec.Code, cliRec.Body.String())
+	}
+	// Empty body → 400 (Normalize rejects a missing auth blob).
+	emptyReq := httptest.NewRequest("POST", "/api/oauth/kiro/import-cli-proxy", strings.NewReader(`{"tokens":""}`))
+	emptyReq.Header.Set("Cookie", "auth_token="+ck)
+	emptyReq.Header.Set("Content-Type", "application/json")
+	emptyRec := httptest.NewRecorder()
+	mux.ServeHTTP(emptyRec, emptyReq)
+	if emptyRec.Code != http.StatusBadRequest {
+		t.Fatalf("import-cli-proxy empty body status = %d, want 400; body=%s", emptyRec.Code, emptyRec.Body.String())
 	}
 
 	// gitlab pat with non-empty token → tokenSaved=true.
@@ -126,8 +147,8 @@ func TestOAuth_CodexBulkImport(t *testing.T) {
 		t.Fatalf("bulk import status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
 	var resp struct {
-		Success int `json:"success"`
-		Failed  int `json:"failed"`
+		Success int              `json:"success"`
+		Failed  int              `json:"failed"`
 		Results []map[string]any `json:"results"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {

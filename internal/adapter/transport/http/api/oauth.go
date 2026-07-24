@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver/tokenrefresh"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
 
@@ -188,7 +189,95 @@ func (h *oauthHandler) kiroImport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *oauthHandler) kiroImportCliProxy(w http.ResponseWriter, r *http.Request) {
-	h.importTokens(w, r, "kiro")
+	// POST /api/oauth/kiro/import-cli-proxy — import a CLIProxyAPI auth JSON
+	// (Microsoft external_idp) as a kiro connection. Mirrors
+	// src/app/api/oauth/kiro/import-cli-proxy/route.js: parse the auth blob
+	// (cliProxyAuth | auth | json | body), normalize via
+	// tokenrefresh.NormalizeKiroExternalIDPAuth, persist via
+	// Connections.Create (which runs the cb0135b6 cross-IdP dedup so a re-import
+	// of the same identity merges onto the existing row).
+	var body map[string]any
+	// tolerate empty/invalid body — Normalize returns a clear error below.
+	_ = parseJSON(r, &body)
+	if body == nil {
+		body = map[string]any{}
+	}
+	raw := firstNonNil(body["cliProxyAuth"], body["auth"], body["json"], body)
+
+	normalized, err := tokenrefresh.NormalizeKiroExternalIDPAuth(raw, time.Now())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if h.deps.Connections == nil {
+		writeError(w, http.StatusServiceUnavailable, "Connections repo unavailable")
+		return
+	}
+
+	data := map[string]any{
+		"accessToken":  normalized.AccessToken,
+		"refreshToken": normalized.RefreshToken,
+		"email":        normalized.Email,
+		"testStatus":   "active",
+	}
+	if normalized.ExpiresAt != "" {
+		data["expiresAt"] = normalized.ExpiresAt
+	}
+	for k, v := range normalized.ProviderSpecificData {
+		data[k] = v
+	}
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to encode connection data: "+err.Error())
+		return
+	}
+
+	now := time.Now()
+	conn := settings.ProviderConnection{
+		ID:        fmt.Sprintf("kiro-%d", now.UnixNano()),
+		Provider:  "kiro",
+		AuthType:  "oauth",
+		Name:      normalized.Email,
+		Email:     normalized.Email,
+		Priority:  0,
+		IsActive:  true,
+		Data:      dataJSON,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	resolved, err := h.deps.Connections.Create(r.Context(), conn)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// resolved.ID may differ from conn.ID when Create merged onto an existing
+	// same-identity row (cb0135b6 dedup) — surface the real id.
+	resolvedID := conn.ID
+	resolvedEmail := normalized.Email
+	if resolved != nil {
+		resolvedID = resolved.ID
+		if resolved.Email != "" {
+			resolvedEmail = resolved.Email
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"connection": map[string]any{
+			"id":       resolvedID,
+			"provider": "kiro",
+			"email":    resolvedEmail,
+		},
+	})
+}
+
+// firstNonNil returns the first non-nil argument, or nil if all are nil.
+func firstNonNil(vs ...any) any {
+	for _, v := range vs {
+		if v != nil {
+			return v
+		}
+	}
+	return nil
 }
 
 func (h *oauthHandler) kiroSocialAuthorize(w http.ResponseWriter, r *http.Request) {

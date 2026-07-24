@@ -34,7 +34,11 @@ import (
 // NOT YET PORTED (tracked as follow-up Worker tasks):
 //   - live-model resolvers (kiro/qoder/kimchi/copilot/clinepass/grok-cli) —
 //     this is why the list does not update when thinking mode changes (#2702)
-//   - fetchCompatibleModelIds for openai/anthropic-compatible providers
+//
+// PORTED (88a8c72d): fetchCompatibleModelIds for openai/anthropic-compatible /
+// custom-embedding provider nodes — live /models fetch from each active
+// compatible connection's baseUrl, surfaced under the node prefix, with the
+// x-9r-internal-models-fetch recursion guard. See v1models_compatible.go.
 //
 // PORTED (cluster #109): capabilities metadata is now populated per entry via
 // capsForModel (capabilities.FromServiceKind for non-LLM, then
@@ -152,7 +156,12 @@ func (h *v1Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 
 	kindFilter := kindFilterFromPath(r.PathValue("kind"))
 
-	models := h.buildModelsList(ctx, kindFilter)
+	// x-9r-internal-models-fetch marks a request issued by another
+	// 9router instance's fetchCompatibleModelIds — skip the live compatible
+	// fetch so cross-instance /models calls do not recurse (88a8c72d).
+	skipDynamicFetch := r.Header.Get(internalModelsFetchHeader) != ""
+
+	models := h.buildModelsList(ctx, kindFilter, skipDynamicFetch)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -163,9 +172,11 @@ func (h *v1Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// buildModelsList assembles the static model catalog. It is split out so it
-// is unit-testable without HTTP machinery.
-func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string) []oaiModel {
+// buildModelsList assembles the model catalog. It is split out so it is
+// unit-testable without HTTP machinery. skipDynamicFetch is set when the
+// request carries x-9r-internal-models-fetch — a cross-instance /models call
+// must not re-issue its own live compatible fetch (recursion guard, 88a8c72d).
+func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string, skipDynamicFetch bool) []oaiModel {
 	// Active connections, keyed by provider (first active wins, mirroring JS
 	// activeConnectionByProvider). We keep the connection records too: the
 	// live-model resolver needs the full credentials (accessToken + psd),
@@ -375,6 +386,16 @@ func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string) []
 		_ = resolved
 		seen[alias] = true
 		out = append(out, oaiModel{ID: alias, Object: "model", OwnedBy: "alias"})
+	}
+
+	// Compatible provider nodes (openai-compatible-* / anthropic-compatible-* /
+	// custom-embedding-*): their static catalog is empty, so /v1/models fetches
+	// the live catalog from each active compatible connection's baseUrl and
+	// surfaces the ids under the node's prefix (88a8c72d). Skipped when the
+	// request carries x-9r-internal-models-fetch (cross-instance recursion
+	// guard) — skipDynamicFetch is true.
+	if !skipDynamicFetch {
+		h.appendCompatibleModels(ctx, kindFilter, activeConns, &out, seen)
 	}
 
 	return out

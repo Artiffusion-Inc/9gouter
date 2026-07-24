@@ -75,7 +75,7 @@ func TestBuildModelsList_StaticCatalogOnlyActive(t *testing.T) {
 	h, db := newModelsHandler(t)
 
 	// No active connection for ollama -> no ollama models.
-	got := h.buildModelsList(context.Background(), []string{"llm"})
+	got := h.buildModelsList(context.Background(), []string{"llm"}, false)
 	if hasID(got, "ollama/gpt-oss:120b") {
 		t.Fatalf("ollama model listed without active connection: %v", ids(got))
 	}
@@ -83,7 +83,7 @@ func TestBuildModelsList_StaticCatalogOnlyActive(t *testing.T) {
 	// Create an active ollama connection; now the static catalog appears.
 	mustCreateConnection(t, db, "ollama", `{"apiKey":"k"}`)
 
-	got = h.buildModelsList(context.Background(), []string{"llm"})
+	got = h.buildModelsList(context.Background(), []string{"llm"}, false)
 	if !hasID(got, "ollama/gpt-oss:120b") {
 		t.Fatalf("ollama/gpt-oss:120b missing with active connection: %v", ids(got))
 	}
@@ -106,7 +106,7 @@ func TestBuildModelsList_DisabledRemoved(t *testing.T) {
 		t.Fatalf("disable: %v", err)
 	}
 
-	got := h.buildModelsList(context.Background(), []string{"llm"})
+	got := h.buildModelsList(context.Background(), []string{"llm"}, false)
 	if hasID(got, "ollama/glm-5") {
 		t.Fatalf("disabled model ollama/glm-5 present: %v", ids(got))
 	}
@@ -121,13 +121,13 @@ func TestBuildModelsList_KindFilter(t *testing.T) {
 	mustCreateConnection(t, db, "ollama", `{"apiKey":"k"}`)
 
 	// ollama catalog is llm-only; an "image" kind filter must exclude it.
-	got := h.buildModelsList(context.Background(), []string{"image"})
+	got := h.buildModelsList(context.Background(), []string{"image"}, false)
 	if hasID(got, "ollama/gpt-oss:120b") {
 		t.Fatalf("llm model leaked into image kind filter: %v", ids(got))
 	}
 
 	// "all" (nil filter) includes everything.
-	got = h.buildModelsList(context.Background(), nil)
+	got = h.buildModelsList(context.Background(), nil, false)
 	if !hasID(got, "ollama/gpt-oss:120b") {
 		t.Fatalf("ollama model missing under nil kind filter: %v", ids(got))
 	}
@@ -146,7 +146,7 @@ func TestBuildModelsList_CombosFirst(t *testing.T) {
 		t.Fatalf("create combo: %v", err)
 	}
 
-	got := h.buildModelsList(context.Background(), []string{"llm"})
+	got := h.buildModelsList(context.Background(), []string{"llm"}, false)
 	if !hasID(got, "my-combo") {
 		t.Fatalf("combo not listed: %v", ids(got))
 	}
@@ -167,7 +167,7 @@ func TestBuildModelsList_CustomModels(t *testing.T) {
 		t.Fatalf("add custom model: %v", err)
 	}
 
-	got := h.buildModelsList(context.Background(), []string{"llm"})
+	got := h.buildModelsList(context.Background(), []string{"llm"}, false)
 	if !hasID(got, "ollama/my-custom-model") {
 		t.Fatalf("custom model ollama/my-custom-model missing: %v", ids(got))
 	}
@@ -233,7 +233,7 @@ func TestBuildModelsList_CapabilitiesPopulated(t *testing.T) {
 	h, db := newModelsHandler(t)
 	mustCreateConnection(t, db, "ollama", `{"apiKey":"k"}`)
 
-	got := h.buildModelsList(context.Background(), []string{"llm"})
+	got := h.buildModelsList(context.Background(), []string{"llm"}, false)
 	// At least one entry must serialize without error and the capabilities
 	// field, when present, must round-trip through JSON with the expected shape.
 	enc, err := json.Marshal(got)

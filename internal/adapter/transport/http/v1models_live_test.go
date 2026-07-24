@@ -46,7 +46,7 @@ func TestBuildModelsList_LiveResolverOverridesStatic(t *testing.T) {
 	h, db := newModelsHandler(t)
 	mustCreateConnection(t, db, "ollama", `{"apiKey":"k","accessToken":"tok"}`)
 
-	got := h.buildModelsList(context.Background(), []string{"llm"})
+	got := h.buildModelsList(context.Background(), []string{"llm"}, false)
 
 	// Live models should be present under the ollama alias.
 	if !hasID(got, "ollama/live-model-1") {
@@ -72,7 +72,7 @@ func TestBuildModelsList_LiveResolverFallsBackToStatic(t *testing.T) {
 	h, db := newModelsHandler(t)
 	mustCreateConnection(t, db, "ollama", `{"apiKey":"k","accessToken":"tok"}`)
 
-	got := h.buildModelsList(context.Background(), []string{"llm"})
+	got := h.buildModelsList(context.Background(), []string{"llm"}, false)
 
 	// Static ollama model should be present (live returned nil).
 	if !hasID(got, "ollama/gpt-oss:120b") {
@@ -119,9 +119,9 @@ func TestResolveLiveCatalogs_CallsResolverPerConnection(t *testing.T) {
 // connection record (apiKey, accessToken, providerSpecificData passthrough).
 func TestConnectionCredentials(t *testing.T) {
 	c := settings.ProviderConnection{
-		ID:     "c1",
+		ID:       "c1",
 		Provider: "ollama",
-		Data:    json.RawMessage(`{"apiKey":"k","accessToken":"at","providerSpecificData":{"profileArn":"arn:1"}}`),
+		Data:     json.RawMessage(`{"apiKey":"k","accessToken":"at","providerSpecificData":{"profileArn":"arn:1"}}`),
 	}
 	creds := connectionCredentials(c)
 	if creds.APIKey != "k" {

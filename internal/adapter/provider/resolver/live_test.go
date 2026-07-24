@@ -449,7 +449,8 @@ func TestResolveRegistry_RegistersAll(t *testing.T) {
 	Register(NewKimchiResolver(nil))
 	Register(NewQoderResolver())
 	Register(NewCursorResolver(nil))
-	for _, id := range []string{"clinepass", "github", "grok-cli", "kimchi", "qoder", "cursor"} {
+	Register(NewKilocodeResolver(nil))
+	for _, id := range []string{"clinepass", "github", "grok-cli", "kimchi", "qoder", "cursor", "kilocode"} {
 		if Lookup(id) == nil {
 			t.Errorf("Lookup(%q)=nil after Register", id)
 		}
@@ -464,6 +465,7 @@ var (
 	_ LiveModelResolver = (*kimchiResolver)(nil)
 	_ LiveModelResolver = (*qoderResolver)(nil)
 	_ LiveModelResolver = (*cursorResolver)(nil)
+	_ LiveModelResolver = (*kilocodeResolver)(nil)
 )
 
 // keep imports used in some build configs.

@@ -92,6 +92,11 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	// codex/grok-cli it takes only a cache. #92 (v0.5.40): AgentService
 	// GetUsableModels live resolver with bumped clientVersion 3.12.17.
 	resolver.Register(resolver.NewCursorResolver(nil))
+	// kilocode gateway catalog (713c5637): unauthenticated OpenRouter-shaped
+	// /api/gateway/models read, narrowed by the openrouter-free filter (free +
+	// context_length >= 200000). Replaces the 8-model static fallback for
+	// active kilocode connections; auth lives on the chat path, not the catalog.
+	resolver.Register(resolver.NewKilocodeResolver(nil))
 
 	proxyOpts := proxy.OptionsFromConfig(cfg)
 

@@ -378,9 +378,11 @@ var configs = map[string]base.Config{
 			Alias:        "kc",
 			ServiceKinds: []string{"llm"},
 			// The 8 hardcoded upstream OpenRouter models are a fallback; the live
-			// catalog (334 models) is fetched from api.kilo.ai/api/gateway/models.
-			// The Go rewrite has no kilocode live resolver yet, so the static list
-			// is what /v1/models and the combo picker surface today.
+			// catalog (the free long-context subset) is fetched from
+			// api.kilo.ai/api/gateway/models by the kilocode live resolver
+			// (resolver/kilocode.go, 713c5637) and replaces these for active
+			// kilocode connections. The static list only surfaces when the live
+			// fetch fails or no kilocode connection is active.
 			Models: []domain.Model{
 				{ID: "anthropic/claude-sonnet-4-20250514", Name: "Claude Sonnet 4"},
 				{ID: "anthropic/claude-opus-4-20250514", Name: "Claude Opus 4"},

@@ -243,11 +243,20 @@ func (h *usageExtraHandler) codexResetCredits(w http.ResponseWriter, r *http.Req
 		})
 		return
 	}
-	// GET (view-credits) → return an empty credits array so the UI renders the
-	// "no credits" state instead of crashing on `undefined`.
-	writeJSON(w, http.StatusOK, map[string]any{
-		"credits":      []any{},
-		"connectionId": strings.TrimPrefix(id, "/"),
-		"message":      "No Codex reset credits available.",
-	})
+	// GET (view-credits) — port 5cc4f222: fetch the live reset-credits
+	// inventory from the Codex upstream for this connection. Falls back to a
+	// parseable empty payload (with a user-facing message) when the connection
+	// is missing, not codex, has no token, or the upstream errors — so the UI
+	// renders the "no credits" state instead of crashing on `undefined`.
+	conn, err := h.deps.Connections.GetByID(r.Context(), id)
+	if err != nil || conn == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"credits":      []any{},
+			"connectionId": strings.TrimPrefix(id, "/"),
+			"message":      "Connection not found.",
+		})
+		return
+	}
+	payload, _ := fetchCodexResetCredits(r.Context(), conn)
+	writeJSON(w, http.StatusOK, payload)
 }

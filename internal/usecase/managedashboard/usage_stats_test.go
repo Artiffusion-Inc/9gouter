@@ -75,7 +75,7 @@ func TestStatsWithMeta_FullContract(t *testing.T) {
 		ID: "conn-abc123def456", Provider: "ollama", AuthType: "apikey",
 		Name: "My Ollama Box", IsActive: true,
 	}
-	if err := cr.Create(context.Background(), conn); err != nil {
+	if _, err := cr.Create(context.Background(), conn); err != nil {
 		t.Fatalf("conn create: %v", err)
 	}
 	// Seed a node whose name overrides the raw provider id in byModel.provider.

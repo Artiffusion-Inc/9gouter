@@ -332,7 +332,7 @@ func mustCreateConnection(t *testing.T, db *sql.DB, provider, data string) {
 func mustCreateConnectionWithID(t *testing.T, db *sql.DB, id, provider, data string) {
 	t.Helper()
 	connRepo := repo.NewConnectionRepo(db)
-	if err := connRepo.Create(context.Background(), settings.ProviderConnection{
+	if _, err := connRepo.Create(context.Background(), settings.ProviderConnection{
 		ID:       id,
 		Provider: provider,
 		AuthType: "apiKey",
@@ -532,10 +532,10 @@ func TestV1_ChatCompletions_StickyRoundRobin(t *testing.T) {
 	deps := V1Deps{
 		APIKeysRepo:    repo.NewAPIKeyRepo(db),
 		SettingsRepo:   repo.NewSettingsRepo(db),
-		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ConnectionRepo: repo.NewConnectionRepo(db),
 		ComboRepo:      repo.NewComboRepo(db),
-		AliasRepo:       repo.NewAliasRepo(db),
-		NodeRepo:        repo.NewNodeRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
 		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
 		Chat:           stub,
 		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
@@ -594,10 +594,10 @@ func TestV1_ChatCompletions_FallbackRotatesOn429(t *testing.T) {
 	deps := V1Deps{
 		APIKeysRepo:    repo.NewAPIKeyRepo(db),
 		SettingsRepo:   repo.NewSettingsRepo(db),
-		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ConnectionRepo: repo.NewConnectionRepo(db),
 		ComboRepo:      repo.NewComboRepo(db),
-		AliasRepo:       repo.NewAliasRepo(db),
-		NodeRepo:        repo.NewNodeRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
 		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
 		Chat:           chat,
 		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
@@ -657,10 +657,10 @@ func TestV1_ChatCompletions_FallbackAllFail503(t *testing.T) {
 	deps := V1Deps{
 		APIKeysRepo:    repo.NewAPIKeyRepo(db),
 		SettingsRepo:   repo.NewSettingsRepo(db),
-		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ConnectionRepo: repo.NewConnectionRepo(db),
 		ComboRepo:      repo.NewComboRepo(db),
-		AliasRepo:       repo.NewAliasRepo(db),
-		NodeRepo:        repo.NewNodeRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
 		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
 		Chat:           chat,
 		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
@@ -705,10 +705,10 @@ func TestV1_ChatCompletions_ProxyErrorDoesNotLockAccount(t *testing.T) {
 	deps := V1Deps{
 		APIKeysRepo:    repo.NewAPIKeyRepo(db),
 		SettingsRepo:   repo.NewSettingsRepo(db),
-		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ConnectionRepo: repo.NewConnectionRepo(db),
 		ComboRepo:      repo.NewComboRepo(db),
-		AliasRepo:       repo.NewAliasRepo(db),
-		NodeRepo:        repo.NewNodeRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
 		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
 		Chat:           chat,
 		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
@@ -746,6 +746,7 @@ func TestV1_ChatCompletions_ProxyErrorDoesNotLockAccount(t *testing.T) {
 		t.Fatal("proxy outage must not mark account unavailable")
 	}
 }
+
 // connection is excluded by the fallback loop, resolveCredentials returns
 // ErrNoActiveCredentials and handleChat surfaces 503 instead of 404. This is
 // the transport hook Fix 3's fallback loop will rely on; wired here as part of
@@ -759,10 +760,10 @@ func TestV1_ChatCompletions_AllExcludedReturns503(t *testing.T) {
 	deps := V1Deps{
 		APIKeysRepo:    repo.NewAPIKeyRepo(db),
 		SettingsRepo:   repo.NewSettingsRepo(db),
-		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ConnectionRepo: repo.NewConnectionRepo(db),
 		ComboRepo:      repo.NewComboRepo(db),
-		AliasRepo:       repo.NewAliasRepo(db),
-		NodeRepo:        repo.NewNodeRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
 		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
 		Chat:           &stubChatHandler{},
 		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
@@ -794,7 +795,7 @@ func TestV1_ChatCompletions_EmitsRouteDiagnostics(t *testing.T) {
 	deps := V1Deps{
 		APIKeysRepo:    repo.NewAPIKeyRepo(db),
 		SettingsRepo:   repo.NewSettingsRepo(db),
-		ConnectionRepo:  repo.NewConnectionRepo(db),
+		ConnectionRepo: repo.NewConnectionRepo(db),
 		ComboRepo:      repo.NewComboRepo(db),
 		AliasRepo:      repo.NewAliasRepo(db),
 		NodeRepo:       repo.NewNodeRepo(db),

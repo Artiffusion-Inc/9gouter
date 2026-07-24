@@ -15,7 +15,7 @@ type fakeConnectionRepoLite struct {
 	conns    []settings.ProviderConnection
 	listErr  error
 	createID string
-	createFn func(settings.ProviderConnection) error
+	createFn func(settings.ProviderConnection) (*settings.ProviderConnection, error)
 }
 
 func (r *fakeConnectionRepoLite) List(ctx context.Context, filter repo.ConnectionFilter) ([]settings.ProviderConnection, error) {
@@ -38,13 +38,13 @@ func (r *fakeConnectionRepoLite) List(ctx context.Context, filter repo.Connectio
 	return out, nil
 }
 
-func (r *fakeConnectionRepoLite) Create(ctx context.Context, c settings.ProviderConnection) error {
+func (r *fakeConnectionRepoLite) Create(ctx context.Context, c settings.ProviderConnection) (*settings.ProviderConnection, error) {
 	r.createID = c.ID
 	if r.createFn != nil {
 		return r.createFn(c)
 	}
 	r.conns = append(r.conns, c)
-	return nil
+	return &c, nil
 }
 
 // fakeNodeRepoLite implements ProviderService.NodeRepo.
@@ -218,7 +218,7 @@ func TestProviderService_Create_EmptyDataStillGetsAPIKey(t *testing.T) {
 func TestProviderService_Create_RepoError(t *testing.T) {
 	t.Parallel()
 	sentinel := errors.New("create failed")
-	s := &ProviderService{Repo: &fakeConnectionRepoLite{createFn: func(settings.ProviderConnection) error { return sentinel }}}
+	s := &ProviderService{Repo: &fakeConnectionRepoLite{createFn: func(settings.ProviderConnection) (*settings.ProviderConnection, error) { return nil, sentinel }}}
 	if _, err := s.Create(context.Background(), settings.ProviderConnection{ID: "x"}, "k"); !errors.Is(err, sentinel) {
 		t.Fatalf("err = %v, want %v", err, sentinel)
 	}
@@ -231,8 +231,8 @@ func TestProviderService_Client_Filtering(t *testing.T) {
 		conns: []settings.ProviderConnection{
 			{ID: "a", Provider: "openai", AuthType: "oauth", IsActive: true, Data: connJSON(t, map[string]any{})},
 			{ID: "b", Provider: "glm", AuthType: "api-key", IsActive: true, Data: connJSON(t, map[string]any{})},
-			{ID: "c", Provider: "qwen", AuthType: "oauth", IsActive: false, Data: connJSON(t, map[string]any{})}, // inactive → not active status
-			{ID: "d", Provider: "unknown", AuthType: "oauth", IsActive: true, Data: connJSON(t, map[string]any{})}, // unsupported
+			{ID: "c", Provider: "qwen", AuthType: "oauth", IsActive: false, Data: connJSON(t, map[string]any{})},       // inactive → not active status
+			{ID: "d", Provider: "unknown", AuthType: "oauth", IsActive: true, Data: connJSON(t, map[string]any{})},     // unsupported
 			{ID: "e", Provider: "anthropic", AuthType: "api-key", IsActive: true, Data: connJSON(t, map[string]any{})}, // not in apiKeyProviders
 		},
 	}
@@ -431,22 +431,22 @@ func TestConnectionToMap_Whitelist(t *testing.T) {
 	c := settings.ProviderConnection{
 		ID: "c", Provider: "p", AuthType: "oauth", Name: "n", Email: "e", Priority: 3, IsActive: true,
 		Data: connJSON(t, map[string]any{
-			"baseUrl":                  "https://x",
-			"azureEndpoint":            "https://azure",
-			"deployment":               "dep",
-			"apiVersion":               "2024",
-			"accountId":                "acc",
-			"region":                   "us",
-			"projectId":                "p1",
-			"resourceUrl":              "https://r",
-			"proxyPoolId":              "pp1",
-			"connectionProxyEnabled":   true,
-			"connectionProxyUrl":       "https://proxy",
-			"connectionNoProxy":        "127.0.0.1",
-			"nodeName":                 "node",
-			"ignoredField":             "x",
-			"testStatus":               "ok",
-			"defaultModel":             "gpt-4",
+			"baseUrl":                "https://x",
+			"azureEndpoint":          "https://azure",
+			"deployment":             "dep",
+			"apiVersion":             "2024",
+			"accountId":              "acc",
+			"region":                 "us",
+			"projectId":              "p1",
+			"resourceUrl":            "https://r",
+			"proxyPoolId":            "pp1",
+			"connectionProxyEnabled": true,
+			"connectionProxyUrl":     "https://proxy",
+			"connectionNoProxy":      "127.0.0.1",
+			"nodeName":               "node",
+			"ignoredField":           "x",
+			"testStatus":             "ok",
+			"defaultModel":           "gpt-4",
 		}),
 	}
 	m := connectionToMap(c)

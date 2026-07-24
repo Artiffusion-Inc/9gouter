@@ -39,7 +39,7 @@ func TestFindExistingForImport_CodexSameAccountIDMatches(t *testing.T) {
 	ctx := context.Background()
 
 	existing := connWith("u@x.com", map[string]any{"chatgptAccountId": "acct-1"})
-	if err := r.Create(ctx, existing); err != nil {
+	if _, err := r.Create(ctx, existing); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	// Second login, same email + same chatgptAccountId → collapse (update-in-place).
@@ -63,7 +63,7 @@ func TestFindExistingForImport_CodexDifferentAccountIDNoMatch(t *testing.T) {
 	ctx := context.Background()
 
 	// First account, bare-ish email with chatgptAccountId=acct-1.
-	if err := r.Create(ctx, connWith("u@x.com", map[string]any{"chatgptAccountId": "acct-1"})); err != nil {
+	if _, err := r.Create(ctx, connWith("u@x.com", map[string]any{"chatgptAccountId": "acct-1"})); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	// Second login, same email but DIFFERENT chatgptAccountId → must NOT collapse
@@ -86,7 +86,7 @@ func TestFindExistingForImport_CodexOneSidedAccountIDNoMatch(t *testing.T) {
 	ctx := context.Background()
 
 	// Existing codex row has chatgptAccountId; incoming does not → no collapse.
-	if err := r.Create(ctx, connWith("u@x.com", map[string]any{"chatgptAccountId": "acct-1"})); err != nil {
+	if _, err := r.Create(ctx, connWith("u@x.com", map[string]any{"chatgptAccountId": "acct-1"})); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	incoming := connWith("u@x.com", nil)
@@ -112,7 +112,7 @@ func TestFindExistingForImport_WorkspaceSameIDMatches(t *testing.T) {
 		Email:    "u@x.com",
 		Data:     dataWithPSD(map[string]any{"chatgptAccountId": "ws-9"}),
 	}
-	if err := r.Create(ctx, existing); err != nil {
+	if _, err := r.Create(ctx, existing); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	incoming := settings.ProviderConnection{
@@ -136,7 +136,7 @@ func TestFindExistingForImport_WorkspaceOneSidedNoMatch(t *testing.T) {
 	r := NewConnectionRepo(db)
 	ctx := context.Background()
 
-	if err := r.Create(ctx, settings.ProviderConnection{
+	if _, err := r.Create(ctx, settings.ProviderConnection{
 		ID:       "c-1",
 		Provider: "claude",
 		AuthType: "oauth",
@@ -164,7 +164,7 @@ func TestFindExistingForImport_UsernameBothMatch(t *testing.T) {
 	r := NewConnectionRepo(db)
 	ctx := context.Background()
 
-	if err := r.Create(ctx, settings.ProviderConnection{
+	if _, err := r.Create(ctx, settings.ProviderConnection{
 		ID:       "c-1",
 		Provider: "claude",
 		AuthType: "oauth",
@@ -191,7 +191,7 @@ func TestFindExistingForImport_UsernameDiffersNoMatch(t *testing.T) {
 	r := NewConnectionRepo(db)
 	ctx := context.Background()
 
-	if err := r.Create(ctx, settings.ProviderConnection{
+	if _, err := r.Create(ctx, settings.ProviderConnection{
 		ID:       "c-1",
 		Provider: "claude",
 		AuthType: "oauth",
@@ -220,7 +220,7 @@ func TestFindExistingForImport_BareEmailMatchesWhenNoDistinguishingID(t *testing
 	ctx := context.Background()
 
 	// Non-codex, neither side has chatgptAccountId or username → bare-email match.
-	if err := r.Create(ctx, settings.ProviderConnection{
+	if _, err := r.Create(ctx, settings.ProviderConnection{
 		ID:       "c-1",
 		Provider: "claude",
 		AuthType: "oauth",
@@ -247,7 +247,7 @@ func TestFindExistingForImport_DifferentEmailNoMatch(t *testing.T) {
 	r := NewConnectionRepo(db)
 	ctx := context.Background()
 
-	if err := r.Create(ctx, connWith("a@x.com", map[string]any{"chatgptAccountId": "acct-1"})); err != nil {
+	if _, err := r.Create(ctx, connWith("a@x.com", map[string]any{"chatgptAccountId": "acct-1"})); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	incoming := connWith("b@x.com", map[string]any{"chatgptAccountId": "acct-1"})
@@ -263,7 +263,7 @@ func TestFindExistingForImport_APIKeyByNameMatches(t *testing.T) {
 	r := NewConnectionRepo(db)
 	ctx := context.Background()
 
-	if err := r.Create(ctx, settings.ProviderConnection{
+	if _, err := r.Create(ctx, settings.ProviderConnection{
 		ID:       "c-1",
 		Provider: "openai",
 		AuthType: "apikey",
@@ -290,7 +290,7 @@ func TestFindExistingForImport_APIKeyDifferentNameNoMatch(t *testing.T) {
 	r := NewConnectionRepo(db)
 	ctx := context.Background()
 
-	if err := r.Create(ctx, settings.ProviderConnection{
+	if _, err := r.Create(ctx, settings.ProviderConnection{
 		ID:       "c-1",
 		Provider: "openai",
 		AuthType: "apikey",
@@ -315,7 +315,7 @@ func TestFindExistingForImport_AccessTokenNeverDedups(t *testing.T) {
 	r := NewConnectionRepo(db)
 	ctx := context.Background()
 
-	if err := r.Create(ctx, settings.ProviderConnection{
+	if _, err := r.Create(ctx, settings.ProviderConnection{
 		ID:       "c-1",
 		Provider: "grok-web",
 		AuthType: "access_token",

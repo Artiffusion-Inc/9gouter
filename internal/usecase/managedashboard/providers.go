@@ -12,7 +12,7 @@ import (
 type ProviderService struct {
 	Repo interface {
 		List(ctx context.Context, filter repo.ConnectionFilter) ([]settings.ProviderConnection, error)
-		Create(ctx context.Context, c settings.ProviderConnection) error
+		Create(ctx context.Context, c settings.ProviderConnection) (*settings.ProviderConnection, error)
 	}
 	NodeRepo interface {
 		List(ctx context.Context, filter repo.NodeFilter) ([]settings.ProviderNode, error)
@@ -57,10 +57,11 @@ func (s *ProviderService) Create(ctx context.Context, c settings.ProviderConnect
 	}
 	data["apiKey"] = apiKey
 	c.Data, _ = json.Marshal(data)
-	if err := s.Repo.Create(ctx, c); err != nil {
+	resolved, err := s.Repo.Create(ctx, c)
+	if err != nil {
 		return nil, err
 	}
-	return &c, nil
+	return resolved, nil
 }
 
 // ClientFilter is the query for the client-facing paginated connection list.
@@ -137,7 +138,7 @@ func (s *ProviderService) Client(ctx context.Context, f ClientFilter) (map[strin
 	}
 
 	return map[string]any{
-		"connections": sanitized,
+		"connections":     sanitized,
 		"providerOptions": options,
 		"pagination": map[string]any{
 			"page":       f.Page,
@@ -154,16 +155,16 @@ func (s *ProviderService) Client(ctx context.Context, f ClientFilter) (map[strin
 
 func connectionToMap(c settings.ProviderConnection) map[string]any {
 	m := map[string]any{
-		"id":         c.ID,
-		"provider":   c.Provider,
-		"authType":   c.AuthType,
-		"name":       c.Name,
-		"email":      c.Email,
-		"priority":   c.Priority,
-		"isActive":   c.IsActive,
+		"id":           c.ID,
+		"provider":     c.Provider,
+		"authType":     c.AuthType,
+		"name":         c.Name,
+		"email":        c.Email,
+		"priority":     c.Priority,
+		"isActive":     c.IsActive,
 		"defaultModel": nil,
-		"testStatus": "unknown",
-		"data":       c.Data,
+		"testStatus":   "unknown",
+		"data":         c.Data,
 	}
 	var data map[string]any
 	_ = json.Unmarshal(c.Data, &data)

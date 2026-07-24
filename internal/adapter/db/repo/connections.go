@@ -80,12 +80,21 @@ func (r *ConnectionRepo) GetByID(ctx context.Context, id string) (*settings.Prov
 	return c, err
 }
 
-// Create inserts a new connection. It does NOT perform the JS OAuth/API-key
-// deduplication or priority auto-assignment; callers should supply a complete
-// record. The reorder-on-create behavior is preserved.
-func (r *ConnectionRepo) Create(ctx context.Context, c settings.ProviderConnection) error {
+// Create inserts a connection, mirroring the JS createProviderConnection
+// (#2477 / cb0135b6): before inserting, run the cross-IdP dedup rule
+// (FindExistingForImport). When an existing row describes the same identity,
+// the incoming record is merged ONTO it (existing id + createdAt are kept,
+// incoming fields overwrite, updatedAt bumped) and upserted in place — so a
+// second Codex login or a cross-IdP account sharing an email updates the
+// existing row instead of creating a duplicate that overwrites rotated tokens.
+// When no existing row matches, a fresh row is inserted with the caller's id.
+//
+// Returns the resolved connection (the merged row when dedup matched, else the
+// inserted row) so callers can read back by the real id rather than the
+// caller-supplied one (which may differ after a merge).
+func (r *ConnectionRepo) Create(ctx context.Context, c settings.ProviderConnection) (*settings.ProviderConnection, error) {
 	if c.ID == "" || c.Provider == "" || c.AuthType == "" {
-		return fmt.Errorf("connections create: id, provider and authType are required")
+		return nil, fmt.Errorf("connections create: id, provider and authType are required")
 	}
 	now := now()
 	if c.CreatedAt.IsZero() {
@@ -95,19 +104,60 @@ func (r *ConnectionRepo) Create(ctx context.Context, c settings.ProviderConnecti
 		c.UpdatedAt = now
 	}
 
+	// cb0135b6: collapse onto an existing same-identity row before insert.
+	// Mirrors the JS `existing = all.find(...)` + `merged = {...existing,
+	// ...data, updatedAt: now}` + upsert(merged) branch. Only oauth/email and
+	// apikey/name records dedup; access_token records never do (the user
+	// manages those duplicates manually), which FindExistingForImport encodes.
+	if existing, err := r.FindExistingForImport(ctx, c); err != nil {
+		return nil, fmt.Errorf("connections create dedup: %w", err)
+	} else if existing != nil {
+		merged := mergeConnection(*existing, c)
+		merged.UpdatedAt = now
+		tx, err := r.db.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, fmt.Errorf("connections create tx: %w", err)
+		}
+		defer tx.Rollback()
+		if err := r.upsertTx(ctx, tx, merged); err != nil {
+			return nil, err
+		}
+		if err := r.reorderTx(ctx, tx, merged.Provider); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return &merged, nil
+	}
+
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("connections create tx: %w", err)
+		return nil, fmt.Errorf("connections create tx: %w", err)
 	}
 	defer tx.Rollback()
 
 	if err := r.upsertTx(ctx, tx, c); err != nil {
-		return err
+		return nil, err
 	}
 	if err := r.reorderTx(ctx, tx, c.Provider); err != nil {
-		return err
+		return nil, err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// mergeConnection mirrors the JS `merged = {...existing, ...data}`: the
+// incoming record overwrites every existing field except the identity anchors
+// (id, createdAt) which are preserved from the existing row so the upsert
+// targets the existing row rather than creating a new one.
+func mergeConnection(existing, incoming settings.ProviderConnection) settings.ProviderConnection {
+	merged := incoming
+	merged.ID = existing.ID
+	merged.CreatedAt = existing.CreatedAt
+	return merged
 }
 
 // Update merges data into an existing connection and reorders priorities when
@@ -227,6 +277,7 @@ func (r *ConnectionRepo) ApplyConnectionPatch(ctx context.Context, id string, pa
 	}
 	return data, nil
 }
+
 // connection's JSON data blob without triggering a priority reorder. This is
 // the persistence side of sticky round-robin selection (decolua/9router #2703
 // Fix 4): every selection writes back the timestamp + use count so the next

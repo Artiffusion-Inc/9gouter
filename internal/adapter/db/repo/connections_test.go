@@ -22,7 +22,7 @@ func TestConnectionRepo_RoundTrip(t *testing.T) {
 		IsActive: true,
 		Data:     json.RawMessage(`{"apiKey":"sk-123"}`),
 	}
-	if err := r.Create(ctx, conn); err != nil {
+	if _, err := r.Create(ctx, conn); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 
@@ -44,7 +44,7 @@ func TestConnectionRepo_RoundTrip(t *testing.T) {
 		IsActive: true,
 		Data:     json.RawMessage(`{"apiKey":"sk-456"}`),
 	}
-	if err := r.Create(ctx, conn2); err != nil {
+	if _, err := r.Create(ctx, conn2); err != nil {
 		t.Fatalf("create second: %v", err)
 	}
 	list, err := r.List(ctx, ConnectionFilter{Provider: "openai"})

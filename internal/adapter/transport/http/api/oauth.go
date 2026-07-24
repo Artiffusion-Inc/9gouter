@@ -124,12 +124,15 @@ func (h *oauthHandler) codexBulkImportAccounts(w http.ResponseWriter, r *http.Re
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
-		if err := h.deps.Connections.Create(r.Context(), conn); err != nil {
+		resolved, err := h.deps.Connections.Create(r.Context(), conn)
+		if err != nil {
 			results = append(results, map[string]any{"index": i, "ok": false, "error": err.Error()})
 			failed++
 			continue
 		}
-		results = append(results, map[string]any{"index": i, "ok": true, "id": conn.ID})
+		// resolved.ID may differ from conn.ID when Create merged onto an
+		// existing same-identity row (cb0135b6 dedup) — surface the real id.
+		results = append(results, map[string]any{"index": i, "ok": true, "id": resolved.ID})
 		success++
 	}
 

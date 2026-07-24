@@ -226,14 +226,18 @@ func (h *oauthHandler) grokCliPoll(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	if err := h.deps.Connections.Create(r.Context(), conn); err != nil {
+	resolved, err := h.deps.Connections.Create(r.Context(), conn)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// resolved.ID may differ from conn.ID when Create merged onto an existing
+	// same-identity row (cb0135b6 dedup) — surface the real id so the
+	// dashboard's read-back hits the persisted row.
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success":    true,
 		"pending":    false,
-		"connection": map[string]any{"id": conn.ID, "provider": conn.Provider, "email": conn.Email},
+		"connection": map[string]any{"id": resolved.ID, "provider": conn.Provider, "email": conn.Email},
 	})
 }
 

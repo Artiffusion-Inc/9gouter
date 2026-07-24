@@ -27,6 +27,8 @@ func RegisterOAuth(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("POST /api/oauth/kiro/import-cli-proxy", h.kiroImportCliProxy)
 	mux.HandleFunc("POST /api/oauth/kiro/social-authorize", h.kiroSocialAuthorize)
 	mux.HandleFunc("POST /api/oauth/kiro/social-exchange", h.kiroSocialExchange)
+	mux.HandleFunc("POST /api/oauth/grok-cli/device-code", h.grokCliDeviceCode)
+	mux.HandleFunc("POST /api/oauth/grok-cli/poll", h.grokCliPoll)
 }
 
 type oauthHandler struct {

@@ -35,6 +35,12 @@ var kiroSSEHeaders = http.Header{"Content-Type": []string{"text/event-stream"}, 
 // BaseExecutor (proxy-aware, fallback, retry-after), then run the EventStream
 // integrity gate over the response body. Mirrors execute() in kiro.js:312-316.
 func (e *Executor) Execute(ctx context.Context, req provider.ExecRequest) (provider.Resp, error) {
+	// Port decolua/9router abc0add0: rewrite the placeholder profileArn the
+	// request translator stamped (Go's translator seam has no credentials) with
+	// the connection-resolved value — account-bound auth (api_key / idc /
+	// external_idp) must never send the shared builder-id default (403 "bearer
+	// token invalid"). Done here because this is the first seam with creds.
+	req.Body = applyKiroProfileArn(req.Body, req.Credentials)
 	resp, err := e.BaseExecutor.Execute(ctx, req)
 	if err != nil {
 		return resp, err

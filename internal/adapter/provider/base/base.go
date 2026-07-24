@@ -26,18 +26,18 @@ const (
 
 // HTTPStatus mirrors open-sse/config/runtimeConfig.js HTTP_STATUS.
 const (
-	HTTPStatusBadRequest     = 400
-	HTTPStatusUnauthorized   = 401
-	HTTPStatusPaymentRequired= 402
-	HTTPStatusForbidden      = 403
-	HTTPStatusNotFound       = 404
-	HTTPStatusNotAcceptable  = 406
-	HTTPStatusRequestTimeout = 408
-	HTTPStatusRateLimited    = 429
-	HTTPStatusServerError    = 500
-	HTTPStatusBadGateway     = 502
+	HTTPStatusBadRequest         = 400
+	HTTPStatusUnauthorized       = 401
+	HTTPStatusPaymentRequired    = 402
+	HTTPStatusForbidden          = 403
+	HTTPStatusNotFound           = 404
+	HTTPStatusNotAcceptable      = 406
+	HTTPStatusRequestTimeout     = 408
+	HTTPStatusRateLimited        = 429
+	HTTPStatusServerError        = 500
+	HTTPStatusBadGateway         = 502
 	HTTPStatusServiceUnavailable = 503
-	HTTPStatusGatewayTimeout = 504
+	HTTPStatusGatewayTimeout     = 504
 )
 
 // RetryEntry mirrors a retry config entry.
@@ -48,10 +48,10 @@ type RetryEntry struct {
 
 // DefaultRetryConfig mirrors open-sse/config/runtimeConfig.js DEFAULT_RETRY_CONFIG.
 var DefaultRetryConfig = map[int]RetryEntry{
-	HTTPStatusRateLimited:    {Attempts: 0, DelayMs: 0},
-	HTTPStatusBadGateway:     {Attempts: 3, DelayMs: 3000},
+	HTTPStatusRateLimited:        {Attempts: 0, DelayMs: 0},
+	HTTPStatusBadGateway:         {Attempts: 3, DelayMs: 3000},
 	HTTPStatusServiceUnavailable: {Attempts: 3, DelayMs: 2000},
-	HTTPStatusGatewayTimeout: {Attempts: 2, DelayMs: 3000},
+	HTTPStatusGatewayTimeout:     {Attempts: 2, DelayMs: 3000},
 }
 
 // ResolveRetryEntry normalizes a retry entry, matching the JS helper.
@@ -106,24 +106,24 @@ func Number(v any) int {
 // Config is the per-provider configuration subset needed by executors.
 // It mirrors fields from the JS registry transport object.
 type Config struct {
-	ID              string
-	BaseURL         string
-	BaseURLs        []string
-	Format          string
-	URLSuffix       string
-	Headers         map[string]string
-	NoAuth          bool
+	ID        string
+	BaseURL   string
+	BaseURLs  []string
+	Format    string
+	URLSuffix string
+	Headers   map[string]string
+	NoAuth    bool
 	// ForceStream marks a provider whose upstream only accepts streaming
 	// requests (it ignores stream:false and always returns SSE). Mirrors the
 	// JS PROVIDERS[id].forceStream transport field. When true, resolveStream
 	// forces stream=true even for JSON clients that did not request streaming,
 	// so the request isn't sent non-streaming and then mis-handled upstream.
-	ForceStream bool
-	Auth        AuthDescriptor
-	Retry           map[int]RetryEntry
-	TimeoutMs       int
-	Quirks          Quirks
-	ReasoningInject *ReasoningInject
+	ForceStream       bool
+	Auth              AuthDescriptor
+	Retry             map[int]RetryEntry
+	TimeoutMs         int
+	Quirks            Quirks
+	ReasoningInject   *ReasoningInject
 	RuntimeTransports []RuntimeTransport
 
 	// Catalog is the static provider metadata (alias, models, serviceKinds)
@@ -133,6 +133,16 @@ type Config struct {
 	// catalog (live-model resolvers or compatible-fetch fill it at runtime —
 	// not yet ported). Empty ServiceKinds defaults to ["llm"].
 	Catalog provider.ProviderCatalog
+
+	// ComputeRetryDelay is a per-provider hook that derives a retry delay from
+	// the upstream response (e.g. Antigravity parses Retry-After / the error
+	// body and may veto a retry when the requested wait exceeds a cap). Mirrors
+	// the JS BaseExecutor.tryRetry `this.computeRetryDelay(response, attempt,
+	// delayMs)` hook: returning (delayMs, false) uses the static config delay;
+	// returning (n, true) waits n ms; veto=false aborts the retry and falls
+	// through to the next URL. nil falls back to the configured static delay
+	// with no veto (the pre-hook behaviour).
+	ComputeRetryDelay ComputeRetryDelayFunc
 }
 
 // RuntimeTransport mirrors credentials.runtimeTransport.
@@ -145,12 +155,12 @@ type RuntimeTransport struct {
 
 // AuthDescriptor describes how to set auth headers.
 type AuthDescriptor struct {
-	Combined bool
-	Header   string
-	Scheme   string
-	APIKey   *AuthSpec
-	OAuth    *AuthSpec
-	Hooks    []string
+	Combined         bool
+	Header           string
+	Scheme           string
+	APIKey           *AuthSpec
+	OAuth            *AuthSpec
+	Hooks            []string
 	AnthropicVersion bool
 }
 
@@ -167,9 +177,9 @@ type ReasoningInject struct {
 
 // Quirks mirrors transport.quirks.
 type Quirks struct {
-	DropClientMetadata bool
+	DropClientMetadata   bool
 	PreserveCacheControl bool
-	DropOutputConfig   bool
+	DropOutputConfig     bool
 }
 
 // SetHeaderExact assigns a header preserving exact key casing, bypassing net/http
@@ -183,14 +193,14 @@ type Fetcher func(ctx context.Context, client *http.Client, req *http.Request, o
 
 // BaseExecutor is the generic provider executor.
 type BaseExecutor struct {
-	Provider string
-	Config   Config
-	NoAuth   bool
-	Fetch    Fetcher
-	HTTPClient *http.Client
-	ProxyOpts  proxy.Options
+	Provider       string
+	Config         Config
+	NoAuth         bool
+	Fetch          Fetcher
+	HTTPClient     *http.Client
+	ProxyOpts      proxy.Options
 	ProxyFetchOpts proxy.ProxyFetchOptions
-	Fallback *proxy.Fallback
+	Fallback       *proxy.Fallback
 	// Logger receives route-diagnostics lines emitted by ProxyAwareFetch on a
 	// proxy fallback (decolua/9router #2703 Fix 5). When nil, doFetch falls
 	// back to slog.Default() so a proxy-to-direct fallback is never silent.
@@ -200,10 +210,10 @@ type BaseExecutor struct {
 // NewBaseExecutor creates a base executor from config.
 func NewBaseExecutor(provider string, cfg Config) *BaseExecutor {
 	return &BaseExecutor{
-		Provider: provider,
-		Config:   cfg,
-		NoAuth:   cfg.NoAuth,
-		Fetch:    proxy.ProxyAwareFetch,
+		Provider:   provider,
+		Config:     cfg,
+		NoAuth:     cfg.NoAuth,
+		Fetch:      proxy.ProxyAwareFetch,
 		HTTPClient: http.DefaultClient,
 	}
 }
@@ -375,16 +385,16 @@ func (e *BaseExecutor) BuildHeaders(creds provider.Credentials, stream bool) htt
 func (e *BaseExecutor) resolveAuthDescriptor() AuthDescriptor {
 	if e.Provider != "" && strings.HasPrefix(e.Provider, "anthropic-compatible-") {
 		return AuthDescriptor{
-			APIKey: &AuthSpec{Header: "x-api-key", Scheme: "raw"},
-			OAuth:  &AuthSpec{Header: "Authorization", Scheme: "bearer"},
+			APIKey:           &AuthSpec{Header: "x-api-key", Scheme: "raw"},
+			OAuth:            &AuthSpec{Header: "Authorization", Scheme: "bearer"},
 			AnthropicVersion: true,
 		}
 	}
 	if e.Config.Format == "claude" {
 		return AuthDescriptor{
-			Combined: true,
-			Header:   "x-api-key",
-			Scheme:   "raw",
+			Combined:         true,
+			Header:           "x-api-key",
+			Scheme:           "raw",
 			AnthropicVersion: true,
 		}
 	}
@@ -442,10 +452,16 @@ func (e *BaseExecutor) ShouldRetry(status, urlIndex int) bool {
 	return status == HTTPStatusRateLimited && urlIndex+1 < e.GetFallbackCount()
 }
 
-// ComputeRetryDelay hook for subclass-derived dynamic delays.
+// ComputeRetryDelay is a per-provider hook (Config.ComputeRetryDelay) that
+// derives a retry delay from the upstream response. It mirrors the JS
+// BaseExecutor.tryRetry `this.computeRetryDelay(response, attempt, delayMs)`
+// hook used by Antigravity (Retry-After / error-body parsing + veto).
+//
+// Return semantics (matching JS):
+//   - (n, true, nil): wait n ms, then retry.
+//   - (_, false, nil): veto — abort this retry, fall through to the next URL.
+//   - (_, _, err):     abort with err (caller surfaces it).
 type ComputeRetryDelayFunc func(response *http.Response, attempt int, delayMs int) (int, bool, error)
-
-var _ ComputeRetryDelayFunc = nil
 
 // Execute performs the upstream request with retry + fallback.
 func (e *BaseExecutor) Execute(ctx context.Context, req provider.ExecRequest) (provider.Resp, error) {
@@ -470,7 +486,18 @@ func (e *BaseExecutor) Execute(ctx context.Context, req provider.ExecRequest) (p
 			return false, nil
 		}
 		waitMs := entry.DelayMs
-		if response != nil {
+		if response != nil && e.Config.ComputeRetryDelay != nil {
+			delay, retry, derr := e.Config.ComputeRetryDelay(response, retryAttemptsByURL[urlIndex]+1, entry.DelayMs)
+			if derr != nil {
+				return false, derr
+			}
+			if !retry {
+				// Hook vetoed this retry (e.g. Retry-After too long) — fall
+				// through to the next URL instead of waiting.
+				return false, nil
+			}
+			waitMs = delay
+		} else if response != nil {
 			waitMs = e.computeDynamicRetryDelay(response, retryAttemptsByURL[urlIndex]+1, entry.DelayMs)
 		}
 		retryAttemptsByURL[urlIndex]++
@@ -552,7 +579,7 @@ func (e *BaseExecutor) Execute(ctx context.Context, req provider.ExecRequest) (p
 			URL:             url,
 			Headers:         headers,
 			TransformedBody: transformedBody,
-			Done:             cancelFetch,
+			Done:            cancelFetch,
 		}, nil
 	}
 

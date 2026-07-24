@@ -13,8 +13,14 @@ type Executor struct {
 	*base.BaseExecutor
 }
 
-// New creates an Antigravity executor.
+// New creates an Antigravity executor. It wires the 639f1204 transient-retry
+// hook (computeRetryDelay) into the base executor via Config.ComputeRetryDelay
+// — the embedded-method override does not dispatch from the promoted
+// BaseExecutor.Execute (see #142), so the hook rides on the config field.
 func New(cfg base.Config) *Executor {
+	if cfg.ComputeRetryDelay == nil {
+		cfg.ComputeRetryDelay = antigravityComputeRetryDelay
+	}
 	return &Executor{BaseExecutor: base.NewBaseExecutor("antigravity", cfg)}
 }
 

@@ -355,3 +355,74 @@ func ttsCfg(baseURL, authHeader, format string) tts.Config {
 }
 
 func contains(s, sub string) bool { return bytes.Contains([]byte(s), []byte(sub)) }
+
+// === Gemini TTS catalog fallback (ce844899) ===
+
+// TestParseModelVoice_GeminiBareFallback ports ce844899 (tts #2367): a bare
+// Gemini TTS request (no model/voice) must resolve to the catalog default
+// model + default voice instead of "models/undefined" on the upstream. The
+// JS handler resolves KNOWN_MODELS from the shared TTS catalog + the gemini
+// registry tts entries then falls back to gemini-3.1-flash-tts-preview / Kore;
+// the Go tts.Config carries the same static safe defaults.
+func TestParseModelVoice_GeminiBareFallback(t *testing.T) {
+	cfg, ok := tts.Lookup("gemini")
+	if !ok {
+		t.Fatalf("gemini tts config not found")
+	}
+	if cfg.DefaultModel == "" || cfg.DefaultVoice == "" {
+		// sanity: the registry must carry the safe defaults now.
+		t.Fatalf("gemini tts config missing safe fallback defaults: %+v", cfg)
+	}
+	cases := []struct {
+		in        string
+		wantModel string
+		wantVoice string
+	}{
+		// Bare voice-only ("Kore"): model falls back to the default, voice to
+		// the default voice — the ce844899 safe resolution.
+		{"Kore", cfg.DefaultModel, cfg.DefaultVoice},
+		// Empty model resolves fully to the safe defaults.
+		{"", cfg.DefaultModel, cfg.DefaultVoice},
+		// Explicit model/voice keeps both.
+		{"gemini-2.5-flash-preview-tts/Charlize", "gemini-2.5-flash-preview-tts", "Charlize"},
+	}
+	for _, c := range cases {
+		m, v := parseModelVoice(c.in, cfg)
+		if m != c.wantModel || v != c.wantVoice {
+			t.Errorf("parseModelVoice(%q) = (%q,%q), want (%q,%q)", c.in, m, v, c.wantModel, c.wantVoice)
+		}
+	}
+}
+
+// TestSynthGemini_BareModelUsesFallback ports ce844899 end-to-end: a bare
+// Gemini request resolves the upstream model from the catalog default so the
+// generateContent URL is /<fallback-model>:generateContent, not /undefined.
+func TestSynthGemini_BareModelUsesFallback(t *testing.T) {
+	var gotPath string
+	pcm := bytes.Repeat([]byte{0xAB, 0xCD}, 4)
+	b64 := base64.StdEncoding.EncodeToString(pcm)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = io.WriteString(w, `{"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"audio/L16","data":"`+b64+`"}}]}}]}`)
+	}))
+	defer srv.Close()
+	h := New(Dependencies{HTTPClient: srv.Client(), Logger: captureLogger{}, Config: config.Config{}})
+	cfg, ok := tts.Lookup("gemini")
+	if !ok {
+		t.Fatalf("gemini tts config not found")
+	}
+	cfg.BaseURL = srv.URL
+	audio, _, err := h.synthGemini(context.Background(), cfg, Request{
+		ProviderID: "gemini", Model: "Kore", Input: "hi", Credentials: creds("k-gem"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(audio, pcm) {
+		t.Error("PCM payload not present")
+	}
+	wantPath := "/" + cfg.DefaultModel + ":generateContent"
+	if gotPath != wantPath {
+		t.Errorf("upstream path = %q, want %q (bare request must resolve to the fallback model, not undefined)", gotPath, wantPath)
+	}
+}

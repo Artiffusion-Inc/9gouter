@@ -101,6 +101,16 @@ var configs = map[string]Config{
 		AuthType:   AuthTypeAPIKey,
 		AuthHeader: AuthKey,
 		Format:     FormatGemini,
+		// Port ce844899 (tts #2367): a safe default model + voice so a bare
+		// request (no model/voice) does not resolve to "models/undefined" on
+		// the upstream. The JS gemini TTS handler resolves KNOWN_MODELS from
+		// the shared TTS catalog + the gemini registry tts entries, then
+		// falls back to gemini-3.1-flash-tts-preview / Kore. The Go catalog
+		// already lists gemini-3.1-flash-tts-preview (registry.go), so the
+		// static default here is the same safe fallback the JS handler lands
+		// on when ttsConfig.models is empty.
+		DefaultModel: "gemini-3.1-flash-tts-preview",
+		DefaultVoice: "Kore",
 	},
 	"elevenlabs": {
 		BaseURL:    "https://api.elevenlabs.io/v1/text-to-speech",

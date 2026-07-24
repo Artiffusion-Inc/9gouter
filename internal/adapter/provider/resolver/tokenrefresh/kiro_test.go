@@ -3,6 +3,7 @@ package tokenrefresh
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -45,11 +46,142 @@ func TestKiroRefresh_EmptyToken(t *testing.T) {
 	}
 }
 
-func TestKiroRefresh_ExternalIDPNotPorted(t *testing.T) {
+func TestKiroRefresh_ExternalIDPConfigInvalid(t *testing.T) {
+	// external_idp without clientId/scope/endpoint is a hard config error,
+	// not a silent fallback to the wrong (social/AWS) branch.
 	k := NewKiroRefresher()
 	_, err := k.Refresh(context.Background(), "rt", map[string]any{"authMethod": "external_idp"}, resolver.ProxyOptions{}, resolver.NopLogger())
-	if err != ErrExternalIDPNotPorted {
-		t.Fatalf("err = %v, want ErrExternalIDPNotPorted", err)
+	if err == nil {
+		t.Fatal("expected config error for external_idp without clientId/scope/endpoint")
+	}
+}
+
+// TestKiroRefresh_ExternalIDPBranch verifies the a4f44e3e external_idp refresh:
+// form-encoded refresh_token grant to a Microsoft login endpoint, returning the
+// refreshed tokens + normalized providerSpecificData. The Microsoft host is
+// redirected to the httptest server via a host-swap transport; the test
+// validates the form body + Content-Type and that psd is carried back.
+func TestKiroRefresh_ExternalIDPBranch(t *testing.T) {
+	var gotCT string
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCT = r.Header.Get("Content-Type")
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token":  "ext-at",
+			"refresh_token": "ext-rt",
+			"expires_in":    7200,
+		})
+	}))
+	defer srv.Close()
+
+	k := NewKiroRefresher()
+	k.client = srv.Client()
+	k.client.Transport = hostSwapTransportFn(srv.URL)
+
+	out, err := k.Refresh(context.Background(), "rt", map[string]any{
+		"authMethod":    "external_idp",
+		"clientId":      "ms-cid",
+		"tokenEndpoint": "https://login.microsoftonline.com/tenant/oauth2/v2.0/token",
+		"scope":         "https://api.example.com/.default offline_access",
+	}, resolver.ProxyOptions{}, resolver.NopLogger())
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if out.AccessToken != "ext-at" {
+		t.Errorf("accessToken = %q, want ext-at", out.AccessToken)
+	}
+	if out.RefreshToken != "ext-rt" {
+		t.Errorf("refreshToken = %q, want ext-rt", out.RefreshToken)
+	}
+	if out.ExpiresIn != 7200 {
+		t.Errorf("expiresIn = %d, want 7200", out.ExpiresIn)
+	}
+	if gotCT != "application/x-www-form-urlencoded" {
+		t.Errorf("Content-Type = %q, want form-encoded", gotCT)
+	}
+	// Form body carries grant_type + client_id + refresh_token + scope.
+	parsed, err := url.ParseQuery(gotBody)
+	if err != nil {
+		t.Fatalf("body not form-encoded: %v", err)
+	}
+	if parsed.Get("grant_type") != "refresh_token" {
+		t.Errorf("grant_type = %q", parsed.Get("grant_type"))
+	}
+	if parsed.Get("client_id") != "ms-cid" {
+		t.Errorf("client_id = %q", parsed.Get("client_id"))
+	}
+	if parsed.Get("refresh_token") != "rt" {
+		t.Errorf("refresh_token = %q", parsed.Get("refresh_token"))
+	}
+	if parsed.Get("scope") != "https://api.example.com/.default offline_access" {
+		t.Errorf("scope = %q", parsed.Get("scope"))
+	}
+	// providerSpecificData is carried back, re-stamped + normalized.
+	if out.ProviderSpecificData == nil {
+		t.Fatal("ProviderSpecificData missing (should carry normalized psd back)")
+	}
+	if am, _ := out.ProviderSpecificData["authMethod"].(string); am != "external_idp" {
+		t.Errorf("psd authMethod = %q, want external_idp", am)
+	}
+	if cid, _ := out.ProviderSpecificData["clientId"].(string); cid != "ms-cid" {
+		t.Errorf("psd clientId = %q, want ms-cid", cid)
+	}
+	if te, _ := out.ProviderSpecificData["tokenEndpoint"].(string); te != "https://login.microsoftonline.com/tenant/oauth2/v2.0/token" {
+		t.Errorf("psd tokenEndpoint = %q, want the validated endpoint", te)
+	}
+}
+
+// TestKiroRefresh_ExternalIDPNon200 verifies a non-2xx Microsoft response is an
+// error (caller falls back to the static catalog / marks re-auth).
+func TestKiroRefresh_ExternalIDPNon200(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	k := NewKiroRefresher()
+	k.client = srv.Client()
+	k.client.Transport = hostSwapTransportFn(srv.URL)
+
+	_, err := k.Refresh(context.Background(), "rt", map[string]any{
+		"authMethod":    "external_idp",
+		"clientId":      "ms-cid",
+		"tokenEndpoint": "https://login.microsoft.com/tenant/oauth2/v2.0/token",
+		"scope":         "offline_access",
+	}, resolver.ProxyOptions{}, resolver.NopLogger())
+	if err == nil {
+		t.Fatal("expected error on 401 from Microsoft endpoint")
+	}
+}
+
+// TestKiroRefresh_ExternalIDPKeepOriginalRefreshToken verifies that when the
+// Microsoft response omits refresh_token, the original is preserved.
+func TestKiroRefresh_ExternalIDPKeepOriginalRefreshToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "ext-at",
+			"expires_in":   3600,
+		})
+	}))
+	defer srv.Close()
+
+	k := NewKiroRefresher()
+	k.client = srv.Client()
+	k.client.Transport = hostSwapTransportFn(srv.URL)
+
+	out, err := k.Refresh(context.Background(), "orig-rt", map[string]any{
+		"authMethod":    "external_idp",
+		"clientId":      "ms-cid",
+		"tokenEndpoint": "https://login.windows.net/tenant/oauth2/v2.0/token",
+		"scope":         "offline_access",
+	}, resolver.ProxyOptions{}, resolver.NopLogger())
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if out.RefreshToken != "orig-rt" {
+		t.Errorf("refreshToken = %q, want original orig-rt", out.RefreshToken)
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
@@ -32,20 +33,20 @@ const (
 )
 
 // KiroRefresher refreshes an expired Kiro access token. It implements the
-// two main Kiro auth branches from the JS refreshKiroToken:
+// three Kiro auth branches from the JS refreshKiroToken:
 //
 //  1. AWS SSO (clientId + clientSecret present): POST to the AWS OIDC token
 //     endpoint with a JSON body {clientId, clientSecret, refreshToken,
 //     grantType:"refresh_token"}. IDC connections use a region-scoped
 //     endpoint; builder-id uses the default us-east-1.
-//  2. Social (no clientId/secret): POST to the Kiro social tokenUrl with a
+//  2. External IdP / Microsoft Entra (authMethod == "external_idp",
+//     a4f44e3e): form-encoded OAuth2 refresh_token grant against a Microsoft
+//     login endpoint (validated against the login.microsoftonline.com /
+//     login.microsoft.com / login.windows.net allowlist). The refreshed
+//     providerSpecificData is carried back so the connection keeps its
+//     normalized clientId/tokenEndpoint/scope.
+//  3. Social (no clientId/secret): POST to the Kiro social tokenUrl with a
 //     JSON body {refreshToken} and User-Agent "kiro-cli/1.0.0".
-//
-// NOT YET PORTED: the external_idp branch (buildExternalIdpRefreshParams),
-// which depends on the unported src/lib/oauth/kiroExternalIdp.js helper.
-// Connections with authMethod=="external_idp" return
-// ErrExternalIDPNotPorted so the caller falls back to the static catalog
-// rather than silently doing the wrong thing.
 type KiroRefresher struct {
 	client *http.Client
 }
@@ -54,9 +55,6 @@ type KiroRefresher struct {
 func NewKiroRefresher() *KiroRefresher {
 	return &KiroRefresher{client: &http.Client{Timeout: kiroRefreshTimeout}}
 }
-
-// ErrExternalIDPNotPorted signals an unported refresh branch.
-var ErrExternalIDPNotPorted = fmt.Errorf("kiro external_idp refresh not yet ported (T027 follow-up)")
 
 // Refresh implements resolver.TokenRefresher. It never panics on a nil psd.
 // opts routes the refresh HTTP call through the proxy stack when set (Fix 2a) —
@@ -79,14 +77,52 @@ func (k *KiroRefresher) Refresh(ctx context.Context, refreshToken string, psd ma
 	region, _ := psd["region"].(string)
 
 	if authMethod == "external_idp" {
-		log.Warn("kiro external_idp refresh branch not yet ported")
-		return nil, ErrExternalIDPNotPorted
+		return k.refreshExternalIDP(ctx, refreshToken, psd, opts, log)
 	}
 
 	if clientID != "" && clientSecret != "" {
 		return k.refreshAWS(ctx, refreshToken, clientID, clientSecret, authMethod, region, opts, log)
 	}
 	return k.refreshSocial(ctx, refreshToken, opts, log)
+}
+
+// refreshExternalIDP implements the a4f44e3e external_idp refresh branch:
+// build the form-encoded refresh_token grant via buildExternalIDPRefreshParams,
+// POST it to the validated Microsoft login endpoint, and carry the normalized
+// providerSpecificData back. A config error (missing clientId/scope/endpoint)
+// returns a hard error so the caller falls back to the static catalog rather
+// than silently doing the wrong thing.
+func (k *KiroRefresher) refreshExternalIDP(ctx context.Context, refreshToken string, psd map[string]any, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {
+	refreshReq, err := buildExternalIDPRefreshParams(refreshToken, psd)
+	if err != nil {
+		log.Warn("kiro external_idp refresh config invalid", "error", err)
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, refreshReq.tokenEndpoint, strings.NewReader(refreshReq.body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	var resp struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int    `json:"expires_in"`
+	}
+	if err := k.do(req, opts, &resp, log, "Kiro external_idp"); err != nil {
+		return nil, err
+	}
+	out := &resolver.RefreshedCredentials{
+		AccessToken:          resp.AccessToken,
+		RefreshToken:         resp.RefreshToken,
+		ExpiresIn:            resp.ExpiresIn,
+		ProviderSpecificData: refreshReq.providerSpecificData,
+	}
+	if out.RefreshToken == "" {
+		out.RefreshToken = refreshToken
+	}
+	return out, nil
 }
 
 func (k *KiroRefresher) refreshAWS(ctx context.Context, refreshToken, clientID, clientSecret, authMethod, region string, opts resolver.ProxyOptions, log resolver.Logger) (*resolver.RefreshedCredentials, error) {

@@ -19,6 +19,7 @@ import (
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/paramsupport"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/pricing"
 	reg "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/github"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/thinking"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/shared"
@@ -160,7 +161,7 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	providerID := prov.ID()
 	exec := prov.Executor()
 
-	targetFormat := resolveTargetFormat(providerID, sourceFormat)
+	targetFormat := resolveTargetFormat(providerID, sourceFormat, req.Model)
 
 	var translatedBody json.RawMessage
 	if translator.NeedsTranslation(sourceFormat, targetFormat) {
@@ -569,7 +570,7 @@ func detectSourceFormat(endpoint string, body json.RawMessage) format.Format {
 	return format.Openai
 }
 
-func resolveTargetFormat(providerID string, sourceFormat format.Format) format.Format {
+func resolveTargetFormat(providerID string, sourceFormat format.Format, model string) format.Format {
 	// In the JS pipeline modelTargetFormat/runtimeTransport would be resolved from
 	// providerModels.js. For the Go port we keep the mapping minimal: providers
 	// with a known format use it, otherwise fall back to the source format.
@@ -588,6 +589,20 @@ func resolveTargetFormat(providerID string, sourceFormat format.Format) format.F
 		return format.Commandcode
 	case "kiro":
 		return format.Kiro
+	case "github":
+		// Port decolua/9router 542a088c: GitHub Copilot's /chat/completions and
+		// /responses endpoints never surface prompt-cache token counts for Claude.
+		// Route Claude models (detected by name pattern, NOT a registry field —
+		// Copilot's live catalog regularly exposes claude-* variants ahead of the
+		// static registry) to target format Claude so the OpenAI→Claude request
+		// translator injects cache_control and the Claude→OpenAI response
+		// transform surfaces cached_tokens. The github executor's BuildURL then
+		// points at the /v1/messages shim. gpt/gemini/grok models keep the OpenAI
+		// source format (default chat/completions route).
+		if githubexec.IsClaudeModel(model) {
+			return format.Claude
+		}
+		return format.Openai
 	}
 	return sourceFormat
 }

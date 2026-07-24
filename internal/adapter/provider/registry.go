@@ -312,6 +312,12 @@ var configs = map[string]base.Config{
 			"x-github-api-version":                "2025-04-01",
 			"x-vscode-user-agent-library-version": "electron-fetch",
 			"X-Initiator":                         "user",
+			// Port decolua/9router 542a088c: required by the /v1/messages shim
+			// (the Anthropic-native Claude route) and a harmless no-op on
+			// /chat/completions and /responses. Lives in Config.Headers (not the
+			// executor's BuildHeaders override) so it is applied by
+			// BaseExecutor.BuildHeaders on the real Execute path.
+			"anthropic-version": base.AnthropicAPIVersion,
 		},
 		Auth: base.AuthDescriptor{Combined: true, Header: "Authorization", Scheme: "bearer"},
 	},

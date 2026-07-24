@@ -368,6 +368,13 @@ type kiroModelResolution struct {
 
 // resolveKiroModel strips the synthetic -agentic / -thinking suffixes a 9router
 // caller may have appended, returning the real upstream model id and flags.
+//
+// Port 5041494e (kiro #2366): Kiro registry ids use dots for version numbers
+// ("claude-sonnet-4.5") but clients (CLIs, copied aliases) frequently send the
+// same id with a dash ("claude-sonnet-4-5"). Only the upstream model id is
+// normalized — digit-hyphen-digit becomes digit-dot-digit — so word/suffix
+// hyphens ("-thinking", "-agentic", "qwen3-coder-next") stay intact. This is
+// scoped to Kiro only; other providers are left untouched.
 func resolveKiroModel(model string) kiroModelResolution {
 	upstream := model
 	agentic := strings.HasSuffix(upstream, kiroAgenticSuffix)
@@ -378,7 +385,22 @@ func resolveKiroModel(model string) kiroModelResolution {
 	if thinking {
 		upstream = strings.TrimSuffix(upstream, kiroThinkingSuffix)
 	}
+	upstream = normalizeKiroModelID(upstream)
 	return kiroModelResolution{upstream: upstream, agentic: agentic, thinking: thinking}
+}
+
+// normalizeKiroModelID replaces a hyphen between two digits with a dot so
+// "claude-sonnet-4-5" becomes "claude-sonnet-4.5". Word-suffix hyphens are
+// untouched because the character before the hyphen is not a digit. Mirrors
+// the upstream normalizeModelId (open-sse/providers/models/schema.js) scoped
+// to the Kiro provider.
+var digitHyphenDigitRe = regexp.MustCompile(`(\d)-(\d)`)
+
+func normalizeKiroModelID(model string) string {
+	if model == "" {
+		return model
+	}
+	return digitHyphenDigitRe.ReplaceAllString(model, "$1.$2")
 }
 
 // --- <thinking_mode> tag detection in inbound content ---

@@ -321,7 +321,7 @@ func openaiToKiroRequest(model string, raw json.RawMessage, stream bool) (json.R
 	usesNativeGptEffort := usesKiroNativeGptEffort(body, upstreamModel)
 
 	// Simplified conversion matching the golden snapshot shape.
-	history, currentMessage := convertOpenAIMessagesToKiro(messages, tools, upstreamModel)
+	history, currentMessage, systemInstruction := convertOpenAIMessagesToKiro(messages, tools, upstreamModel)
 
 	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	currentTimeContext := fmt.Sprintf("[Context: Current time is %s]", timestamp)
@@ -336,6 +336,15 @@ func openaiToKiroRequest(model string, raw json.RawMessage, stream bool) (json.R
 		if uim, ok := currentMessage["userInputMessage"].(map[string]any); ok {
 			uim["content"] = prefixCurrentTime(fmt.Sprintf("%v", uim["content"]), currentTimeContext)
 			uim["origin"] = "AI_EDITOR"
+			// Port 5041494e (kiro #2366): deliver the system prompt via the
+			// native systemInstruction field on userInputMessage so Claude
+			// models treat it as an authoritative directive instead of the
+			// info-only <system-reminder> shape. The <instructions> fallback
+			// stays inline in content (wrapSystemText) for upstreams that do
+			// not read the native field.
+			if systemInstruction != "" {
+				uim["systemInstruction"] = systemInstruction
+			}
 		}
 	}
 
@@ -351,7 +360,7 @@ func openaiToKiroRequest(model string, raw json.RawMessage, stream bool) (json.R
 	payload := map[string]any{
 		"agentMode": "vibe",
 		"conversationState": map[string]any{
-			"agentTaskType": "vibe",
+			"agentTaskType":   "vibe",
 			"chatTriggerType": "MANUAL",
 			"currentMessage":  currentMessage,
 			"history":         history,
@@ -379,7 +388,19 @@ func prefixCurrentTime(content, context string) string {
 	return context + "\n\n" + content
 }
 
-func convertOpenAIMessagesToKiro(messages []map[string]any, tools []map[string]any, model string) ([]map[string]any, map[string]any) {
+func convertOpenAIMessagesToKiro(messages []map[string]any, tools []map[string]any, model string) ([]map[string]any, map[string]any, string) {
+	// Port 5041494e (kiro #2366): collect the first system message text as
+	// the native systemInstruction value. The content fallback (wrapped in
+	// <instructions> by wrapSystemText) still flows into the user turn; the
+	// native field lets Claude models on the Kiro upstream treat the system
+	// prompt as an authoritative directive rather than info-only context.
+	systemInstruction := ""
+	for _, msg := range messages {
+		if role, _ := msg["role"].(string); role == "system" {
+			systemInstruction = systemMessageText(msg["content"])
+			break
+		}
+	}
 	history := []map[string]any{}
 
 	clientProvidedTools := len(tools) > 0
@@ -678,7 +699,7 @@ func convertOpenAIMessagesToKiro(messages []map[string]any, tools []map[string]a
 		}
 	}
 
-	return mergedHistory, currentMessage
+	return mergedHistory, currentMessage, systemInstruction
 }
 
 func wrapSystemText(text string, wasSystem bool) string {
@@ -686,6 +707,34 @@ func wrapSystemText(text string, wasSystem bool) string {
 		return fmt.Sprintf("<instructions>\n%s\n</instructions>", text)
 	}
 	return text
+}
+
+// systemMessageText extracts the plain text of an OpenAI system message
+// content (string or array of text parts), used to populate the native
+// systemInstruction field. Empty content yields "" so the field is omitted.
+func systemMessageText(content any) string {
+	switch c := content.(type) {
+	case string:
+		return c
+	case []any:
+		var b strings.Builder
+		for _, itemAny := range c {
+			item, ok := itemAny.(map[string]any)
+			if !ok {
+				continue
+			}
+			if typ, _ := item["type"].(string); typ == "text" {
+				if t, ok := item["text"].(string); ok && t != "" {
+					if b.Len() > 0 {
+						b.WriteString("\n")
+					}
+					b.WriteString(t)
+				}
+			}
+		}
+		return b.String()
+	}
+	return ""
 }
 
 func extractToolInfo(tool map[string]any) (string, string, map[string]any) {

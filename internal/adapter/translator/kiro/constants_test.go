@@ -21,11 +21,11 @@ func TestResolveKiroEffortPath(t *testing.T) {
 		{"gpt-5.6.1", effortPathReasoning},
 		{"claude-sonnet-4.6", effortPathOutputConfig},
 		{"claude-opus-4.6", effortPathOutputConfig},
-		{"claude-sonnet-4.5", ""},            // legacy 4.5 rejected in live smoke
-		{"claude-sonnet-4", ""},              // minor unknown but major<4.6 gate via <=5
-		{"kimi-k2", ""},                      // non-claude, non-gpt-5.6
+		{"claude-sonnet-4.5", ""}, // legacy 4.5 rejected in live smoke
+		{"claude-sonnet-4", ""},   // minor unknown but major<4.6 gate via <=5
+		{"kimi-k2", ""},           // non-claude, non-gpt-5.6
 		{"", ""},
-		{"claude-sonnet-4.20251015", ""},     // minor >= 1000 (date suffix) → reject
+		{"claude-sonnet-4.20251015", ""}, // minor >= 1000 (date suffix) → reject
 	}
 	for _, c := range cases {
 		got := resolveKiroEffortPath(c.model)
@@ -61,9 +61,9 @@ func TestExtractKiroEffortLevel_Claude(t *testing.T) {
 		{map[string]any{"reasoning_effort": "high"}, "high"},
 		{map[string]any{"reasoning": map[string]any{"effort": "medium"}}, "medium"},
 		{map[string]any{"output_config": map[string]any{"effort": "low"}}, "low"},
-		{map[string]any{"reasoning_effort": "max"}, "high"},     // max → high (Claude)
-		{map[string]any{"reasoning_effort": "xhigh"}, "high"},   // xhigh → high (Claude)
-		{map[string]any{"reasoning_effort": "none"}, ""},        // none → disabled
+		{map[string]any{"reasoning_effort": "max"}, "high"},   // max → high (Claude)
+		{map[string]any{"reasoning_effort": "xhigh"}, "high"}, // xhigh → high (Claude)
+		{map[string]any{"reasoning_effort": "none"}, ""},      // none → disabled
 		{map[string]any{"reasoning_effort": "off"}, ""},
 		{map[string]any{"reasoning_effort": "disabled"}, ""},
 		{map[string]any{}, ""},
@@ -82,11 +82,11 @@ func TestExtractKiroGptEffortLevel(t *testing.T) {
 		want string
 	}{
 		{map[string]any{"reasoning_effort": "high"}, "high"},
-		{map[string]any{"reasoning_effort": "max"}, "xhigh"},    // max → xhigh (GPT)
-		{map[string]any{"reasoning_effort": "xhigh"}, "xhigh"},  // xhigh valid (GPT)
+		{map[string]any{"reasoning_effort": "max"}, "xhigh"},   // max → xhigh (GPT)
+		{map[string]any{"reasoning_effort": "xhigh"}, "xhigh"}, // xhigh valid (GPT)
 		{map[string]any{"reasoning": map[string]any{"effort": "low"}}, "low"},
 		{map[string]any{"output_config": map[string]any{"effort": "medium"}}, "medium"},
-		{map[string]any{"reasoning_effort": "none"}, ""},        // GPT has no explicit none
+		{map[string]any{"reasoning_effort": "none"}, ""}, // GPT has no explicit none
 		{map[string]any{}, ""},
 	}
 	for _, c := range cases {
@@ -209,8 +209,8 @@ func TestBuildThinkingSystemPrefix(t *testing.T) {
 
 func TestResolveKiroModel(t *testing.T) {
 	cases := []struct {
-		in                    string
-		upstream              string
+		in                string
+		upstream          string
 		agentic, thinking bool
 	}{
 		{"claude-sonnet-4.5-thinking-agentic", "claude-sonnet-4.5", true, true},
@@ -218,6 +218,16 @@ func TestResolveKiroModel(t *testing.T) {
 		{"claude-sonnet-4.5-agentic", "claude-sonnet-4.5", true, false},
 		{"claude-sonnet-4.5", "claude-sonnet-4.5", false, false},
 		{"gpt-5.6", "gpt-5.6", false, false},
+		// Port 5041494e: dash version ids normalize to dot before lookup.
+		{"claude-sonnet-4-5", "claude-sonnet-4.5", false, false},
+		{"claude-sonnet-4-5-thinking", "claude-sonnet-4.5", false, true},
+		{"claude-sonnet-4-5-agentic", "claude-sonnet-4.5", true, false},
+		{"claude-sonnet-4-5-thinking-agentic", "claude-sonnet-4.5", true, true},
+		{"claude-opus-4-8", "claude-opus-4.8", false, false},
+		{"minimax-m2-5", "minimax-m2.5", false, false},
+		{"deepseek-3-2", "deepseek-3.2", false, false},
+		// Word-suffix hyphens stay intact (non-digit before the hyphen).
+		{"qwen3-coder-next", "qwen3-coder-next", false, false},
 	}
 	for _, c := range cases {
 		got := resolveKiroModel(c.in)
@@ -297,5 +307,71 @@ func TestOpenAIToKiroRequest_StripsSyntheticSuffixes(t *testing.T) {
 	sp, _ := p["systemPrompt"].(string)
 	if !strings.Contains(sp, "<thinking_mode>enabled</thinking_mode>") {
 		t.Errorf("thinking suffix should trigger <thinking_mode> tag; got %q", sp)
+	}
+}
+
+// TestOpenAIToKiroRequest_NativeSystemInstruction ports 5041494e (kiro #2366):
+// the system prompt must reach the Kiro upstream via BOTH the native
+// systemInstruction field on currentMessage.userInputMessage AND the
+// <instructions> fallback in the inline content, so Claude models treat it
+// as an authoritative directive instead of info-only context.
+func TestOpenAIToKiroRequest_NativeSystemInstruction(t *testing.T) {
+	cases := []struct {
+		name   string
+		body   string
+		wantSI string
+	}{
+		{
+			name:   "string-system",
+			body:   `{"model":"claude-sonnet-4.5","messages":[{"role":"system","content":"You are helpful."},{"role":"user","content":"hi"}]}`,
+			wantSI: "You are helpful.",
+		},
+		{
+			name:   "array-system",
+			body:   `{"model":"claude-sonnet-4.5","messages":[{"role":"system","content":[{"type":"text","text":"Be brief."},{"type":"text","text":"No slang."}]},{"role":"user","content":"hi"}]}`,
+			wantSI: "Be brief.\nNo slang.",
+		},
+		{
+			name:   "no-system",
+			body:   `{"model":"claude-sonnet-4.5","messages":[{"role":"user","content":"hi"}]}`,
+			wantSI: "",
+		},
+	}
+	for _, c := range cases {
+		out, err := openaiToKiroRequest("claude-sonnet-4.5", json.RawMessage(c.body), true)
+		if err != nil {
+			t.Fatalf("%s: err: %v", c.name, err)
+		}
+		var p map[string]any
+		if err := json.Unmarshal(out, &p); err != nil {
+			t.Fatalf("%s: unmarshal: %v", c.name, err)
+		}
+		cs, _ := p["conversationState"].(map[string]any)
+		cm, _ := cs["currentMessage"].(map[string]any)
+		uim, _ := cm["userInputMessage"].(map[string]any)
+		if uim == nil {
+			t.Fatalf("%s: missing currentMessage.userInputMessage", c.name)
+		}
+		si, _ := uim["systemInstruction"].(string)
+		if si != c.wantSI {
+			t.Errorf("%s: systemInstruction = %q, want %q", c.name, si, c.wantSI)
+		}
+		content, _ := uim["content"].(string)
+		if c.wantSI != "" {
+			// The <instructions> fallback stays inline in content. For a
+			// string system message the whole text is wrapped once; for an
+			// array of text parts each part is wrapped individually (the
+			// existing convertOpenAIMessagesToKiro per-item behavior). The
+			// key invariant is the native systemInstruction field carries
+			// the joined text either way.
+			if !strings.Contains(content, "<instructions>") || !strings.Contains(content, "</instructions>") {
+				t.Errorf("%s: content missing <instructions> fallback; got %q", c.name, content)
+			}
+			for _, frag := range strings.Split(c.wantSI, "\n") {
+				if frag = strings.TrimSpace(frag); frag != "" && !strings.Contains(content, frag) {
+					t.Errorf("%s: content missing system fragment %q; got %q", c.name, frag, content)
+				}
+			}
+		}
 	}
 }

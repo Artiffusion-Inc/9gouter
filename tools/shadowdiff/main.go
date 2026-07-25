@@ -2,10 +2,11 @@
 // backend, then diffs status, headers, SSE event sequence, and usage rows.
 //
 // Configuration via environment variables:
-//   SHADOWDIFF_LISTEN      - listen address (default :8080)
-//   SHADOWDIFF_PRIMARY     - primary backend URL (e.g. http://127.0.0.1:20128)
-//   SHADOWDIFF_SHADOW      - shadow backend URL (e.g. http://127.0.0.1:20127)
-//   SHADOWDIFF_MISMATCH_LOG - optional JSONL file path for mismatch records
+//
+//	SHADOWDIFF_LISTEN      - listen address (default :8080)
+//	SHADOWDIFF_PRIMARY     - primary backend URL (e.g. http://127.0.0.1:20128)
+//	SHADOWDIFF_SHADOW      - shadow backend URL (e.g. http://127.0.0.1:20127)
+//	SHADOWDIFF_MISMATCH_LOG - optional JSONL file path for mismatch records
 package main
 
 import (
@@ -73,14 +74,14 @@ type captured struct {
 }
 
 type record struct {
-	TS          string       `json:"ts"`
-	Method      string       `json:"method"`
-	Path        string       `json:"path"`
-	StatusDiff  *statusDiff  `json:"status_diff,omitempty"`
-	HeaderDiff  *headerDiff  `json:"header_diff,omitempty"`
-	SSEDiff     *sseDiff     `json:"sse_diff,omitempty"`
-	UsageDiff   *usageDiff   `json:"usage_diff,omitempty"`
-	ShadowError string       `json:"shadow_error,omitempty"`
+	TS          string      `json:"ts"`
+	Method      string      `json:"method"`
+	Path        string      `json:"path"`
+	StatusDiff  *statusDiff `json:"status_diff,omitempty"`
+	HeaderDiff  *headerDiff `json:"header_diff,omitempty"`
+	SSEDiff     *sseDiff    `json:"sse_diff,omitempty"`
+	UsageDiff   *usageDiff  `json:"usage_diff,omitempty"`
+	ShadowError string      `json:"shadow_error,omitempty"`
 }
 
 type statusDiff struct {
@@ -276,6 +277,11 @@ func cloneRequest(r *http.Request, target *url.URL, body []byte) *http.Request {
 	out := r.Clone(r.Context())
 	out.URL = &u
 	out.Host = r.Host
+	// r.Clone preserves RequestURI (the wire form received by the server),
+	// but http.Client refuses to send a request with RequestURI set
+	// ("http: Request.RequestURI can't be set in client requests"). Clear it
+	// so the outgoing client request is reconstructed from out.URL/Host.
+	out.RequestURI = ""
 	out.Body = io.NopCloser(bytes.NewReader(body))
 	out.ContentLength = int64(len(body))
 

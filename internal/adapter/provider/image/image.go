@@ -30,28 +30,28 @@ const (
 	// response.output_item.done.item.result.
 	FormatCodex Format = "codex"
 	// Deferred formats (not implemented in the Go MVP — 501):
-	FormatSDWebUI      Format = "sdwebui"      // noAuth local /sdapi/v1/txt2img
-	FormatComfyUI      Format = "comfyui"      // noAuth local
-	FormatHuggingFace  Format = "huggingface"  // {inputs:prompt} → raw binary
-	FormatFalAI        Format = "fal-ai"       // async polling
+	FormatSDWebUI      Format = "sdwebui"           // noAuth local /sdapi/v1/txt2img
+	FormatComfyUI      Format = "comfyui"           // noAuth local
+	FormatHuggingFace  Format = "huggingface"       // {inputs:prompt} → raw binary
+	FormatFalAI        Format = "fal-ai"            // async polling
 	FormatBlackForest  Format = "black-forest-labs" // async polling, x-key
-	FormatStability    Format = "stability-ai" // {image} → b64_json
-	FormatRunwayML     Format = "runwayml"    // async polling /tasks/{id}
-	FormatCloudflareAI Format = "cloudflare-ai" // JSON or multipart
-	FormatNanobanana   Format = "nanobanana"   // async polling
-	FormatAntigravity  Format = "antigravity"  // executor/Gemini format
+	FormatStability    Format = "stability-ai"      // {image} → b64_json
+	FormatRunwayML     Format = "runwayml"          // async polling /tasks/{id}
+	FormatCloudflareAI Format = "cloudflare-ai"     // JSON or multipart
+	FormatNanobanana   Format = "nanobanana"        // async polling
+	FormatAntigravity  Format = "antigravity"       // executor/Gemini format
 )
 
 // AuthHeader selects the auth scheme.
 type AuthHeader string
 
 const (
-	AuthBearer         AuthHeader = "bearer"
-	AuthKey            AuthHeader = "key" // query param ?key=<tok> (Gemini)
-	AuthXKey           AuthHeader = "x-key"
-	AuthFalKey         AuthHeader = "fal-key" // Authorization: Key <tok>
-	AuthBearerAccount  AuthHeader = "bearer-account" // Bearer + chatgpt-account-id
-	AuthNone           AuthHeader = "none"
+	AuthBearer        AuthHeader = "bearer"
+	AuthKey           AuthHeader = "key" // query param ?key=<tok> (Gemini)
+	AuthXKey          AuthHeader = "x-key"
+	AuthFalKey        AuthHeader = "fal-key"        // Authorization: Key <tok>
+	AuthBearerAccount AuthHeader = "bearer-account" // Bearer + chatgpt-account-id
+	AuthNone          AuthHeader = "none"
 )
 
 // AuthType is the credential requirement.
@@ -87,6 +87,11 @@ func Lookup(providerID string) (Config, bool) {
 	c, ok := configs[providerID]
 	return c, ok
 }
+
+// SetConfig replaces the image-generation config for a provider id. It is
+// intended for tests that need to point a provider at a test endpoint; the
+// production registry is static and never calls it at runtime.
+func SetConfig(providerID string, cfg Config) { configs[providerID] = cfg }
 
 var configs = map[string]Config{
 	"openai": {
@@ -148,16 +153,16 @@ var configs = map[string]Config{
 		Format:     FormatCodex,
 	},
 	// Deferred providers — registered so the handler can 501 them honestly.
-	"sdwebui":          {BaseURL: "http://localhost:7860/sdapi/v1/txt2img", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatSDWebUI, Unsupported: true},
-	"comfyui":          {BaseURL: "http://localhost:8188", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatComfyUI, Unsupported: true},
-	"huggingface":      {BaseURL: "https://api-inference.huggingface.co/models", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatHuggingFace, Unsupported: true},
-	"fal-ai":           {BaseURL: "https://queue.fal.run", AuthType: AuthTypeAPIKey, AuthHeader: AuthFalKey, Format: FormatFalAI, Unsupported: true},
+	"sdwebui":           {BaseURL: "http://localhost:7860/sdapi/v1/txt2img", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatSDWebUI, Unsupported: true},
+	"comfyui":           {BaseURL: "http://localhost:8188", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatComfyUI, Unsupported: true},
+	"huggingface":       {BaseURL: "https://api-inference.huggingface.co/models", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatHuggingFace, Unsupported: true},
+	"fal-ai":            {BaseURL: "https://queue.fal.run", AuthType: AuthTypeAPIKey, AuthHeader: AuthFalKey, Format: FormatFalAI, Unsupported: true},
 	"black-forest-labs": {BaseURL: "https://api.bfl.ai/v1", AuthType: AuthTypeAPIKey, AuthHeader: AuthXKey, Format: FormatBlackForest, Unsupported: true},
-	"stability-ai":     {BaseURL: "https://api.stability.ai/v2beta/stable-image/generate", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatStability, Unsupported: true},
-	"runwayml":         {BaseURL: "https://api.dev.runwayml.com/v1", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatRunwayML, Unsupported: true},
-	"cloudflare-ai":    {BaseURL: "https://api.cloudflare.com/client/v4/accounts", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatCloudflareAI, Unsupported: true},
-	"nanobanana":       {BaseURL: "https://api.nanobananaapi.ai/api/v1/nanobanana", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatNanobanana, Unsupported: true},
-	"antigravity":      {AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatAntigravity, Unsupported: true},
+	"stability-ai":      {BaseURL: "https://api.stability.ai/v2beta/stable-image/generate", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatStability, Unsupported: true},
+	"runwayml":          {BaseURL: "https://api.dev.runwayml.com/v1", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatRunwayML, Unsupported: true},
+	"cloudflare-ai":     {BaseURL: "https://api.cloudflare.com/client/v4/accounts", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatCloudflareAI, Unsupported: true},
+	"nanobanana":        {BaseURL: "https://api.nanobananaapi.ai/api/v1/nanobanana", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatNanobanana, Unsupported: true},
+	"antigravity":       {AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatAntigravity, Unsupported: true},
 }
 
 // KnownProviders is the static set of provider ids with an image config, used

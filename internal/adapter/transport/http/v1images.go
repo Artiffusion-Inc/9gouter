@@ -99,7 +99,13 @@ func (h *v1Handler) handleImagesGenerations(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	creds, err := h.resolveCredentials(ctx, providerID, "")
+	// Preferred connection pin (x-9gouter-connection-id). The same credential
+	// resolution path chat uses for combos honours the pin so the image lifecycle
+	// runs on the operator-selected connection/account. For no-auth providers
+	// (sdwebui/comfyui) the resolver returns virtual credentials and the pin is
+	// ignored (resolveCredentialsWithOpts short-circuits before the pin lookup).
+	preferredConnID := strings.TrimSpace(r.Header.Get("x-9gouter-connection-id"))
+	creds, err := h.resolveCredentialsWithOpts(ctx, providerID, "", nil, preferredConnID)
 	if err != nil {
 		h.writeError(w, http.StatusNotFound, "No active credentials for provider: "+providerID)
 		return
@@ -111,19 +117,20 @@ func (h *v1Handler) handleImagesGenerations(w http.ResponseWriter, r *http.Reque
 	}
 
 	res, err := h.deps.Image.Handle(ctx, ImageRequest{
-		Ctx:            ctx,
-		ProviderID:     providerID,
-		Model:          bareModel,
-		Prompt:         body.Prompt,
-		N:              body.N,
-		Size:           body.Size,
-		Quality:        body.Quality,
-		Style:          body.Style,
-		ResponseFormat: responseFormat,
-		OutputFormat:   body.OutputFormat,
-		Background:     body.Background,
-		Credentials:    creds,
-		UserAgent:      r.UserAgent(),
+		Ctx:                   ctx,
+		ProviderID:            providerID,
+		Model:                 bareModel,
+		Prompt:                body.Prompt,
+		N:                     body.N,
+		Size:                  body.Size,
+		Quality:               body.Quality,
+		Style:                 body.Style,
+		ResponseFormat:        responseFormat,
+		OutputFormat:          body.OutputFormat,
+		Background:            body.Background,
+		Credentials:           creds,
+		UserAgent:             r.UserAgent(),
+		PreferredConnectionID: preferredConnID,
 	})
 	if err != nil && res.Err == nil {
 		res.Err = err

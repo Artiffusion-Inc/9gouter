@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -118,7 +119,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	videoHandler := newVideoProxyHandler(cfg, logger)
 	sttHandler := newSttHandler(cfg, logger)
 	ttsHandler := newTtsHandler(cfg, logger)
-	imageHandler := newImageProxyHandler(cfg, logger)
+	imageHandler := newImageProxyHandler(repos, proxyOpts, cfg, logger)
 	searchHandler := newSearchHandler(cfg, logger)
 
 	// Cloud Code project-id fetcher for antigravity/gemini-cli (#2703 Fix 2e).
@@ -171,7 +172,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Logger:         logger,
 		DB:             db,
 		Version:        cfg.Version,
-		ProxyOpts:       proxyOpts,
+		ProxyOpts:      proxyOpts,
 	}
 	api.RegisterHealth(mux)
 	api.RegisterVersion(mux, cfg.Version)
@@ -310,14 +311,16 @@ func newProxyChatHandler(r repos, opts proxy.Options, cfg config.Config, logger 
 	return &proxyChatHandler{
 		logger: logger,
 		handler: proxychat.New(proxychat.Dependencies{
-			Registry:    domainProvRegistry,
-			UsageRepo:   r.Usage,
-			StreamPipe:  pipeAdapter{},
-			JSONToSSE:   synthesizerFunc(translator.Synthesize),
-			Logger:      &slogLogger{logger},
-			Config:      cfg,
-			UsageEvents: events,
-			Pricing:     priceResolver,
+			Registry:          domainProvRegistry,
+			UsageRepo:         r.Usage,
+			StreamPipe:        pipeAdapter{},
+			JSONToSSE:         synthesizerFunc(translator.Synthesize),
+			Logger:            &slogLogger{logger},
+			Config:            cfg,
+			UsageEvents:       events,
+			Pricing:           priceResolver,
+			RequestDetails:    r.RequestDetails,
+			ObservabilityGate: proxychat.NewObservabilityGate(r.Settings),
 		}),
 	}
 }
@@ -567,30 +570,211 @@ type imageProxyHandler struct {
 	handler *imageproxy.Handler
 }
 
-func newImageProxyHandler(cfg config.Config, logger *slog.Logger) *imageProxyHandler {
+func newImageProxyHandler(r repos, opts proxy.Options, cfg config.Config, logger *slog.Logger) *imageProxyHandler {
 	return &imageProxyHandler{
 		handler: imageproxy.New(imageproxy.Dependencies{
-			Logger: &slogLogger{logger},
-			Config: cfg,
+			Executor: newProductionImageExecutor(r, opts, logger),
+			Logger:   &slogLogger{logger},
+			Config:   cfg,
 		}),
 	}
 }
 
+// productionImageExecutor implements imageproxy.HTTPExecutor in the composition
+// root. It is the only place that knows both the imageproxy transport metadata
+// API and the proxy/DB packages. For each outbound image lifecycle request it:
+//
+//   - reads TransportMetadata attached by the usecase;
+//   - for a pinned ValidatedHost (untrusted image URL), translates it to a
+//     proxy.ValidatedTarget, attaches it to the request context, and runs the
+//     request through proxy.ProxyAwareFetch so the policy-aware pinned transport
+//     dials the validated IP:port (step 1);
+//   - for a connection-backed request (auth provider), loads the
+//     ProviderConnection, builds proxy.ProxyFetchOptions from the connection's
+//     resolved proxy config (connection-level + assigned proxy pool), and runs
+//     through proxy.ProxyAwareFetch. A missing connection fails hard — no
+//     silent direct fallback (plan invariant);
+//   - for a no-auth direct-only request (sdwebui/comfyui, connectionID == ""),
+//     uses a dedicated direct client that does not follow redirects and never
+//     invokes the proxy-aware executor. The full local guard (loopback-only
+//     target, 403 for external viewers) lands in step 3.
+//
+// The fetch seam is injectable so app-level tests can assert the validated
+// target and effective proxy options reach proxy.ProxyAwareFetch without
+// performing a real network connect.
+type productionImageExecutor struct {
+	connections *repo.ConnectionRepo
+	pools       *repo.ProxyPoolRepo
+	proxyOpts   proxy.Options
+	fallback    *proxy.Fallback
+	logger      *slog.Logger
+	// fetch is the proxy-aware fetch seam. Defaults to proxy.ProxyAwareFetch;
+	// tests override it to record the validated target and proxy options.
+	fetch func(ctx context.Context, client *http.Client, req *http.Request, opts proxy.Options, proxyOpts proxy.ProxyFetchOptions, fallback *proxy.Fallback) (*http.Response, error)
+	// directClient is used for no-auth direct-only requests (sdwebui/comfyui).
+	// It does not follow redirects; the local guard in step 3 rejects external
+	// targets before this client is reached.
+	directClient *http.Client
+}
+
+// fetchFunc is the package-level alias for the proxy-aware fetch signature.
+type fetchFunc func(ctx context.Context, client *http.Client, req *http.Request, opts proxy.Options, proxyOpts proxy.ProxyFetchOptions, fallback *proxy.Fallback) (*http.Response, error)
+
+func newProductionImageExecutor(r repos, opts proxy.Options, logger *slog.Logger) *productionImageExecutor {
+	return &productionImageExecutor{
+		connections: r.Connections,
+		pools:       r.ProxyPools,
+		proxyOpts:   opts,
+		logger:      logger,
+		fetch:       proxy.ProxyAwareFetch,
+		directClient: &http.Client{
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+	}
+}
+
+// Do implements imageproxy.HTTPExecutor.
+func (e *productionImageExecutor) Do(req *http.Request) (*http.Response, error) {
+	ctx := req.Context()
+	meta, ok := imageproxy.TransportMetadataFromContext(ctx)
+	if !ok {
+		// No metadata (test fallback / unmounted path): plain direct fetch.
+		return http.DefaultClient.Do(req)
+	}
+
+	// Pinned target fast path: untrusted image URL with a validated IP. Translate
+	// the usecase's ValidatedHost to proxy.ValidatedTarget and attach to the
+	// request context; ProxyAwareFetch's pinned transport dials the validated
+	// IP:port and keeps the original hostname as TLS SNI / HTTP Host.
+	if meta.ValidatedHost.IsPinned() {
+		vt := proxy.ValidatedTarget{
+			Scheme:   meta.ValidatedHost.Scheme,
+			Hostname: meta.ValidatedHost.Hostname,
+			Port:     meta.ValidatedHost.Port,
+			IP:       meta.ValidatedHost.IP,
+		}
+		req = req.WithContext(proxy.WithValidatedTarget(ctx, vt))
+		// Pinned path bypasses relay/fallback regardless of connection; build a
+		// connection proxy opts only if a connection is present so a connection
+		// proxy can still reach the validated target via CONNECT/SOCKS.
+		proxyFetchOpts := proxy.ProxyFetchOptions{Logger: e.logger}
+		if meta.ConnectionID != "" {
+			pfo, err := e.proxyFetchOptionsForConnection(ctx, meta.ConnectionID)
+			if err != nil {
+				return nil, err
+			}
+			pfo.Logger = e.logger
+			proxyFetchOpts = pfo
+		}
+		return e.fetch(ctx, http.DefaultClient, req, e.proxyOpts, proxyFetchOpts, e.fallback)
+	}
+
+	// No-auth direct-only path (sdwebui/comfyui): no connection, no proxy. The
+	// full local guard (literal loopback target, 403 for external viewers)
+	// lands in step 3; for now the direct client simply does not follow
+	// redirects and skips the proxy-aware executor entirely.
+	if meta.ConnectionID == "" {
+		return e.directClient.Do(req)
+	}
+
+	// Connection-backed auth-provider path: load the connection and build
+	// proxy options from its resolved proxy config. A missing connection fails
+	// hard — no direct fallback (plan invariant: "Production image lifecycle
+	// call does not do silent direct fallback when connection is missing").
+	proxyFetchOpts, err := e.proxyFetchOptionsForConnection(ctx, meta.ConnectionID)
+	if err != nil {
+		return nil, err
+	}
+	proxyFetchOpts.Logger = e.logger
+	return e.fetch(ctx, http.DefaultClient, req, e.proxyOpts, proxyFetchOpts, e.fallback)
+}
+
+// proxyFetchOptionsForConnection loads a connection by ID and builds
+// proxy.ProxyFetchOptions from its data blob, merging the assigned proxy pool
+// the same way v1.go resolveConnectionProxyConfig does. It mirrors
+// api.proxyFetchOptionsForConnection so the effective proxy options for the
+// image lifecycle match the chat path. A missing connection returns an error
+// (no direct fallback).
+func (e *productionImageExecutor) proxyFetchOptionsForConnection(ctx context.Context, connectionID string) (proxy.ProxyFetchOptions, error) {
+	conn, err := e.connections.GetByID(ctx, connectionID)
+	if err != nil {
+		return proxy.ProxyFetchOptions{}, fmt.Errorf("image executor: load connection %q: %w", connectionID, err)
+	}
+	if conn == nil {
+		return proxy.ProxyFetchOptions{}, fmt.Errorf("image executor: connection %q not found", connectionID)
+	}
+	opts := proxy.ProxyFetchOptions{}
+	var data map[string]any
+	if err := json.Unmarshal(conn.Data, &data); err != nil {
+		return opts, fmt.Errorf("image executor: parse connection %q data: %w", connectionID, err)
+	}
+	opts.ConnectionProxyEnabled = psdBool(data, "connectionProxyEnabled")
+	opts.ConnectionProxyUrl = psdString(data, "connectionProxyUrl")
+	opts.NoProxy = psdString(data, "connectionNoProxy")
+	opts.VercelRelayUrl = psdString(data, "vercelRelayUrl")
+	// Merge the assigned proxy pool — pool strictProxy always wins; pool
+	// proxyUrl/noProxy fill in only when the connection does not set its own.
+	if poolID, _ := data["proxyPoolId"].(string); poolID != "" && e.pools != nil {
+		pool, perr := e.pools.GetByID(ctx, poolID)
+		if perr == nil && pool != nil && pool.IsActive {
+			var poolData map[string]any
+			_ = json.Unmarshal(pool.Data, &poolData)
+			if v, ok := poolData["strictProxy"].(bool); ok {
+				opts.StrictProxy = v
+			}
+			if opts.ConnectionProxyUrl == "" {
+				if v, ok := poolData["proxyUrl"].(string); ok && v != "" {
+					opts.ConnectionProxyUrl = v
+					if !opts.ConnectionProxyEnabled {
+						opts.ConnectionProxyEnabled = true
+					}
+				}
+			}
+			if opts.NoProxy == "" {
+				if v, ok := poolData["noProxy"].(string); ok && v != "" {
+					opts.NoProxy = v
+				}
+			}
+		}
+	}
+	return opts, nil
+}
+
+// psdString / psdBool read typed values from a parsed connection data blob. They
+// mirror v1.go's helpers (which read from Credentials.ProviderSpecificData);
+// kept local so the app package does not grow a v1->app dependency.
+func psdString(m map[string]any, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func psdBool(m map[string]any, key string) bool {
+	if v, ok := m[key].(bool); ok {
+		return v
+	}
+	return false
+}
+
 func (h *imageProxyHandler) Handle(ctx context.Context, req httptransport.ImageRequest) (httptransport.ImageResult, error) {
 	res := h.handler.Handle(ctx, imageproxy.Request{
-		Ctx:            ctx,
-		ProviderID:     req.ProviderID,
-		Model:          req.Model,
-		Prompt:         req.Prompt,
-		N:              req.N,
-		Size:           req.Size,
-		Quality:        req.Quality,
-		Style:          req.Style,
-		ResponseFormat: req.ResponseFormat,
-		OutputFormat:   req.OutputFormat,
-		Background:     req.Background,
-		Credentials:    req.Credentials,
-		UserAgent:      req.UserAgent,
+		Ctx:                   ctx,
+		ProviderID:            req.ProviderID,
+		Model:                 req.Model,
+		Prompt:                req.Prompt,
+		N:                     req.N,
+		Size:                  req.Size,
+		Quality:               req.Quality,
+		Style:                 req.Style,
+		ResponseFormat:        req.ResponseFormat,
+		OutputFormat:          req.OutputFormat,
+		Background:            req.Background,
+		Credentials:           req.Credentials,
+		UserAgent:             req.UserAgent,
+		PreferredConnectionID: req.PreferredConnectionID,
 	})
 	return httptransport.ImageResult{
 		StatusCode:  res.StatusCode,

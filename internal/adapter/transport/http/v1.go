@@ -215,6 +215,10 @@ type ImageRequest struct {
 	Background     string
 	Credentials    domainProv.Credentials
 	UserAgent      string
+	// PreferredConnectionID is the x-9gouter-connection-id hint. When non-empty
+	// the credential resolver pins to this connection (same path chat uses for
+	// combos). Empty → auto-resolve via the sticky round-robin strategy.
+	PreferredConnectionID string
 }
 
 // ImageResult carries the generated image response back to the HTTP layer.

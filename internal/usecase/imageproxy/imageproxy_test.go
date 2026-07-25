@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
@@ -70,7 +71,7 @@ func TestHandle_OpenAI_Passthrough(t *testing.T) {
 		_, _ = io.WriteString(w, `{"created":1700000000,"data":[{"url":"https://x/a.png"}]}`)
 	}))
 	defer srv.Close()
-	h := New(Dependencies{HTTPClient: srv.Client(), Logger: captureLogger{}, Config: config.Config{}})
+	h := New(Dependencies{Executor: &fallbackExecutor{client: srv.Client()}, Logger: captureLogger{}, Config: config.Config{}})
 	cfg := imageCfg(srv.URL, "bearer", "openai")
 	body, ct, status, err := h.synthOpenAICompatible(context.Background(), cfg, Request{
 		ProviderID: "openai", Model: "dall-e-3", Prompt: "cat", N: 2, Size: "1024x1024",
@@ -101,7 +102,7 @@ func TestHandle_OpenAI_BodyFieldsWhitelist_Xai(t *testing.T) {
 		_, _ = io.WriteString(w, `{"created":1,"data":[{"b64_json":"x"}]}`)
 	}))
 	defer srv.Close()
-	h := New(Dependencies{HTTPClient: srv.Client(), Logger: captureLogger{}, Config: config.Config{}})
+	h := New(Dependencies{Executor: &fallbackExecutor{client: srv.Client()}, Logger: captureLogger{}, Config: config.Config{}})
 	cfg := imageCfg(srv.URL, "bearer", "openai")
 	cfg.BodyFields = []string{"model", "prompt", "n", "response_format"}
 	_, _, _, err := h.synthOpenAICompatible(context.Background(), cfg, Request{
@@ -127,7 +128,7 @@ func TestHandle_OpenAI_BinaryOutput_B64(t *testing.T) {
 		_, _ = io.WriteString(w, `{"created":1,"data":[{"b64_json":"`+b64+`"}]}`)
 	}))
 	defer srv.Close()
-	h := New(Dependencies{HTTPClient: srv.Client(), Logger: captureLogger{}, Config: config.Config{}})
+	h := New(Dependencies{Executor: &fallbackExecutor{client: srv.Client()}, Logger: captureLogger{}, Config: config.Config{}})
 	cfg := imageCfg(srv.URL, "bearer", "openai")
 	body, ct, status, err := h.synthOpenAICompatible(context.Background(), cfg, Request{
 		ProviderID: "openai", Model: "dall-e-3", Prompt: "cat", ResponseFormat: "binary", OutputFormat: "png", Credentials: creds("k"),
@@ -151,7 +152,7 @@ func TestHandle_OpenAI_BinaryOutput_UrlNotImplemented(t *testing.T) {
 		_, _ = io.WriteString(w, `{"created":1,"data":[{"url":"https://x/a.png"}]}`)
 	}))
 	defer srv.Close()
-	h := New(Dependencies{HTTPClient: srv.Client(), Logger: captureLogger{}, Config: config.Config{}})
+	h := New(Dependencies{Executor: &fallbackExecutor{client: srv.Client()}, Logger: captureLogger{}, Config: config.Config{}})
 	cfg := imageCfg(srv.URL, "bearer", "openai")
 	_, _, status, err := h.synthOpenAICompatible(context.Background(), cfg, Request{
 		ProviderID: "openai", Model: "dall-e-3", Prompt: "cat", ResponseFormat: "binary", Credentials: creds("k"),
@@ -170,7 +171,7 @@ func TestHandle_OpenAI_UpstreamError(t *testing.T) {
 		_, _ = io.WriteString(w, `{"error":{"message":"Invalid API key"}}`)
 	}))
 	defer srv.Close()
-	h := New(Dependencies{HTTPClient: srv.Client(), Logger: captureLogger{}, Config: config.Config{}})
+	h := New(Dependencies{Executor: &fallbackExecutor{client: srv.Client()}, Logger: captureLogger{}, Config: config.Config{}})
 	cfg := imageCfg(srv.URL, "bearer", "openai")
 	_, _, status, err := h.synthOpenAICompatible(context.Background(), cfg, Request{
 		ProviderID: "openai", Model: "dall-e-3", Prompt: "cat", Credentials: creds("bad"),
@@ -197,7 +198,7 @@ func TestHandle_Gemini_Reshape(t *testing.T) {
 		_, _ = io.WriteString(w, `{"candidates":[{"content":{"parts":[{"text":"ignored"},{"inlineData":{"mimeType":"image/png","data":"`+imgB64+`"}}]}}]}`)
 	}))
 	defer srv.Close()
-	h := New(Dependencies{HTTPClient: srv.Client(), Logger: captureLogger{}, Config: config.Config{}})
+	h := New(Dependencies{Executor: &fallbackExecutor{client: srv.Client()}, Logger: captureLogger{}, Config: config.Config{}})
 	cfg := imageCfg(srv.URL, "key", "gemini")
 	body, ct, status, err := h.synthGemini(context.Background(), cfg, Request{
 		ProviderID: "gemini", Model: "gemini-2.5-flash-image", Prompt: "cat", Credentials: creds("k-gem"),
@@ -229,7 +230,7 @@ func TestHandle_Gemini_ModelsPrefixStripped(t *testing.T) {
 		_, _ = io.WriteString(w, `{"candidates":[{"content":{"parts":[{"inlineData":{"data":"`+imgB64+`"}}]}}]}`)
 	}))
 	defer srv.Close()
-	h := New(Dependencies{HTTPClient: srv.Client(), Logger: captureLogger{}, Config: config.Config{}})
+	h := New(Dependencies{Executor: &fallbackExecutor{client: srv.Client()}, Logger: captureLogger{}, Config: config.Config{}})
 	cfg := imageCfg(srv.URL, "key", "gemini")
 	_, _, _, err := h.synthGemini(context.Background(), cfg, Request{
 		ProviderID: "gemini", Model: "models/gemini-2.5-flash-image", Prompt: "cat", Credentials: creds("k"),
@@ -247,7 +248,7 @@ func TestHandle_Gemini_NoImage(t *testing.T) {
 		_, _ = io.WriteString(w, `{"candidates":[{"content":{"parts":[{"text":"text only"}]}}]}`)
 	}))
 	defer srv.Close()
-	h := New(Dependencies{HTTPClient: srv.Client(), Logger: captureLogger{}, Config: config.Config{}})
+	h := New(Dependencies{Executor: &fallbackExecutor{client: srv.Client()}, Logger: captureLogger{}, Config: config.Config{}})
 	cfg := imageCfg(srv.URL, "key", "gemini")
 	_, _, status, err := h.synthGemini(context.Background(), cfg, Request{
 		ProviderID: "gemini", Model: "gemini-2.5-flash-image", Prompt: "cat", Credentials: creds("k"),
@@ -281,7 +282,7 @@ func TestHandle_Codex_SSEParse(t *testing.T) {
 		_, _ = io.WriteString(w, sse)
 	}))
 	defer srv.Close()
-	h := New(Dependencies{HTTPClient: srv.Client(), Logger: captureLogger{}, Config: config.Config{}})
+	h := New(Dependencies{Executor: &fallbackExecutor{client: srv.Client()}, Logger: captureLogger{}, Config: config.Config{}})
 	cfg := imageCfg(srv.URL, "bearer-account", "codex")
 	body, ct, status, err := h.synthCodex(context.Background(), cfg, Request{
 		ProviderID: "codex", Model: "gpt-5.1-image", Prompt: "cat", Size: "1024x1024",
@@ -311,7 +312,7 @@ func TestHandle_Codex_NoImage(t *testing.T) {
 		_, _ = io.WriteString(w, sse)
 	}))
 	defer srv.Close()
-	h := New(Dependencies{HTTPClient: srv.Client(), Logger: captureLogger{}, Config: config.Config{}})
+	h := New(Dependencies{Executor: &fallbackExecutor{client: srv.Client()}, Logger: captureLogger{}, Config: config.Config{}})
 	cfg := imageCfg(srv.URL, "bearer-account", "codex")
 	_, _, status, err := h.synthCodex(context.Background(), cfg, Request{
 		ProviderID: "codex", Model: "gpt-5.1-image", Prompt: "cat",
@@ -335,6 +336,125 @@ func TestBuildOpenAIBody_Defaults(t *testing.T) {
 	if b["size"] != "1024x1024" {
 		t.Errorf("size default = %v, want 1024x1024", b["size"])
 	}
+}
+
+// === Executor boundary ===
+
+// recordingExecutor records every request it receives and returns a canned
+// response so the usecase completes without a real upstream. It proves the
+// OpenAI submit path went through HTTPExecutor (not a fallback client) and that
+// transport metadata reached the executor via the request context.
+type recordingExecutor struct {
+	got    []*http.Request
+	bodies []string
+}
+
+func (r *recordingExecutor) Do(req *http.Request) (*http.Response, error) {
+	// Capture a copy of the request URL + body so assertions are stable after
+	// the body is consumed.
+	r.got = append(r.got, req)
+	if req.Body != nil {
+		b, _ := io.ReadAll(req.Body)
+		r.bodies = append(r.bodies, string(b))
+		req.Body.Close()
+		// Restore a readable body the usecase transport would consume — but the
+		// canned response below does not read the request body again, so leave it.
+	}
+	// Return a minimal OpenAI-shaped success so synthOpenAICompatible completes.
+	respBody := `{"created":1,"data":[{"b64_json":"iVBORw0KGgo="}]}`
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(respBody)),
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+	}, nil
+}
+
+// TestExecutor_OpenAISubmitGoesThroughExecutor proves the OpenAI submit path
+// routes through the injected HTTPExecutor and carries transport metadata
+// (provider, connection, phase) on the request context — not a fallback client.
+func TestExecutor_OpenAISubmitGoesThroughExecutor(t *testing.T) {
+	rec := &recordingExecutor{}
+	h := New(Dependencies{Executor: rec, Logger: captureLogger{}, Config: config.Config{}})
+	cfg := imageCfg("https://upstream.example/v1/images/generations", "bearer", "openai")
+	// Patch the registry entry base URL to our test endpoint.
+	setImageBaseURL(t, "openai", cfg)
+
+	res := h.Handle(context.Background(), Request{
+		ProviderID:  "openai",
+		Model:       "dall-e-3",
+		Prompt:      "cat",
+		Credentials: creds("tok"),
+	})
+	if res.Err != nil {
+		t.Fatalf("Handle: %v", res.Err)
+	}
+	if len(rec.got) != 1 {
+		t.Fatalf("expected 1 executor call, got %d", len(rec.got))
+	}
+	got := rec.got[0]
+	if got.URL.String() != "https://upstream.example/v1/images/generations" {
+		t.Fatalf("executor URL = %s, want test endpoint", got.URL.String())
+	}
+	meta, ok := TransportMetadataFromContext(got.Context())
+	if !ok {
+		t.Fatal("executor request had no transport metadata on context")
+	}
+	if meta.ProviderID != "openai" {
+		t.Fatalf("meta.ProviderID = %q, want openai", meta.ProviderID)
+	}
+	if meta.Phase != "submit" {
+		t.Fatalf("meta.Phase = %q, want submit", meta.Phase)
+	}
+	if meta.ConnectionID != "c1" {
+		t.Fatalf("meta.ConnectionID = %q, want c1", meta.ConnectionID)
+	}
+}
+
+// TestExecutor_OverridesFallbackClient proves a injected executor is used even
+// when the registry base URL points at a real httptest server that would answer
+// the fallback client — i.e. the fallback client is NOT used when an executor is
+// wired. The httptest server counts hits; the recording executor returns the
+// canned response, so the server must record zero hits.
+func TestExecutor_OverridesFallbackClient(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	rec := &recordingExecutor{}
+	h := New(Dependencies{Executor: rec, Logger: captureLogger{}, Config: config.Config{}})
+	setImageBaseURL(t, "openai", imageCfg(srv.URL, "bearer", "openai"))
+
+	res := h.Handle(context.Background(), Request{
+		ProviderID: "openai", Model: "dall-e-3", Prompt: "cat", Credentials: creds("tok"),
+	})
+	if res.Err != nil {
+		t.Fatalf("Handle: %v", res.Err)
+	}
+	if hits != 0 {
+		t.Fatalf("fallback client hit upstream %d times; executor must own outbound", hits)
+	}
+}
+
+// setImageBaseURL patches the image registry entry for providerID to use cfg's
+// BaseURL for the duration of the test. The registry is a package-level map;
+// this helper keeps tests self-contained.
+func setImageBaseURL(t *testing.T, providerID string, cfg image.Config) {
+	t.Helper()
+	orig := mustLookupImage(t, providerID)
+	image.SetConfig(providerID, cfg)
+	t.Cleanup(func() { image.SetConfig(providerID, orig) })
+}
+
+func mustLookupImage(t *testing.T, providerID string) image.Config {
+	t.Helper()
+	cfg, ok := image.Lookup(providerID)
+	if !ok {
+		t.Fatalf("image provider %q not in registry", providerID)
+	}
+	return cfg
 }
 
 // === Helpers ===

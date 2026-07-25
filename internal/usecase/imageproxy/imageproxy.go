@@ -33,7 +33,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -55,11 +57,83 @@ func (noopLogger) Infof(string, ...any)  {}
 func (noopLogger) Warnf(string, ...any)  {}
 func (noopLogger) Debugf(string, ...any) {}
 
+// HTTPExecutor is the outbound HTTP boundary for image generation. The usecase
+// never imports the DB, proxy, or connection packages — it hands each upstream
+// request to an executor with the transport metadata (provider, credentials,
+// connection, lifecycle phase) attached to the request context. The production
+// executor (wired in app/wire.go) resolves connection proxy settings, honours a
+// proxy.ValidatedTarget for untrusted image URLs, and calls proxy.ProxyAwareFetch.
+// Tests substitute a recording executor built over httptest.Server.
+type HTTPExecutor interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+// TransportMetadata describes one outbound image lifecycle HTTP call. It is
+// attached to the request context by the usecase before Executor.Do and read by
+// the production executor (wire.go). It carries no DB/proxy types — only the
+// primitive identifiers and the validated target the policy-aware proxy
+// transport (step 1) needs.
+type TransportMetadata struct {
+	ProviderID    string
+	ConnectionID  string
+	Credentials   domainProv.Credentials
+	Phase         string // "submit" | "poll" | "result" | "input" | "output"
+	ValidatedHost ValidatedHost
+}
+
+// ValidatedHost is the untrusted-image egress contract handed to the
+// policy-aware proxy transport. It mirrors proxy.ValidatedTarget but lives in
+// the usecase package so imageproxy never imports the proxy package; the wire
+// adapter translates it to proxy.ValidatedTarget and attaches it to the
+// request context. Zero value (nil IP / empty port) means "no pinned target —
+// use the standard proxy pipeline" (provider lifecycle requests that are
+// operator-trusted hostnames).
+type ValidatedHost struct {
+	Scheme   string
+	Hostname string
+	Port     string
+	IP       net.IP
+}
+
+// IsPinned reports whether the validated host carries a resolved IP to pin.
+func (v ValidatedHost) IsPinned() bool { return v.IP != nil && v.Port != "" }
+
+type transportMetaCtxKey struct{}
+
+// WithTransportMetadata attaches the transport metadata to a request context so
+// the production executor can read it. Tests use it to assert what the usecase
+// passed to the executor.
+func WithTransportMetadata(ctx context.Context, meta TransportMetadata) context.Context {
+	return context.WithValue(ctx, transportMetaCtxKey{}, meta)
+}
+
+// TransportMetadataFromContext returns the metadata attached to the context, if
+// any. Used by the production executor in wire.go.
+func TransportMetadataFromContext(ctx context.Context) (TransportMetadata, bool) {
+	m, ok := ctx.Value(transportMetaCtxKey{}).(TransportMetadata)
+	return m, ok
+}
+
+// fallbackExecutor wraps an *http.Client as an HTTPExecutor. New uses it when
+// no executor is injected (e.g. tests that pass an httptest.Server client). It
+// never sees transport metadata — production wiring always injects a real
+// executor.
+type fallbackExecutor struct {
+	client *http.Client
+}
+
+func (e *fallbackExecutor) Do(req *http.Request) (*http.Response, error) {
+	return e.client.Do(req)
+}
+
 // Dependencies wires the imageproxy Handler.
 type Dependencies struct {
-	HTTPClient *http.Client
-	Logger     Logger
-	Config     config.Config
+	// Executor is the outbound HTTP boundary. If nil, New creates a fallback
+	// executor over a plain *http.Client (300s body timeout); production wiring
+	// injects the policy-aware proxy executor from app/wire.go.
+	Executor HTTPExecutor
+	Logger   Logger
+	Config   config.Config
 }
 
 // Handler runs the image-generation pipeline.
@@ -67,11 +141,11 @@ type Handler struct {
 	deps Dependencies
 }
 
-// New constructs a Handler with sane defaults (300s body timeout — image gen
-// can be slow, especially Codex streaming).
+// New constructs a Handler with sane defaults (300s body timeout fallback
+// executor — image gen can be slow, especially Codex streaming).
 func New(deps Dependencies) *Handler {
-	if deps.HTTPClient == nil {
-		deps.HTTPClient = &http.Client{Timeout: 300 * time.Second}
+	if deps.Executor == nil {
+		deps.Executor = &fallbackExecutor{client: &http.Client{Timeout: 300 * time.Second}}
 	}
 	if deps.Logger == nil {
 		deps.Logger = noopLogger{}
@@ -81,19 +155,64 @@ func New(deps Dependencies) *Handler {
 
 // Request is the input to Handle.
 type Request struct {
-	Ctx            context.Context
-	ProviderID     string
-	Model          string
-	Prompt         string
-	N              int
-	Size           string
-	Quality        string
-	Style          string
-	ResponseFormat string // "url" (default) | "b64_json" | "binary" (raw image bytes)
-	OutputFormat   string // "png" (default) | "jpeg" | "webp" — used by codex + binary
-	Background     string // codex
-	Credentials    domainProv.Credentials
-	UserAgent      string
+	Ctx                   context.Context
+	ProviderID            string
+	Model                 string
+	Prompt                string
+	N                     int
+	Size                  string
+	Quality               string
+	Style                 string
+	ResponseFormat        string // "url" (default) | "b64_json" | "binary" (raw image bytes)
+	OutputFormat          string // "png" (default) | "jpeg" | "webp" — used by codex + binary
+	Background            string // codex
+	Credentials           domainProv.Credentials
+	UserAgent             string
+	PreferredConnectionID string // x-9gouter-connection-id hint; "" → auto-resolve
+	// Options carries provider-specific optional fields with presence semantics
+	// (json.RawMessage so missing key ≠ supplied null/""/0). The HTTP handler
+	// populates it after capability decision; the usecase does not enforce
+	// provider policy (capability table lives in the handler, step 3).
+	Options RequestOptions
+}
+
+// RequestOptions holds provider-specific optional image-generation inputs with
+// presence-bearing types so the capability table (handler) can distinguish
+// "absent" from "supplied null/empty/zero". The usecase forwards only the
+// permitted, canonical fields to each provider adapter. Raw JSON is kept for
+// fields whose provider wire shape is not yet fixed (cloudflare/async adapters,
+// steps 6–7); the sync/OpenAI/Gemini/Codex paths ignore it for now.
+type RequestOptions struct {
+	// ImageInputs are the validated image inputs (data URL or HTTPS URL) for
+	// img2img / inpainting. nil when no image was supplied.
+	ImageInputs []ImageInput
+	// Mask is the validated mask input for inpainting. nil when not supplied.
+	Mask *ImageInput
+	// Width/Height override Size when set (Cloudflare JSON / some providers).
+	Width  json.RawMessage
+	Height json.RawMessage
+	// NegativePrompt, Guidance, Seed, NumSteps, Steps, Strength are the six
+	// named Cloudflare-ish optional fields. json.RawMessage preserves presence
+	// and the numeric-zero-vs-null distinction.
+	NegativePrompt json.RawMessage
+	Guidance       json.RawMessage
+	Seed           json.RawMessage
+	NumSteps       json.RawMessage
+	Steps          json.RawMessage
+	Strength       json.RawMessage
+}
+
+// ImageInput is one validated image input (data URL or HTTPS URL) produced by
+// the safe input resolver (step 4). The adapter never re-validates.
+type ImageInput struct {
+	// Kind is "data" (inline base64) or "url" (remote HTTPS).
+	Kind string
+	// B64 is the decoded base64 bytes for a data: URL (Kind=="data").
+	B64 string
+	// URL is the HTTPS URL for a remote input (Kind=="url").
+	URL string
+	// MIME is the authoritative MIME sniffed from bytes (PNG/JPEG/WebP).
+	MIME string
 }
 
 // Result is the output of Handle.
@@ -142,6 +261,43 @@ func (h *Handler) synthesize(ctx context.Context, cfg image.Config, req Request)
 	}
 }
 
+// do is the single outbound HTTP entry point. It attaches transport metadata
+// (provider, connection, credentials, lifecycle phase, validated host) to the
+// request context, hands the request to the injected HTTPExecutor, and logs only
+// provider/model/phase/status/redacted URL — never prompt, credentials, or
+// image bytes. Connection-backed requests carry the connection ID so the
+// production executor (wire.go) can resolve proxy settings and forward a
+// proxy.ValidatedTarget for untrusted image URLs.
+func (h *Handler) do(ctx context.Context, req *http.Request, provider, phase string, creds domainProv.Credentials, connID string, host ValidatedHost) (*http.Response, error) {
+	meta := TransportMetadata{
+		ProviderID:    provider,
+		ConnectionID:  connID,
+		Credentials:   creds,
+		Phase:         phase,
+		ValidatedHost: host,
+	}
+	// Attach to the request context too so the production executor can read it
+	// without a separate context argument (it only sees *http.Request).
+	req = req.WithContext(WithTransportMetadata(req.Context(), meta))
+	resp, err := h.deps.Executor.Do(req)
+	if err != nil {
+		h.deps.Logger.Warnf("image %s %s phase=%s err=%v url=%s", provider, req.URL.Hostname(), phase, err, redactedURL(req.URL))
+		return nil, err
+	}
+	h.deps.Logger.Debugf("image %s %s phase=%s status=%d url=%s", provider, req.URL.Hostname(), phase, resp.StatusCode, redactedURL(req.URL))
+	return resp, nil
+}
+
+// redactedURL returns scheme://host/path with query/fragment stripped. It is
+// the only URL shape ever logged for image lifecycle calls — credentials live
+// in headers/query and must never reach logs.
+func redactedURL(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host + u.Path
+}
+
 // synthOpenAICompatible builds the OpenAI {model,prompt,n,size,quality,style,
 // response_format} body (optionally whitelisted via cfg.BodyFields), POSTs to
 // cfg.BaseURL, and returns the upstream response verbatim (OpenAI shape
@@ -162,7 +318,7 @@ func (h *Handler) synthOpenAICompatible(ctx context.Context, cfg image.Config, r
 	if req.UserAgent != "" {
 		httpReq.Header.Set("User-Agent", req.UserAgent)
 	}
-	resp, err := h.deps.HTTPClient.Do(httpReq)
+	resp, err := h.do(ctx, httpReq, req.ProviderID, "submit", req.Credentials, connectionID(req.Credentials), ValidatedHost{})
 	if err != nil {
 		return nil, "", http.StatusBadGateway, err
 	}
@@ -210,7 +366,7 @@ func (h *Handler) synthGemini(ctx context.Context, cfg image.Config, req Request
 	if req.UserAgent != "" {
 		httpReq.Header.Set("User-Agent", req.UserAgent)
 	}
-	resp, err := h.deps.HTTPClient.Do(httpReq)
+	resp, err := h.do(ctx, httpReq, req.ProviderID, "submit", req.Credentials, connectionID(req.Credentials), ValidatedHost{})
 	if err != nil {
 		return nil, "", http.StatusBadGateway, err
 	}
@@ -302,7 +458,7 @@ func (h *Handler) synthCodex(ctx context.Context, cfg image.Config, req Request)
 	if req.UserAgent != "" {
 		httpReq.Header.Set("User-Agent", req.UserAgent)
 	}
-	resp, err := h.deps.HTTPClient.Do(httpReq)
+	resp, err := h.do(ctx, httpReq, req.ProviderID, "submit", req.Credentials, connectionID(req.Credentials), ValidatedHost{})
 	if err != nil {
 		return nil, "", http.StatusBadGateway, err
 	}
@@ -453,6 +609,20 @@ func credentialToken(c domainProv.Credentials) string {
 		return c.AccessToken
 	}
 	return c.APIKey
+}
+
+// connectionID extracts the resolved connection id carried in credentials'
+// ProviderSpecificData (set by the chat-path credential resolver). It is the
+// connection the production executor (wire.go) uses to load proxy settings;
+// "" means a no-auth / direct-only request.
+func connectionID(c domainProv.Credentials) string {
+	if c.ProviderSpecificData == nil {
+		return ""
+	}
+	if id, ok := c.ProviderSpecificData["_connectionId"].(string); ok {
+		return id
+	}
+	return ""
 }
 
 func setAuthHeader(r *http.Request, cfg image.Config, c domainProv.Credentials) {

@@ -23,16 +23,19 @@ const imageMaxBodyBytes int64 = 24 << 20
 // non-nil value as supplied and rejects it unless the provider/model row
 // authorises that field.
 type imagesRequestBody struct {
-	// Base fields (existing OpenAI contract).
-	Model          string `json:"model"`
-	Prompt         string `json:"prompt"`
-	N              int    `json:"n"`
-	Size           string `json:"size"`
-	Quality        string `json:"quality"`
-	Style          string `json:"style"`
-	ResponseFormat string `json:"response_format"`
-	OutputFormat   string `json:"output_format"`
-	Background     string `json:"background"`
+	// Base fields (existing OpenAI contract). N is json.RawMessage so the
+	// handler can distinguish an absent `n` key (→ default 1) from an explicit
+	// `n: 0` (→ preserved as 0). The SDWebUI legacy decision table (step 5)
+	// relies on this: absent n → batch_size:1, explicit n:0 → batch_size:0.
+	Model          string          `json:"model"`
+	Prompt         string          `json:"prompt"`
+	N              json.RawMessage `json:"n"`
+	Size           string          `json:"size"`
+	Quality        string          `json:"quality"`
+	Style          string          `json:"style"`
+	ResponseFormat string          `json:"response_format"`
+	OutputFormat   string          `json:"output_format"`
+	Background     string          `json:"background"`
 
 	// Extended image inputs (presence-bearing). nil = key absent.
 	Image  json.RawMessage `json:"image"`
@@ -97,6 +100,12 @@ func (h *v1Handler) handleImagesGenerations(w http.ResponseWriter, r *http.Reque
 		h.writeError(w, http.StatusBadRequest, "Missing required field: prompt")
 		return
 	}
+
+	// Parse `n` with presence: an absent key defaults to 1 (the OpenAI
+	// default), while an explicit `n: 0` is preserved as 0 and reported as
+	// supplied. The SDWebUI legacy decision table (step 5) distinguishes the
+	// two: absent n → batch_size:1, explicit n:0 → batch_size:0.
+	n, nSupplied := parseNWithPresence(body.N)
 
 	// Resolve provider from model. "provider/model" → provider prefix only when
 	// the first segment is a known image provider; bare model → openai fallback.
@@ -235,7 +244,8 @@ func (h *v1Handler) handleImagesGenerations(w http.ResponseWriter, r *http.Reque
 		ProviderID:            providerID,
 		Model:                 bareModel,
 		Prompt:                body.Prompt,
-		N:                     body.N,
+		N:                     n,
+		NSupplied:             nSupplied,
 		Size:                  body.Size,
 		Quality:               body.Quality,
 		Style:                 body.Style,
@@ -293,4 +303,22 @@ func resolveImageProvider(modelStr string) (providerID, bareModel string) {
 		return first, parts[1]
 	}
 	return openaiOrDefault(modelStr)
+}
+
+// parseNWithPresence decodes the `n` field with presence semantics. An absent
+// key (raw == nil) returns (1, false) — the OpenAI default of 1, not supplied.
+// An explicit `n: 0` returns (0, true) — preserved as 0 and reported supplied.
+// Any other valid integer returns (value, true). A malformed or non-integer
+// value returns (1, false) so the request still proceeds with the default
+// rather than 400-ing on a field most providers ignore; the SDWebUI adapter is
+// the only consumer that observes the absent-vs-zero distinction.
+func parseNWithPresence(raw json.RawMessage) (n int, supplied bool) {
+	if len(raw) == 0 {
+		return 1, false
+	}
+	var v int
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return 1, false
+	}
+	return v, true
 }

@@ -6,7 +6,7 @@
 // {created, data:[{url|b64_json}]} shape (or raw binary when
 // response_format=binary).
 //
-// Supported in this MVP slice:
+// Supported in this slice:
 //   - OpenAI-compatible (openai, minimax, openrouter, recraft, xai with
 //     bodyFields whitelist, vercel-ai-gateway, venice) — passthrough OpenAI
 //     shape.
@@ -14,11 +14,14 @@
 //     candidates[].content.parts[].inlineData.data → {b64_json}.
 //   - Codex — Responses API with tools:[{type:"image_generation",…}], SSE
 //     parse → {created, data:[{b64_json}]}.
+//   - Sync image providers (step 5): sdwebui (noAuth local /sdapi/v1/txt2img),
+//     comfyui (noAuth local passthrough), huggingface (raw binary → b64_json),
+//     stability-ai (core/ultra/sd3 segment, image b64_json).
 //
-// Deferred (501): sdwebui, comfyui (noAuth local), huggingface (raw binary),
-// fal-ai / black-forest-labs / runwayml / nanobanana (async polling),
-// stability-ai, cloudflare-ai, antigravity. The handler resolves the provider
-// from body.model (provider/model prefix or bare → openai fallback).
+// Deferred (501): fal-ai / black-forest-labs / runwayml / nanobanana (async
+// polling), cloudflare-ai (JSON/multipart), antigravity (executor). The handler
+// resolves the provider from body.model (provider/model prefix or bare → openai
+// fallback).
 //
 // NOT in this slice (separate slices): combo expansion, account-fallback
 // rotation, on-401 token refresh, usage persistence, x-9gouter-connection-id
@@ -187,11 +190,16 @@ func New(deps Dependencies) *Handler {
 
 // Request is the input to Handle.
 type Request struct {
-	Ctx                   context.Context
-	ProviderID            string
-	Model                 string
-	Prompt                string
-	N                     int
+	Ctx        context.Context
+	ProviderID string
+	Model      string
+	Prompt     string
+	N          int
+	// NSupplied is true when the request body carried an explicit `n` key
+	// (including n:0). The SDWebUI legacy decision table (step 5) distinguishes
+	// absent n (→ batch_size:1) from explicit n:0 (→ batch_size:0); other
+	// adapters ignore it.
+	NSupplied             bool
 	Size                  string
 	Quality               string
 	Style                 string
@@ -307,6 +315,14 @@ func (h *Handler) synthesize(ctx context.Context, cfg image.Config, req Request)
 		return h.synthGemini(ctx, cfg, req)
 	case image.FormatCodex:
 		return h.synthCodex(ctx, cfg, req)
+	case image.FormatSDWebUI:
+		return h.synthSDWebUI(ctx, cfg, req)
+	case image.FormatComfyUI:
+		return h.synthComfyUI(ctx, cfg, req)
+	case image.FormatHuggingFace:
+		return h.synthHuggingFace(ctx, cfg, req)
+	case image.FormatStability:
+		return h.synthStability(ctx, cfg, req)
 	default:
 		return nil, "", http.StatusNotImplemented, fmt.Errorf("image format %q not implemented", cfg.Format)
 	}
@@ -521,6 +537,13 @@ func (h *Handler) synthCodex(ctx context.Context, cfg image.Config, req Request)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "text/event-stream")
+	// Codex CLI literal headers (legacy codex.js buildHeaders): version pins
+	// the Codex CLI build the image_generation tool contract targets.
+	httpReq.Header.Set("version", "0.136.0")
+	httpReq.Header.Set("originator", "codex_cli_rs")
+	httpReq.Header.Set("user-agent", "codex_cli_rs/0.136.0")
+	httpReq.Header.Set("session_id", codexSessionID())
+	httpReq.Header.Set("x-client-request-id", codexSessionID())
 	tok := credentialToken(req.Credentials)
 	if tok != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+tok)

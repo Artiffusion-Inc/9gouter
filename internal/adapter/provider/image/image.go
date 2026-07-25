@@ -2,9 +2,10 @@
 // open-sse/handlers/imageProviders/index.js + the per-provider adapters'
 // static transport config (baseUrl, authType, authHeader, format, bodyFields
 // whitelist). The imageproxy usecase dispatches by Format; Lookup returns
-// the config so the handler can 501 the providers whose transport is not
-// implemented in the Go MVP (polling, multipart, SSE-accumulate, no-auth
-// local services).
+// the config. Providers whose transport is not yet implemented in the Go
+// build (async polling, multipart, executor-delegated) keep the Unsupported
+// flag so the usecase can return 501 honestly; sync providers are implemented
+// and carry no flag.
 //
 // authHeader mirrors the JS buildAuthHeaders schemes:
 // "bearer" → `Bearer <tok>`, "key" → `?key=<tok>` query param (Gemini),
@@ -75,8 +76,12 @@ type Config struct {
 	// ["model","prompt","n","response_format"].
 	BodyFields []string
 	// Unsupported marks providers whose transport is not implemented in the Go
-	// MVP (polling, multipart, SSE-accumulate, no-auth local). The usecase
-	// returns 501 instead of attempting the call.
+	// build (async polling, multipart, executor-delegated). The usecase
+	// returns 501 instead of attempting the call. Sync providers (sdwebui,
+	// comfyui, huggingface, stability-ai) are implemented in step 5 and do NOT
+	// set this flag; async/deferred providers (fal-ai, black-forest-labs,
+	// runwayml, cloudflare-ai, nanobanana, antigravity) keep it until steps 6–8
+	// lift their transport.
 	Unsupported bool
 }
 
@@ -152,13 +157,19 @@ var configs = map[string]Config{
 		AuthHeader: AuthBearerAccount,
 		Format:     FormatCodex,
 	},
-	// Deferred providers — registered so the handler can 501 them honestly.
-	"sdwebui":           {BaseURL: "http://127.0.0.1:7860/sdapi/v1/txt2img", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatSDWebUI, Unsupported: true},
-	"comfyui":           {BaseURL: "http://127.0.0.1:8188", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatComfyUI, Unsupported: true},
-	"huggingface":       {BaseURL: "https://api-inference.huggingface.co/models", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatHuggingFace, Unsupported: true},
+	// Sync image providers — transport implemented in step 5 of the
+	// image-provider-parity plan (sdwebui, comfyui, huggingface, stability-ai).
+	// They are no longer marked Unsupported; the imageproxy usecase dispatches
+	// them by Format.
+	"sdwebui":      {BaseURL: "http://127.0.0.1:7860/sdapi/v1/txt2img", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatSDWebUI},
+	"comfyui":      {BaseURL: "http://127.0.0.1:8188", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatComfyUI},
+	"huggingface":  {BaseURL: "https://api-inference.huggingface.co/models", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatHuggingFace},
+	"stability-ai": {BaseURL: "https://api.stability.ai/v2beta/stable-image/generate", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatStability},
+	// Deferred async / executor providers — registered so the handler can 501
+	// them honestly until steps 6–8 lift their transport. The Unsupported flag
+	// and the Handle guard remain the source of the deferred 501 for these.
 	"fal-ai":            {BaseURL: "https://queue.fal.run", AuthType: AuthTypeAPIKey, AuthHeader: AuthFalKey, Format: FormatFalAI, Unsupported: true},
 	"black-forest-labs": {BaseURL: "https://api.bfl.ai/v1", AuthType: AuthTypeAPIKey, AuthHeader: AuthXKey, Format: FormatBlackForest, Unsupported: true},
-	"stability-ai":      {BaseURL: "https://api.stability.ai/v2beta/stable-image/generate", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatStability, Unsupported: true},
 	"runwayml":          {BaseURL: "https://api.dev.runwayml.com/v1", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatRunwayML, Unsupported: true},
 	"cloudflare-ai":     {BaseURL: "https://api.cloudflare.com/client/v4/accounts", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatCloudflareAI, Unsupported: true},
 	"nanobanana":        {BaseURL: "https://api.nanobananaapi.ai/api/v1/nanobanana", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatNanobanana, Unsupported: true},

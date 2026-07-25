@@ -781,6 +781,7 @@ func (h *imageProxyHandler) Handle(ctx context.Context, req httptransport.ImageR
 		Model:                 req.Model,
 		Prompt:                req.Prompt,
 		N:                     req.N,
+		NSupplied:             req.NSupplied,
 		Size:                  req.Size,
 		Quality:               req.Quality,
 		Style:                 req.Style,

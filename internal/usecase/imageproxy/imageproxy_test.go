@@ -37,9 +37,30 @@ func TestHandle_UnsupportedProvider(t *testing.T) {
 
 func TestHandle_DeferredProviderReturns501(t *testing.T) {
 	h := New(Dependencies{Logger: captureLogger{}, Config: config.Config{}})
-	res := h.Handle(context.Background(), Request{ProviderID: "sdwebui", Prompt: "cat"})
+	// Sync providers (sdwebui/comfyui/huggingface/stability-ai) are implemented
+	// in step 5 and no longer return 501. The async/deferred providers
+	// (fal-ai, black-forest-labs, runwayml, cloudflare-ai, nanobanana,
+	// antigravity) keep Unsupported until steps 6–8.
+	res := h.Handle(context.Background(), Request{ProviderID: "fal-ai", Prompt: "cat", Credentials: creds("k")})
 	if res.StatusCode != http.StatusNotImplemented {
-		t.Errorf("sdwebui should 501 in Go build, got %d", res.StatusCode)
+		t.Errorf("fal-ai should 501 in Go build, got %d", res.StatusCode)
+	}
+}
+
+func TestHandle_SyncProvidersNotDeferred(t *testing.T) {
+	// Step 5 lifts Unsupported from sdwebui/comfyui/huggingface/stability-ai.
+	// They must NOT return 501 from the Unsupported guard (they may return
+	// other statuses for missing creds/prompt, but not 501).
+	for _, p := range []string{"sdwebui", "comfyui", "huggingface", "stability-ai"} {
+		t.Run(p, func(t *testing.T) {
+			cfg, ok := image.Lookup(p)
+			if !ok {
+				t.Fatalf("%s not in registry", p)
+			}
+			if cfg.Unsupported {
+				t.Fatalf("%s still marked Unsupported after step 5", p)
+			}
+		})
 	}
 }
 

@@ -208,6 +208,7 @@ type ImageRequest struct {
 	Model          string
 	Prompt         string
 	N              int
+	NSupplied      bool // true when the JSON body carried an explicit `n` key (incl. n:0)
 	Size           string
 	Quality        string
 	Style          string

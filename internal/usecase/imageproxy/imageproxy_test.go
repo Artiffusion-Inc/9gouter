@@ -122,7 +122,7 @@ func TestHandle_OpenAI_BodyFieldsWhitelist_Xai(t *testing.T) {
 }
 
 func TestHandle_OpenAI_BinaryOutput_B64(t *testing.T) {
-	rawImg := []byte("PNGBYTES")
+	rawImg := pngMagic(64)
 	b64 := base64.StdEncoding.EncodeToString(rawImg)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"created":1,"data":[{"b64_json":"`+b64+`"}]}`)
@@ -142,26 +142,43 @@ func TestHandle_OpenAI_BinaryOutput_B64(t *testing.T) {
 	if ct != "image/png" {
 		t.Errorf("CT = %q, want image/png", ct)
 	}
-	if string(body) != "PNGBYTES" {
-		t.Errorf("body = %q, want PNGBYTES", body)
+	if body[0] != 0x89 || body[1] != 'P' {
+		t.Errorf("body bytes mismatch: %v", body[:4])
 	}
 }
 
-func TestHandle_OpenAI_BinaryOutput_UrlNotImplemented(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.WriteString(w, `{"created":1,"data":[{"url":"https://x/a.png"}]}`)
+func TestHandle_OpenAI_BinaryOutput_UrlDownload(t *testing.T) {
+	img := pngMagic(128)
+	var srv *httptest.Server
+	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/img.png" {
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(img)
+			return
+		}
+		// submit path returns a URL pointing at this same server.
+		_, _ = io.WriteString(w, `{"created":1,"data":[{"url":"`+srv.URL+`/img.png"}]}`)
 	}))
 	defer srv.Close()
-	h := New(Dependencies{Executor: &fallbackExecutor{client: srv.Client()}, Logger: captureLogger{}, Config: config.Config{}})
+	h := New(Dependencies{
+		Executor:   &fallbackExecutor{client: srv.Client()},
+		Logger:     captureLogger{},
+		Config:     config.Config{},
+		Resolver:   resolverFor(srv),
+		SSRFPolicy: permissiveSSRFForTest{},
+	})
 	cfg := imageCfg(srv.URL, "bearer", "openai")
-	_, _, status, err := h.synthOpenAICompatible(context.Background(), cfg, Request{
+	_, ct, status, err := h.synthOpenAICompatible(context.Background(), cfg, Request{
 		ProviderID: "openai", Model: "dall-e-3", Prompt: "cat", ResponseFormat: "binary", Credentials: creds("k"),
 	})
-	if status != http.StatusNotImplemented {
-		t.Errorf("status = %d, want 501 (url binary deferred)", status)
+	if err != nil {
+		t.Fatalf("err = %v", err)
 	}
-	if err == nil {
-		t.Error("want error for url binary")
+	if status != http.StatusOK {
+		t.Errorf("status = %d, want 200 (url binary no longer 501)", status)
+	}
+	if ct != "image/png" {
+		t.Errorf("ct = %q, want image/png", ct)
 	}
 }
 

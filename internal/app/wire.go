@@ -615,6 +615,16 @@ type productionImageExecutor struct {
 	// It does not follow redirects; the local guard in step 3 rejects external
 	// targets before this client is reached.
 	directClient *http.Client
+	// noRedirectClient is the client handed to proxy.ProxyAwareFetch for
+	// connection-backed and pinned lifecycle requests. It does NOT follow
+	// redirects automatically — the imageproxy adapter re-validates each 3xx
+	// hop (imageproxy.handleRedirect) and rebuilds the request without
+	// forwarding credentials to a foreign origin (spec step 4 point 7: the
+	// executor-level redirect contract applies to submit, poll, result, input
+	// and output downloads). ProxyAwareFetch's pinned fast-path builds its own
+	// no-redirect client internally, so this only governs the relay/proxy/
+	// direct/fallback branches.
+	noRedirectClient *http.Client
 }
 
 // fetchFunc is the package-level alias for the proxy-aware fetch signature.
@@ -628,6 +638,11 @@ func newProductionImageExecutor(r repos, opts proxy.Options, logger *slog.Logger
 		logger:      logger,
 		fetch:       proxy.ProxyAwareFetch,
 		directClient: &http.Client{
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		noRedirectClient: &http.Client{
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
@@ -668,7 +683,7 @@ func (e *productionImageExecutor) Do(req *http.Request) (*http.Response, error) 
 			pfo.Logger = e.logger
 			proxyFetchOpts = pfo
 		}
-		return e.fetch(ctx, http.DefaultClient, req, e.proxyOpts, proxyFetchOpts, e.fallback)
+		return e.fetch(ctx, e.noRedirectClient, req, e.proxyOpts, proxyFetchOpts, e.fallback)
 	}
 
 	// No-auth direct-only path (sdwebui/comfyui): no connection, no proxy. The
@@ -688,7 +703,7 @@ func (e *productionImageExecutor) Do(req *http.Request) (*http.Response, error) 
 		return nil, err
 	}
 	proxyFetchOpts.Logger = e.logger
-	return e.fetch(ctx, http.DefaultClient, req, e.proxyOpts, proxyFetchOpts, e.fallback)
+	return e.fetch(ctx, e.noRedirectClient, req, e.proxyOpts, proxyFetchOpts, e.fallback)
 }
 
 // proxyFetchOptionsForConnection loads a connection by ID and builds

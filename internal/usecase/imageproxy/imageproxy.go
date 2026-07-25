@@ -134,6 +134,24 @@ type Dependencies struct {
 	Executor HTTPExecutor
 	Logger   Logger
 	Config   config.Config
+	// PollInterval is the delay between poll attempts. New sets the production
+	// default 1500ms when zero; tests pass a short value to avoid sleeping.
+	PollInterval time.Duration
+	// PollTimeout is the overall polling deadline. New sets the production
+	// default 120s when zero; tests pass a short value.
+	PollTimeout time.Duration
+	// Resolver resolves a hostname to IPs for the SSRF guard and ValidatedHost
+	// construction (untrusted image input / binary download URLs). If nil, New
+	// uses a no-op resolver that fails closed — the production wiring in
+	// wire.go substitutes a net.LookupIP-based resolver. imageproxy never
+	// performs real DNS itself.
+	Resolver HostResolver
+	// SSRFPolicy is the default-deny egress policy for untrusted image URLs.
+	// If nil, New uses the production default-deny policy (rejects loopback,
+	// private, link-local, CGNAT, multicast, metadata, .internal). Tests
+	// inject a permissive policy so an httptest loopback endpoint can exercise
+	// the download/redirect path — the production policy is never weakened.
+	SSRFPolicy SSRFPolicy
 }
 
 // Handler runs the image-generation pipeline.
@@ -142,13 +160,27 @@ type Handler struct {
 }
 
 // New constructs a Handler with sane defaults (300s body timeout fallback
-// executor — image gen can be slow, especially Codex streaming).
+// executor — image gen can be slow, especially Codex streaming). PollInterval
+// defaults to 1500ms and PollTimeout to 120s (production parity values from
+// the spec); tests pass shorter values.
 func New(deps Dependencies) *Handler {
 	if deps.Executor == nil {
 		deps.Executor = &fallbackExecutor{client: &http.Client{Timeout: 300 * time.Second}}
 	}
 	if deps.Logger == nil {
 		deps.Logger = noopLogger{}
+	}
+	if deps.PollInterval <= 0 {
+		deps.PollInterval = 1500 * time.Millisecond
+	}
+	if deps.PollTimeout <= 0 {
+		deps.PollTimeout = 120 * time.Second
+	}
+	if deps.Resolver == nil {
+		deps.Resolver = noopResolver{}
+	}
+	if deps.SSRFPolicy == nil {
+		deps.SSRFPolicy = defaultSSRFPolicy{}
 	}
 	return &Handler{deps: deps}
 }
@@ -228,6 +260,10 @@ type ImageInput struct {
 	URL string
 	// MIME is the authoritative MIME sniffed from bytes (PNG/JPEG/WebP).
 	MIME string
+	// Host is the SSRF-validated, IP-pinned target for a URL input. The adapter
+	// passes it to h.do so the production executor (wire.go) pins the dial to
+	// the validated IP:port. Zero value for data inputs.
+	Host ValidatedHost
 }
 
 // Result is the output of Handle.
@@ -284,6 +320,20 @@ func (h *Handler) synthesize(ctx context.Context, cfg image.Config, req Request)
 // production executor (wire.go) can resolve proxy settings and forward a
 // proxy.ValidatedTarget for untrusted image URLs.
 func (h *Handler) do(ctx context.Context, req *http.Request, provider, phase string, creds domainProv.Credentials, connID string, host ValidatedHost) (*http.Response, error) {
+	// If the request already carries a ValidatedHost (e.g. the poll factory
+	// pre-resolved the poll URL, or the adapter pinned an input image host),
+	// preserve it — the caller knows the validated target, not h.do. Only
+	// fall back to the `host` argument when no validated host is present.
+	if existing, ok := TransportMetadataFromContext(req.Context()); ok && existing.ValidatedHost.IsPinned() {
+		host = existing.ValidatedHost
+		// Preserve the connection ID and provider the factory set too.
+		if connID == "" {
+			connID = existing.ConnectionID
+		}
+		if provider == "" {
+			provider = existing.ProviderID
+		}
+	}
 	meta := TransportMetadata{
 		ProviderID:    provider,
 		ConnectionID:  connID,
@@ -311,6 +361,15 @@ func redactedURL(u *url.URL) string {
 		return ""
 	}
 	return u.Scheme + "://" + u.Host + u.Path
+}
+
+// logLifecycle emits one structured lifecycle log line carrying only the
+// spec-approved fields: provider, model, phase, status and a redacted URL.
+// It MUST NOT receive prompt, credentials, or image bytes. h.do already logs
+// per-call; this helper exists for adapter-level lifecycle boundaries (e.g.
+// "submit complete, polling started") that are not tied to a single HTTP call.
+func (h *Handler) logLifecycle(provider, model, phase, status string, u *url.URL) {
+	h.deps.Logger.Debugf("image lifecycle %s %s model=%s phase=%s status=%s url=%s", provider, redactedURL(u), model, phase, status, redactedURL(u))
 }
 
 // synthOpenAICompatible builds the OpenAI {model,prompt,n,size,quality,style,
@@ -584,9 +643,11 @@ func buildOpenAIBody(req Request, bodyFields []string) map[string]any {
 }
 
 // toBinary extracts the first image from an OpenAI-shape body and returns the
-// raw decoded image bytes. If data[0].b64_json is set, decode it; if data[0].url
-// is set, fetch it (deferred to a follow-up — returns an error for now). The
-// Content-Type is derived from outputFormat (png/jpeg/webp, default png).
+// raw decoded image bytes with the authoritative MIME. The b64_json branch
+// decodes + magic-sniffs; the url branch downloads the URL through the same
+// executor as submit/poll (h.do) with the SSRF guard, 64 MiB cap, redirect
+// contract and magic-byte sniff from image_security.go. Per spec point 11 the
+// URL branch no longer returns 501.
 func (h *Handler) toBinary(openAIBody []byte, outputFormat string) ([]byte, string, int, error) {
 	var parsed struct {
 		Data []struct {
@@ -597,15 +658,27 @@ func (h *Handler) toBinary(openAIBody []byte, outputFormat string) ([]byte, stri
 	if err := json.Unmarshal(openAIBody, &parsed); err != nil || len(parsed.Data) == 0 {
 		return nil, "", http.StatusBadGateway, fmt.Errorf("no image data to emit as binary")
 	}
-	ext := orDefault(outputFormat, "png")
-	ct := "image/" + ext
 	if parsed.Data[0].B64JSON != "" {
-		// Reuse base64 decode.
-		return decodeBase64(parsed.Data[0].B64JSON), ct, http.StatusOK, nil
+		dec, err := base64.StdEncoding.DecodeString(parsed.Data[0].B64JSON)
+		if err != nil {
+			dec, err = base64.URLEncoding.DecodeString(parsed.Data[0].B64JSON)
+			if err != nil {
+				dec, err = base64.RawStdEncoding.DecodeString(parsed.Data[0].B64JSON)
+				if err != nil {
+					return nil, "", http.StatusBadGateway, fmt.Errorf("malformed base64 image: %w", err)
+				}
+			}
+		}
+		_, mime, err := decodeAndSniffBytes(dec)
+		if err != nil {
+			return nil, "", http.StatusBadGateway, err
+		}
+		return dec, mime, http.StatusOK, nil
 	}
 	if parsed.Data[0].URL != "" {
-		// URL fetch deferred — surface a clear 501.
-		return nil, "", http.StatusNotImplemented, fmt.Errorf("binary output from url response_format not implemented; use b64_json")
+		return h.downloadImageURL(context.Background(), parsed.Data[0].URL, "", "", func(u *url.URL) (*http.Request, error) {
+			return http.NewRequestWithContext(context.Background(), http.MethodGet, u.String(), nil)
+		})
 	}
 	return nil, "", http.StatusBadGateway, fmt.Errorf("no image data to emit as binary")
 }

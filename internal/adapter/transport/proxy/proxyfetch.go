@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"golang.org/x/net/proxy"
 )
 
 // ProxyFetchOptions is the Go equivalent of proxyOptions in proxyFetch.js.
@@ -38,8 +40,25 @@ type ProxyFetchOptions struct {
 // 4. Fallback
 // 5. MITM DNS bypass
 // 6. Direct (round-robin if configured)
+//
+// When the request context carries a proxy.ValidatedTarget (untrusted image
+// input / image-result download), the standard relay/proxy/fallback pipeline is
+// bypassed and the request is sent through a pinned transport: direct,
+// HTTP-CONNECT or SOCKS5 to the validated IP:port with the original hostname
+// preserved as TLS SNI/Host. Relay and fallback routes today cannot honour a
+// pinned destination, so for a pinned request they are skipped and a proxy
+// failure fails hard (no direct/fallback downgrade) instead of leaking the host
+// IP to an unverified route.
 func ProxyAwareFetch(ctx context.Context, client *http.Client, req *http.Request, opts Options, proxyOpts ProxyFetchOptions, fallback *Fallback) (*http.Response, error) {
 	originalURL := req.URL.String()
+
+	// Pinned-target fast path for untrusted image URLs. This route never reaches
+	// the relay/env-proxy/fallback machinery; it always dials the validated
+	// IP:port (direct or via a pinned HTTP/SOCKS proxy) and keeps the original
+	// hostname as SNI/Host.
+	if vt, ok := ValidatedTargetFromContext(ctx); ok && vt.IsPinned() {
+		return fetchPinned(ctx, opts, proxyOpts, vt, req)
+	}
 
 	// 1. Vercel relay.
 	if relay := strings.TrimSpace(proxyOpts.VercelRelayUrl); relay != "" {
@@ -235,4 +254,83 @@ func fetchBypass(req *http.Request, realIP net.IP) (*http.Response, error) {
 		return nil, err
 	}
 	return http.ReadResponse(bufio.NewReader(tlsConn), newReq)
+}
+
+// fetchPinned sends req through a pinned transport for an untrusted image URL
+// whose destination was validated before this call. It prefers a connection /
+// env proxy (HTTP or SOCKS5) when configured so the egress still honours the
+// operator's proxy topology, but the CONNECT/SOCKS target is the validated
+// IP:port, not the request hostname. When no proxy is configured it dials the
+// pinned IP:port directly. Relay and fallback are never used for a pinned
+// request (they cannot verify the destination), so a proxy failure fails hard
+// rather than degrading to an unverified direct dial.
+func fetchPinned(ctx context.Context, opts Options, proxyOpts ProxyFetchOptions, vt ValidatedTarget, req *http.Request) (*http.Response, error) {
+	proxyURL := resolveConnectionProxyURL(req.URL.String(), proxyOpts)
+	if proxyURL == "" {
+		proxyURL = resolveEnvProxyURL(req.URL.String())
+	}
+	var tr http.RoundTripper
+	var err error
+	if proxyURL == "" {
+		tr = pinnedDirectTransport(opts, vt)
+	} else {
+		p, perr := NormalizeProxyURL(proxyURL)
+		if perr != nil {
+			return nil, &FetchError{Err: perr, Cause: DescribeFetchCause(perr), Source: FailureSourceProxy}
+		}
+		switch p.Scheme {
+		case "socks5", "socks5h":
+			tr, err = pinnedSocksTransport(ctx, opts, p, vt)
+		default: // http, https
+			tr, err = pinnedHTTPProxyTransport(opts, proxyURL, vt)
+		}
+		if err != nil {
+			return nil, &FetchError{Err: err, Cause: DescribeFetchCause(err), Source: FailureSourceProxy}
+		}
+		if err := FastFail(ctx, opts, proxyURL); err != nil {
+			return nil, &FetchError{Err: err, Cause: DescribeFetchCause(err), Source: FailureSourceProxy}
+		}
+	}
+	pinnedClient := &http.Client{Timeout: opts.FetchBodyTimeout, Transport: tr, CheckRedirect: noRedirect}
+	resp, err := pinnedClient.Do(req)
+	if err != nil {
+		return nil, &FetchError{Err: err, Cause: DescribeFetchCause(err), Source: FailureSourceProxy}
+	}
+	return resp, nil
+}
+
+// pinnedSocksTransport builds a SOCKS5 transport whose SOCKS5 destination is the
+// pinned IP:port (not the request hostname). The original hostname is kept as
+// TLS SNI/Host via TLSClientConfig. Credentials come from the proxy URL.
+func pinnedSocksTransport(ctx context.Context, opts Options, p *ParsedURL, vt ValidatedTarget) (*http.Transport, error) {
+	var auth *proxy.Auth
+	if p.Username != "" {
+		auth = &proxy.Auth{User: p.Username, Password: p.Password}
+	}
+	addr := net.JoinHostPort(p.Host, p.Port)
+	base := &net.Dialer{Timeout: opts.FetchConnectTimeout, KeepAlive: opts.FetchKeepaliveTimeout}
+	socksDialer, err := proxy.SOCKS5("tcp", addr, auth, &familyPinDialer{base: base, family: FamilyAuto})
+	if err != nil {
+		return nil, fmt.Errorf("socks5 dialer: %w", err)
+	}
+	tr := &http.Transport{
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			// Replace the request host:port with the pinned IP:port so SOCKS5
+			// connects to the validated address, not the re-resolved hostname.
+			pinnedAddr := vt.Address()
+			if ctxDialer, ok := socksDialer.(proxy.ContextDialer); ok {
+				conn, derr := ctxDialer.DialContext(ctx, network, pinnedAddr)
+				return conn, derr
+			}
+			return socksDialer.Dial(network, pinnedAddr)
+		},
+		ResponseHeaderTimeout: opts.FetchHeadersTimeout,
+		IdleConnTimeout:       opts.FetchKeepaliveTimeout,
+		TLSHandshakeTimeout:   opts.FetchConnectTimeout,
+		MaxIdleConnsPerHost:   1,
+		ForceAttemptHTTP2:     false,
+		TLSClientConfig:       &tls.Config{ServerName: vt.Hostname},
+	}
+	_ = ctx
+	return tr, nil
 }

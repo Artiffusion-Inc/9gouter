@@ -323,6 +323,8 @@ func (h *Handler) synthesize(ctx context.Context, cfg image.Config, req Request)
 		return h.synthHuggingFace(ctx, cfg, req)
 	case image.FormatStability:
 		return h.synthStability(ctx, cfg, req)
+	case image.FormatCloudflareAI:
+		return h.synthCloudflareAI(ctx, cfg, req)
 	default:
 		return nil, "", http.StatusNotImplemented, fmt.Errorf("image format %q not implemented", cfg.Format)
 	}
@@ -782,6 +784,16 @@ func upstreamError(body []byte) error {
 	}
 	if json.Unmarshal(body, &bare) == nil && bare.Message != "" {
 		return fmt.Errorf("upstream: %s", bare.Message)
+	}
+	// Cloudflare-shape: {"errors":[{"message":...}, ...]}. The first message is
+	// surfaced (legacy parity). Other providers use the OpenAI/bare shapes above.
+	var cf struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if json.Unmarshal(body, &cf) == nil && len(cf.Errors) > 0 && cf.Errors[0].Message != "" {
+		return fmt.Errorf("upstream: %s", cf.Errors[0].Message)
 	}
 	// Raw string body.
 	var raw json.RawMessage

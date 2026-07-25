@@ -171,7 +171,7 @@ var configs = map[string]Config{
 	"fal-ai":            {BaseURL: "https://queue.fal.run", AuthType: AuthTypeAPIKey, AuthHeader: AuthFalKey, Format: FormatFalAI, Unsupported: true},
 	"black-forest-labs": {BaseURL: "https://api.bfl.ai/v1", AuthType: AuthTypeAPIKey, AuthHeader: AuthXKey, Format: FormatBlackForest, Unsupported: true},
 	"runwayml":          {BaseURL: "https://api.dev.runwayml.com/v1", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatRunwayML, Unsupported: true},
-	"cloudflare-ai":     {BaseURL: "https://api.cloudflare.com/client/v4/accounts", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatCloudflareAI, Unsupported: true},
+	"cloudflare-ai":     {BaseURL: "https://api.cloudflare.com/client/v4/accounts", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatCloudflareAI}, // transport implemented in step 6
 	"nanobanana":        {BaseURL: "https://api.nanobananaapi.ai/api/v1/nanobanana", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatNanobanana, Unsupported: true},
 	"antigravity":       {AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatAntigravity, Unsupported: true},
 }

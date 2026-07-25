@@ -3,6 +3,8 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/imageproxy"
 )
 
 // imageCapability is one row of the default-deny image capability table. It
@@ -23,19 +25,16 @@ type imageCapability struct {
 }
 
 // cloudflareMultipartModels are the three legacy FLUX.2 multipart models that
-// accept dimensions + named fields but no image/mask.
-var cloudflareMultipartModels = []string{
-	"@cf/black-forest-labs/flux-1-schnell",
-	// The spec names "три Cloudflare FLUX.2 multipart models"; the legacy JS
-	// multipart set is the FLUX schnell family. Additional canonical IDs are
-	// added here as the Cloudflare adapter (step 6) fixes them.
-}
+// accept dimensions + named fields but no image/mask. The canonical list lives
+// in the imageproxy Cloudflare adapter (imageproxy.CloudflareMultipartModels)
+// so the usecase and the capability table share one source of truth.
+var cloudflareMultipartModels = imageproxy.CloudflareMultipartModels
 
 // cloudflareImg2ImgModel is the single Cloudflare img2img JSON model.
-const cloudflareImg2ImgModel = "@cf/runwayml/stable-diffusion-v1-5-img2img"
+const cloudflareImg2ImgModel = imageproxy.CloudflareImg2ImgModel
 
 // cloudflareInpaintingModel is the single Cloudflare inpainting JSON model.
-const cloudflareInpaintingModel = "@cf/runwayml/stable-diffusion-v1-5-inpainting"
+const cloudflareInpaintingModel = imageproxy.CloudflareInpaintingModel
 
 // imageCapabilities resolves the capability row for a (provider, model) pair.
 // It returns (row, true) when the provider is known to the image matrix and a

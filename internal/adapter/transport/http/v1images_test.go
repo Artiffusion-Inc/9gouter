@@ -554,7 +554,7 @@ func TestV1Images_SdWebUIExternalViewer403(t *testing.T) {
 	mux, _ := newImageMux(t, stub)
 
 	// External viewer (non-loopback remote addr) hits sdwebui → 403 before the
-	// 501 the Unsupported flag would produce, so the executor is never called.
+	// executor is reached, so the stub handler is never called.
 	req := remoteImageReq(t, `{"model":"sdwebui/sd-1.5","prompt":"cat"}`)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -583,9 +583,9 @@ func TestV1Images_SdWebUILoopbackNoCredentialRequirement(t *testing.T) {
 	// credentials and must NOT 403. The stub handler is wired (deps.Image set),
 	// so the request reaches the stub and returns 200 — proving virtual
 	// credentials were resolved (no 404) and the local guard let it through
-	// (no 403). The real imageproxy.Handler would return 501 because
-	// Unsupported:true remains until step 5; that path is exercised separately
-	// by the usecase tests.
+	// (no 403). The real imageproxy.Handler now dispatches sdwebui by Format
+	// (step 5 lifted Unsupported); the full real-handler route is exercised
+	// separately by the usecase + e2e tests.
 	stub := &stubImageHandler{body: []byte(`{"created":1,"data":[]}`), ct: "application/json"}
 	mux, _ := newImageMux(t, stub)
 
@@ -606,9 +606,11 @@ func TestV1Images_SdWebUILoopbackNoCredentialRequirement(t *testing.T) {
 
 func TestV1Images_NoAuthProviderDoesNotEchoConnectionHeader(t *testing.T) {
 	// sdwebui is no-auth: virtual credentials carry no _connectionId, so the
-	// response must not carry x-9gouter-connection-id. Use a stub that returns
-	// 200 (override the 501 path) by registering a custom provider as no-auth
-	// local. We use sdwebui itself with a stub that forces 200.
+	// response must not carry x-9gouter-connection-id. The stub handler returns
+	// 200 (deps.Image wired) so the request reaches the handler and the
+	// writeImageResult path; the header must be absent because virtual creds
+	// carry no _connectionId. The full real-handler route (sdwebui via direct
+	// client, no proxy-aware fetch seam) is exercised by the e2e tests.
 	stub := &stubImageHandler{body: []byte(`{"created":1,"data":[]}`), ct: "application/json"}
 	mux, _ := newImageMux(t, stub)
 
@@ -616,10 +618,9 @@ func TestV1Images_NoAuthProviderDoesNotEchoConnectionHeader(t *testing.T) {
 	req := imageReq(t, `{"model":"sdwebui/sd-1.5","prompt":"cat"}`)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
-	// Stub returns 200 (deps.Image wired). If the registry 501 path fired first
-	// it means the usecase Handle was reached and returned 501; in that case the
-	// connection-id header is still written only for real _connectionId. Assert
-	// the header is empty regardless of 200 vs 501.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body=%s", rec.Code, rec.Body.String())
+	}
 	if got := rec.Header().Get("x-9gouter-connection-id"); got != "" {
 		t.Fatalf("x-9gouter-connection-id = %q, want empty (no-auth provider)", got)
 	}

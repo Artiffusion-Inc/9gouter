@@ -35,15 +35,17 @@ func TestHandle_UnsupportedProvider(t *testing.T) {
 	}
 }
 
-func TestHandle_DeferredProviderReturns501(t *testing.T) {
+// TestHandle_AntigravityNilExecutor501 is the legitimate nil-executor 501:
+// antigravity is no longer Unsupported (step 8 lifted the flag), so without an
+// injected AntigravityExecutor the adapter returns 501 from synthAntigravity's
+// nil-executor guard. This is NOT a deferred-provider 501 (the transport IS
+// implemented); it is the no-delegation guard. The four async providers must
+// NOT return 501 from the Unsupported guard any longer (step 7 lifted it).
+func TestHandle_AntigravityNilExecutor501(t *testing.T) {
 	h := New(Dependencies{Logger: captureLogger{}, Config: config.Config{}})
-	// antigravity is no longer Unsupported (step 8 lifts it); without an
-	// injected AntigravityExecutor the adapter returns 501 from
-	// synthAntigravity's nil-executor guard. The four async providers must NOT
-	// return 501 from the Unsupported guard any longer.
 	res := h.Handle(context.Background(), Request{ProviderID: "antigravity", Prompt: "cat", Credentials: creds("k")})
 	if res.StatusCode != http.StatusNotImplemented {
-		t.Errorf("antigravity without executor should 501, got %d", res.StatusCode)
+		t.Errorf("antigravity without executor should 501 (nil-executor guard), got %d", res.StatusCode)
 	}
 	for _, p := range []string{"fal-ai", "black-forest-labs", "runwayml", "nanobanana"} {
 		cfg, ok := image.Lookup(p)

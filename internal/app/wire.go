@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/auth"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
@@ -583,6 +584,110 @@ func newImageProxyHandler(r repos, opts proxy.Options, cfg config.Config, logger
 	}
 }
 
+// ImageProxyTestOptions configures the exported test seam
+// NewImageProxyHandlerForTest. The zero value leaves the production behaviour
+// intact; tests set Fetch to a recording seam that wraps proxy.ProxyAwareFetch
+// (or an httptest upstream) so the e2e HTTP path can assert the effective proxy
+// options, connection id and lifecycle phase reach the boundary WITHOUT
+// stubbing the image executor itself. The AntigravityExecutor and
+// LifecycleHostPredicates fields mirror imageproxy.Dependencies so the e2e
+// harness can override them for loopback httptest endpoints.
+type ImageProxyTestOptions struct {
+	// Fetch overrides the productionImageExecutor's proxy-aware fetch seam.
+	// When nil the real proxy.ProxyAwareFetch is used. Tests pass a recording
+	// function that captures (client, req.URL, proxy options, validated target,
+	// phase) and delegates to the real seam (or a stub backed by httptest).
+	Fetch fetchFunc
+	// DirectClient overrides the no-auth direct-only client (sdwebui/comfyui).
+	// Tests pass an httptest server client so the direct-only path reaches the
+	// upstream; the production guard (loopback-only target) still applies.
+	DirectClient *http.Client
+	// NoRedirectClient overrides the connection-backed / pinned client handed
+	// to proxy.ProxyAwareFetch. Tests pass an httptest server client so TLS
+	// endpoints are trusted.
+	NoRedirectClient *http.Client
+	// AntigravityExecutor overrides the Antigravity image delegation. Tests
+	// pass nil to keep the production adapter, or a stub to exercise the path
+	// without the real OAuth/project-id machinery.
+	AntigravityExecutor imageproxy.AntigravityImageExecutor
+	// LifecycleHostPredicates overrides the async lifecycle host allowlists so
+	// httptest loopback endpoints can exercise the poll/result path. The
+	// production wiring leaves this nil so the exact documented allowlists
+	// remain the trust boundary.
+	LifecycleHostPredicates map[string]imageproxy.LifecycleHostPredicate
+	// Resolver overrides the SSRF guard resolver (production wiring injects a
+	// net.LookupIP-based resolver; tests inject a static loopback resolver so
+	// an httptest endpoint passes the IP check).
+	Resolver imageproxy.HostResolver
+	// SSRFPolicy overrides the default-deny egress policy. Tests inject a
+	// permissive policy so an httptest loopback endpoint can exercise the
+	// download/redirect path; the production policy is never weakened.
+	SSRFPolicy imageproxy.SSRFPolicy
+	// PollInterval / PollTimeout override the production poll cadence so the
+	// e2e test does not sleep.
+	PollInterval time.Duration
+	PollTimeout  time.Duration
+}
+
+// NewImageProxyHandlerForTest is the exported test seam that lets the transport-
+// layer e2e test (package http) construct a REAL productionImageExecutor +
+// REAL imageProxyHandler with an injectable fetch boundary, so the full HTTP
+// /v1/images/generations path can be driven end-to-end against an httptest
+// upstream without stubbing the image executor. It is the only exported
+// constructor in wire.go intended for tests; production wiring uses the
+// unexported newImageProxyHandler.
+//
+// The returned handler implements httptransport.ImageHandler. The fetch seam,
+// when set, is the observability boundary: it records (client, req, proxy
+// options, validated target) and delegates to the real proxy.ProxyAwareFetch
+// (or an httptest-backed stub), proving the connection id and phase reach the
+// proxy-aware boundary. It is NOT a mock of the image executor — the executor
+// is the real productionImageExecutor, and only its outbound fetch is wrapped.
+func NewImageProxyHandlerForTest(r ConnectionPools, opts proxy.Options, cfg config.Config, logger *slog.Logger, testOpts ImageProxyTestOptions) httptransport.ImageHandler {
+	exec := newProductionImageExecutor(toRepos(r), opts, logger)
+	if testOpts.Fetch != nil {
+		exec.fetch = testOpts.Fetch
+	}
+	if testOpts.DirectClient != nil {
+		exec.directClient = testOpts.DirectClient
+	}
+	if testOpts.NoRedirectClient != nil {
+		exec.noRedirectClient = testOpts.NoRedirectClient
+	}
+	deps := imageproxy.Dependencies{
+		Executor:                exec,
+		AntigravityExecutor:     testOpts.AntigravityExecutor,
+		Logger:                  &slogLogger{logger},
+		Config:                  cfg,
+		LifecycleHostPredicates: testOpts.LifecycleHostPredicates,
+		Resolver:                testOpts.Resolver,
+		SSRFPolicy:              testOpts.SSRFPolicy,
+		PollInterval:            testOpts.PollInterval,
+		PollTimeout:             testOpts.PollTimeout,
+	}
+	if testOpts.AntigravityExecutor == nil {
+		deps.AntigravityExecutor = newAntigravityImageExecutor(opts, logger)
+	}
+	return &imageProxyHandler{handler: imageproxy.New(deps)}
+}
+
+// ConnectionPools is the exported, minimal view of repos that
+// NewImageProxyHandlerForTest needs: the connection + proxy-pool repositories
+// the productionImageExecutor loads to resolve per-connection proxy settings.
+// The transport-layer e2e test builds it from an in-memory SQLite DB without
+// importing the unexported repos struct.
+type ConnectionPools struct {
+	Connections *repo.ConnectionRepo
+	ProxyPools  *repo.ProxyPoolRepo
+}
+
+// toRepos widens the exported ConnectionPools view to the internal repos
+// container. Only the connection + proxy-pool fields are used by the image
+// executor; the rest stay nil.
+func toRepos(r ConnectionPools) repos {
+	return repos{Connections: r.Connections, ProxyPools: r.ProxyPools}
+}
+
 // antigravityImageExecutor adapts the real Antigravity provider executor to
 // the imageproxy.AntigravityImageExecutor boundary. It is the production
 // delegation: the same `antigravityexec.New` used by the chat path builds the
@@ -756,7 +861,14 @@ func (e *productionImageExecutor) Do(req *http.Request) (*http.Response, error) 
 			Port:     meta.ValidatedHost.Port,
 			IP:       meta.ValidatedHost.IP,
 		}
-		req = req.WithContext(proxy.WithValidatedTarget(ctx, vt))
+		// Attach the ValidatedTarget to the request context AND use that same
+		// context for the fetch call: ProxyAwareFetch reads ValidatedTarget from
+		// the ctx argument (not req.Context()), so the pinned fast-path would
+		// silently miss if we passed the pre-attachment ctx here. This is the
+		// DNS-rebinding-defeat contract from step 1 — the validated IP must
+		// reach the actual dial, not a re-resolved hostname.
+		pinnedCtx := proxy.WithValidatedTarget(ctx, vt)
+		req = req.WithContext(pinnedCtx)
 		// Pinned path bypasses relay/fallback regardless of connection; build a
 		// connection proxy opts only if a connection is present so a connection
 		// proxy can still reach the validated target via CONNECT/SOCKS.
@@ -769,7 +881,7 @@ func (e *productionImageExecutor) Do(req *http.Request) (*http.Response, error) 
 			pfo.Logger = e.logger
 			proxyFetchOpts = pfo
 		}
-		return e.fetch(ctx, e.noRedirectClient, req, e.proxyOpts, proxyFetchOpts, e.fallback)
+		return e.fetch(pinnedCtx, e.noRedirectClient, req, e.proxyOpts, proxyFetchOpts, e.fallback)
 	}
 
 	// No-auth direct-only path (sdwebui/comfyui): no connection, no proxy. The

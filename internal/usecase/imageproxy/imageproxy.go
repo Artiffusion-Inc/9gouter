@@ -18,10 +18,10 @@
 //     comfyui (noAuth local passthrough), huggingface (raw binary → b64_json),
 //     stability-ai (core/ultra/sd3 segment, image b64_json).
 //
-// Deferred (501): fal-ai / black-forest-labs / runwayml / nanobanana (async
-// polling), cloudflare-ai (JSON/multipart), antigravity (executor). The handler
-// resolves the provider from body.model (provider/model prefix or bare → openai
-// fallback).
+// Deferred (501): antigravity (executor). The handler resolves the provider
+// from body.model (provider/model prefix or bare → openai fallback). The async
+// providers fal-ai / black-forest-labs / runwayml / nanobanana are implemented
+// in step 7 (providers_async.go).
 //
 // NOT in this slice (separate slices): combo expansion, account-fallback
 // rotation, on-401 token refresh, usage persistence, x-9gouter-connection-id
@@ -155,6 +155,16 @@ type Dependencies struct {
 	// inject a permissive policy so an httptest loopback endpoint can exercise
 	// the download/redirect path — the production policy is never weakened.
 	SSRFPolicy SSRFPolicy
+	// LifecycleHostPredicates overrides the production lifecycle host
+	// allowlists (BFLHostPredicate, FalHostPredicate, RunwayMLHostPredicate,
+	// NanobananaHostPredicate) per provider id. When an entry exists for a
+	// provider, the async adapter uses it instead of the production predicate
+	// to validate submit-derived poll/result URLs. It is an injectable test
+	// seam so httptest loopback endpoints can exercise the polling path; the
+	// production wiring leaves this map nil so the exact documented allowlists
+	// remain the trust boundary. The production predicates themselves are
+	// tested directly in image_security_test.go.
+	LifecycleHostPredicates map[string]LifecycleHostPredicate
 }
 
 // Handler runs the image-generation pipeline.
@@ -325,6 +335,14 @@ func (h *Handler) synthesize(ctx context.Context, cfg image.Config, req Request)
 		return h.synthStability(ctx, cfg, req)
 	case image.FormatCloudflareAI:
 		return h.synthCloudflareAI(ctx, cfg, req)
+	case image.FormatFalAI:
+		return h.synthFalAI(ctx, cfg, req)
+	case image.FormatBlackForest:
+		return h.synthBFL(ctx, cfg, req)
+	case image.FormatRunwayML:
+		return h.synthRunwayML(ctx, cfg, req)
+	case image.FormatNanobanana:
+		return h.synthNanobanana(ctx, cfg, req)
 	default:
 		return nil, "", http.StatusNotImplemented, fmt.Errorf("image format %q not implemented", cfg.Format)
 	}
@@ -338,18 +356,30 @@ func (h *Handler) synthesize(ctx context.Context, cfg image.Config, req Request)
 // production executor (wire.go) can resolve proxy settings and forward a
 // proxy.ValidatedTarget for untrusted image URLs.
 func (h *Handler) do(ctx context.Context, req *http.Request, provider, phase string, creds domainProv.Credentials, connID string, host ValidatedHost) (*http.Response, error) {
-	// If the request already carries a ValidatedHost (e.g. the poll factory
-	// pre-resolved the poll URL, or the adapter pinned an input image host),
-	// preserve it — the caller knows the validated target, not h.do. Only
-	// fall back to the `host` argument when no validated host is present.
-	if existing, ok := TransportMetadataFromContext(req.Context()); ok && existing.ValidatedHost.IsPinned() {
-		host = existing.ValidatedHost
-		// Preserve the connection ID and provider the factory set too.
+	// If the request already carries transport metadata (e.g. the poll factory
+	// pre-attached the submit connection id / provider / credentials so poll and
+	// result requests inherit the submit connection), preserve the fields the
+	// caller did not override. The ValidatedHost is preserved only when it is
+	// pinned (the adapter knows the validated target); the connection id,
+	// provider and credentials are preserved whenever the caller passed empty
+	// values so the poll/result hop stays on the submit connection.
+	if existing, ok := TransportMetadataFromContext(req.Context()); ok {
+		if existing.ValidatedHost.IsPinned() {
+			host = existing.ValidatedHost
+		}
 		if connID == "" {
 			connID = existing.ConnectionID
 		}
 		if provider == "" {
 			provider = existing.ProviderID
+		}
+		// Preserve credentials when the caller did not supply any AND the
+		// existing credentials are non-empty (e.g. the poll factory carried
+		// the submit credentials so the production executor can resolve the
+		// same connection's proxy settings for poll/result). Credentials holds
+		// a map so we compare by its string fields, not by struct equality.
+		if creds.APIKey == "" && creds.AccessToken == "" && (existing.Credentials.APIKey != "" || existing.Credentials.AccessToken != "") {
+			creds = existing.Credentials
 		}
 	}
 	meta := TransportMetadata{

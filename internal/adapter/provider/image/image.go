@@ -83,6 +83,14 @@ type Config struct {
 	// runwayml, cloudflare-ai, nanobanana, antigravity) keep it until steps 6–8
 	// lift their transport.
 	Unsupported bool
+	// PollURL is the base URL for a provider's separate poll endpoint when the
+	// provider's submit and poll URLs live on different paths/hosts. Only
+	// nanobanana uses this (submit = BaseURL ".../nanobanana/generate",
+	// poll = PollURL ".../nanobanana/record-info"); the adapter appends
+	// "?taskId=<id>". Empty for providers whose poll URL is returned in the
+	// submit response (fal-ai, BFL, runwayml) — those poll URLs come from
+	// upstream and are validated against the host allowlist at runtime.
+	PollURL string
 }
 
 // Lookup returns the image-generation config for a provider id, or
@@ -165,15 +173,28 @@ var configs = map[string]Config{
 	"comfyui":      {BaseURL: "http://127.0.0.1:8188", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatComfyUI},
 	"huggingface":  {BaseURL: "https://api-inference.huggingface.co/models", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatHuggingFace},
 	"stability-ai": {BaseURL: "https://api.stability.ai/v2beta/stable-image/generate", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatStability},
-	// Deferred async / executor providers — registered so the handler can 501
-	// them honestly until steps 6–8 lift their transport. The Unsupported flag
-	// and the Handle guard remain the source of the deferred 501 for these.
-	"fal-ai":            {BaseURL: "https://queue.fal.run", AuthType: AuthTypeAPIKey, AuthHeader: AuthFalKey, Format: FormatFalAI, Unsupported: true},
-	"black-forest-labs": {BaseURL: "https://api.bfl.ai/v1", AuthType: AuthTypeAPIKey, AuthHeader: AuthXKey, Format: FormatBlackForest, Unsupported: true},
-	"runwayml":          {BaseURL: "https://api.dev.runwayml.com/v1", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatRunwayML, Unsupported: true},
-	"cloudflare-ai":     {BaseURL: "https://api.cloudflare.com/client/v4/accounts", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatCloudflareAI}, // transport implemented in step 6
-	"nanobanana":        {BaseURL: "https://api.nanobananaapi.ai/api/v1/nanobanana", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatNanobanana, Unsupported: true},
-	"antigravity":       {AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatAntigravity, Unsupported: true},
+	// Async image providers — transport implemented in step 7 of the
+	// image-provider-parity plan (fal-ai, black-forest-labs, runwayml,
+	// nanobanana). They are no longer marked Unsupported; the imageproxy
+	// usecase dispatches them by Format with submit → poll → result lifecycle.
+	// nanobanana uses a separate PollURL (record-info) distinct from its
+	// submit BaseURL (.../nanobanana/generate). The other async providers
+	// receive the poll URL in the submit response and validate it against the
+	// host allowlist at runtime.
+	"fal-ai":            {BaseURL: "https://queue.fal.run", AuthType: AuthTypeAPIKey, AuthHeader: AuthFalKey, Format: FormatFalAI},
+	"black-forest-labs": {BaseURL: "https://api.bfl.ai/v1", AuthType: AuthTypeAPIKey, AuthHeader: AuthXKey, Format: FormatBlackForest},
+	"runwayml":          {BaseURL: "https://api.dev.runwayml.com/v1", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatRunwayML},
+	// cloudflare-ai transport implemented in step 6.
+	"cloudflare-ai": {BaseURL: "https://api.cloudflare.com/client/v4/accounts", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatCloudflareAI},
+	"nanobanana": {
+		BaseURL:    "https://api.nanobananaapi.ai/api/v1/nanobanana/generate",
+		PollURL:    "https://api.nanobananaapi.ai/api/v1/nanobanana/record-info",
+		AuthType:   AuthTypeAPIKey,
+		AuthHeader: AuthBearer,
+		Format:     FormatNanobanana,
+	},
+	// antigravity remains deferred until step 8 (executor-delegated).
+	"antigravity": {AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatAntigravity, Unsupported: true},
 }
 
 // KnownProviders is the static set of provider ids with an image config, used

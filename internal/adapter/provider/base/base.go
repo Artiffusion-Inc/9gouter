@@ -649,6 +649,19 @@ func ProxyFetchOptsFromCreds(creds provider.Credentials, def proxy.ProxyFetchOpt
 // releases the fetch context only after resp.Body has been fully consumed
 // and closed.
 func (e *BaseExecutor) doFetch(ctx context.Context, req *http.Request, creds provider.Credentials) (*http.Response, context.CancelFunc, error) {
+	return e.DoFetch(ctx, req, creds)
+}
+
+// DoFetch is the exported fetch seam. It attaches a connect/headers timeout
+// via a fetch context that is CLONED onto the outbound request (but NOT
+// cancelled on return — the caller releases it via the returned cancel func
+// after the response body is fully consumed), resolves per-connection proxy
+// options from the credentials, and runs the request through the proxy-aware
+// pipeline. Exposed so provider executors that bypass Execute (#142 embedded-
+// method override limitation, e.g. antigravity's image_gen path) reuse the
+// same proxy route / timeout / logger wiring as the chat path instead of
+// duplicating it.
+func (e *BaseExecutor) DoFetch(ctx context.Context, req *http.Request, creds provider.Credentials) (*http.Response, context.CancelFunc, error) {
 	timeoutMs := e.Config.TimeoutMs
 	if timeoutMs <= 0 {
 		timeoutMs = 120000

@@ -71,6 +71,55 @@ type HTTPExecutor interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+// AntigravityImageExecutor is the image-capable boundary for the Antigravity
+// provider. Unlike the generic HTTPExecutor (which only sees an *http.Request),
+// this interface carries the Antigravity image-specific contract: it accepts
+// a Gemini-shaped `contents` body (text prompt + optional inline image inputs)
+// plus the connection's credentials, and returns the raw Gemini candidates
+// response body for inline-image extraction.
+//
+// The boundary type is unambiguously image-capable — the method signature is
+// dedicated to image generation (`AntigravityImageRequest`/`Response`), so a
+// generic text executor (provider.Executor / BaseExecutor) can NOT satisfy it.
+// The production adapter (app/wire.go) wraps the real Antigravity executor and
+// preserves OAuth bearer auth, project-ID resolution, refresh/account
+// behavior and the existing connection-aware proxy route; it never puts the
+// credential in the URL (`?key=` is forbidden for Antigravity).
+//
+// imageproxy never imports the antigravity provider package — the wire adapter
+// bridges. The response carries only the bytes + status the usecase needs to
+// normalize inline image data into the OpenAI {created, data:[{b64_json}]}
+// shape; no provider.Lookup, no repository, no proxy types cross this
+// interface.
+type AntigravityImageExecutor interface {
+	// ExecuteImage performs a non-streaming Antigravity `image_gen` generateContent
+	// call and returns the raw upstream response body + HTTP status. The adapter
+	// applies the image envelope (requestType:image_gen, imageConfig, clean model)
+	// and resolves project ID / OAuth bearer / proxy route before the call.
+	ExecuteImage(ctx context.Context, req AntigravityImageRequest) (AntigravityImageResponse, error)
+}
+
+// AntigravityImageRequest is the image-specific input to the Antigravity
+// image executor. Contents is a Gemini-shaped `contents` array (role + parts
+// carrying text and optional inlineData for image-edit inputs) built by
+// synthAntigravity. Credentials carry the connection's OAuth token and
+// provider-specific data (projectId, _connectionId, email) the adapter uses for
+// project-ID resolution and proxy routing.
+type AntigravityImageRequest struct {
+	Model       string // the (possibly suffix-carrying) image model id
+	Contents    []byte // Gemini-shaped {contents:[{role,parts:[{text}|{inlineData}]}]}
+	Credentials domainProv.Credentials
+}
+
+// AntigravityImageResponse is the raw upstream result. Body is the Gemini
+// candidates JSON (candidates[].content.parts[].inlineData.data); StatusCode
+// is the HTTP status; Err carries a non-nil error only on transport failure.
+type AntigravityImageResponse struct {
+	Body       []byte
+	StatusCode int
+	Err        error
+}
+
 // TransportMetadata describes one outbound image lifecycle HTTP call. It is
 // attached to the request context by the usecase before Executor.Do and read by
 // the production executor (wire.go). It carries no DB/proxy types — only the
@@ -165,6 +214,12 @@ type Dependencies struct {
 	// remain the trust boundary. The production predicates themselves are
 	// tested directly in image_security_test.go.
 	LifecycleHostPredicates map[string]LifecycleHostPredicate
+	// AntigravityExecutor is the image-capable Antigravity provider boundary.
+	// When nil, FormatAntigravity returns 501 (no production delegation). The
+	// production wiring (app/wire.go) injects an adapter that wraps the real
+	// Antigravity executor, preserving OAuth bearer, project-ID resolution,
+	// refresh/account behavior and the existing connection-aware proxy route.
+	AntigravityExecutor AntigravityImageExecutor
 }
 
 // Handler runs the image-generation pipeline.
@@ -343,6 +398,8 @@ func (h *Handler) synthesize(ctx context.Context, cfg image.Config, req Request)
 		return h.synthRunwayML(ctx, cfg, req)
 	case image.FormatNanobanana:
 		return h.synthNanobanana(ctx, cfg, req)
+	case image.FormatAntigravity:
+		return h.synthAntigravity(ctx, cfg, req)
 	default:
 		return nil, "", http.StatusNotImplemented, fmt.Errorf("image format %q not implemented", cfg.Format)
 	}

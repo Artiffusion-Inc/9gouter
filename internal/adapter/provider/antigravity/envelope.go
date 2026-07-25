@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -127,13 +128,74 @@ func (e *Executor) TransformRequest(model string, body json.RawMessage, stream b
 // receiver is *Executor and the override dispatches), then delegate to
 // BaseExecutor.Execute with the already-transformed body. BaseExecutor's own
 // TransformRequest is a passthrough, so applying it twice is a no-op.
+//
+// Image models branch to a dedicated fetch path: the `image_gen` envelope from
+// image.go, the non-streaming generateContent URL from the BuildURL override,
+// and a single upstream call through the same Fetch/HTTPClient/ProxyOpts seam
+// BaseExecutor uses. The image path bypasses BaseExecutor.Execute because
+// BaseExecutor.BuildURL (called inside Execute) does NOT dispatch the
+// Executor.BuildURL override (#142 again) and would drop the
+// /v1internal:generateContent path segment. Retry/fallback parity is
+// intentionally not reproduced for image gen — the legacy
+// imageProviders/antigravity.js adapter did not retry image calls either.
 func (e *Executor) Execute(ctx context.Context, req provider.ExecRequest) (provider.Resp, error) {
+	if isImageModel(req.Model) {
+		return e.executeImage(ctx, req)
+	}
 	transformed, err := e.TransformRequest(req.Model, req.Body, req.Stream, req.Credentials)
 	if err != nil {
 		return provider.Resp{}, fmt.Errorf("antigravity transform: %w", err)
 	}
 	req.Body = transformed
 	return e.BaseExecutor.Execute(ctx, req)
+}
+
+// executeImage runs the image_gen generateContent call. It applies the image
+// envelope, builds the non-streaming URL via the BuildURL override (which
+// #142 prevents BaseExecutor.Execute from dispatching), and performs one
+// upstream fetch through the same proxy-aware seam. Auth headers come from
+// BaseExecutor.BuildHeaders (OAuth Bearer via the config AuthDescriptor), so
+// the credential is never put in the URL.
+func (e *Executor) executeImage(ctx context.Context, req provider.ExecRequest) (provider.Resp, error) {
+	transformed, err := e.transformImageRequest(req.Model, req.Body, req.Credentials)
+	if err != nil {
+		return provider.Resp{}, fmt.Errorf("antigravity image transform: %w", err)
+	}
+	req.Body = transformed
+	req.Stream = false // image gen is always non-streaming
+
+	url := e.BuildURL(req.Model, false, 0, req.Credentials)
+	headers := e.BuildHeaders(req.Credentials, false)
+
+	bodyStr := string(transformed)
+	if transformed == nil {
+		bodyStr = ""
+	}
+	upReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(bodyStr))
+	if err != nil {
+		return provider.Resp{}, err
+	}
+	for k, vv := range headers {
+		for _, v := range vv {
+			upReq.Header.Add(k, v)
+		}
+	}
+
+	// Reuse the BaseExecutor fetch seam so proxy options / logger / pinned
+	// transport / per-connection ProxyFetchOptions resolution are identical to
+	// the chat path. DoFetch clones the request onto a fetch context and
+	// returns a cancel func the caller must invoke after consuming the body.
+	resp, cancelFetch, err := e.DoFetch(ctx, upReq, req.Credentials)
+	if err != nil {
+		return provider.Resp{}, err
+	}
+	return provider.Resp{
+		Response:        resp,
+		URL:             url,
+		Headers:         headers,
+		TransformedBody: transformed,
+		Done:            cancelFetch,
+	}, nil
 }
 
 // buildAntigravityIDERequestID mirrors buildIdeRequestId: preserve an existing

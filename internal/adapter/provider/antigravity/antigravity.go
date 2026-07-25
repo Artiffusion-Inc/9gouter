@@ -25,6 +25,9 @@ func New(cfg base.Config) *Executor {
 }
 
 // BuildURL returns the v1internal generate/streamGenerateContent endpoint.
+// Image generation models always use the non-streaming `generateContent`
+// action, mirroring the legacy buildUrl `isImageModel(model)` guard — image
+// responses are a single JSON body, never SSE.
 func (e *Executor) BuildURL(model string, stream bool, urlIndex int, creds provider.Credentials) string {
 	baseURLs := e.GetBaseUrls()
 	url := baseURLs[urlIndex]
@@ -33,7 +36,7 @@ func (e *Executor) BuildURL(model string, stream bool, urlIndex int, creds provi
 	}
 	url = strings.TrimSuffix(url, "/")
 	action := "generateContent"
-	if stream {
+	if stream && !isImageModel(model) {
 		action = "streamGenerateContent?alt=sse"
 	}
 	return url + "/v1internal:" + action

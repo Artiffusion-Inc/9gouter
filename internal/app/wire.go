@@ -22,6 +22,7 @@ import (
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/sqlite"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/pricing"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/antigravity"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/projectid"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver/tokenrefresh"
@@ -29,6 +30,7 @@ import (
 	httptransport "github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http/api"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
+	domainprov "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 
 	// Side-effect import: triggers RegisterRequest/RegisterResponse in every
 	// translator subpackage so the registry is populated in the final binary.
@@ -573,11 +575,95 @@ type imageProxyHandler struct {
 func newImageProxyHandler(r repos, opts proxy.Options, cfg config.Config, logger *slog.Logger) *imageProxyHandler {
 	return &imageProxyHandler{
 		handler: imageproxy.New(imageproxy.Dependencies{
-			Executor: newProductionImageExecutor(r, opts, logger),
-			Logger:   &slogLogger{logger},
-			Config:   cfg,
+			Executor:            newProductionImageExecutor(r, opts, logger),
+			AntigravityExecutor: newAntigravityImageExecutor(opts, logger),
+			Logger:              &slogLogger{logger},
+			Config:              cfg,
 		}),
 	}
+}
+
+// antigravityImageExecutor adapts the real Antigravity provider executor to
+// the imageproxy.AntigravityImageExecutor boundary. It is the production
+// delegation: the same `antigravityexec.New` used by the chat path builds the
+// envelope (requestType:image_gen, imageConfig, clean model) and runs the
+// non-streaming `POST /v1internal:generateContent` through
+// base.BaseExecutor.Execute → proxy.ProxyAwareFetch with the executor-level
+// ProxyOpts + Logger + per-connection ProxyFetchOptions resolved from the
+// credentials' ProviderSpecificData (the base executor already does this in
+// doFetch → proxyFetchOptsFromCreds).
+//
+// This preserves OAuth bearer auth (BuildHeaders sets `Authorization: Bearer
+// <accessToken>`), project-ID resolution (the envelope reads
+// credentials.projectId; the chat path's ensureProjectID injects it into the
+// PSD before the call), refresh/account behavior (the credentials carry the
+// refreshed token + _connectionId the base executor uses for proxy routing),
+// and the existing connection-aware proxy route. The credential is never put
+// in the URL (`?key=` is forbidden for Antigravity).
+type antigravityImageExecutor struct {
+	exec *antigravityexec.Executor
+}
+
+func newAntigravityImageExecutor(opts proxy.Options, logger *slog.Logger) *antigravityImageExecutor {
+	// Reuse the chat-path registry config so BaseURL / Headers / Retry /
+	// ComputeRetryDelay stay identical. Lookup never fails for "antigravity"
+	// (it is in the registry), but guard anyway.
+	p, err := provider.Lookup("antigravity")
+	if err != nil || p == nil || p.Executor() == nil {
+		// Fall back to a freshly-built executor from the raw registry config.
+		// This branch is unreachable in production (antigravity is registered);
+		// it exists so a misconfigured registry degrades to 501 at call time
+		// rather than panicking at wiring time.
+		return &antigravityImageExecutor{exec: nil}
+	}
+	exec, ok := p.Executor().(*antigravityexec.Executor)
+	if !ok {
+		return &antigravityImageExecutor{exec: nil}
+	}
+	be := exec.BaseExecutor
+	if be != nil {
+		be.SetProxyOptions(opts)
+		be.SetLogger(logger)
+		be.HTTPClient = &http.Client{
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+	}
+	return &antigravityImageExecutor{exec: exec}
+}
+
+// ExecuteImage implements imageproxy.AntigravityImageExecutor. It hands the
+// Gemini-shaped contents body to the real Antigravity executor; the
+// executor's Execute applies the `image_gen` envelope (image.go), forces
+// non-streaming (envelope.go), and runs the upstream call with OAuth bearer +
+// project ID + connection-aware proxy route. The raw upstream body + status
+// are returned for the imageproxy adapter to extract inline image data.
+func (a *antigravityImageExecutor) ExecuteImage(ctx context.Context, req imageproxy.AntigravityImageRequest) (imageproxy.AntigravityImageResponse, error) {
+	if a.exec == nil {
+		return imageproxy.AntigravityImageResponse{StatusCode: http.StatusNotImplemented, Err: fmt.Errorf("antigravity executor not wired")}, nil
+	}
+	resp, err := a.exec.Execute(ctx, domainprov.ExecRequest{
+		Model:       req.Model,
+		Body:        req.Contents,
+		Stream:      false,
+		Credentials: req.Credentials,
+	})
+	if err != nil {
+		return imageproxy.AntigravityImageResponse{}, err
+	}
+	defer resp.Response.Body.Close()
+	body, readErr := io.ReadAll(resp.Response.Body)
+	if readErr != nil {
+		if resp.Done != nil {
+			resp.Done()
+		}
+		return imageproxy.AntigravityImageResponse{}, readErr
+	}
+	if resp.Done != nil {
+		resp.Done()
+	}
+	return imageproxy.AntigravityImageResponse{Body: body, StatusCode: resp.Response.StatusCode}, nil
 }
 
 // productionImageExecutor implements imageproxy.HTTPExecutor in the composition

@@ -193,8 +193,10 @@ var configs = map[string]Config{
 		AuthHeader: AuthBearer,
 		Format:     FormatNanobanana,
 	},
-	// antigravity remains deferred until step 8 (executor-delegated).
-	"antigravity": {AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatAntigravity, Unsupported: true},
+	// antigravity transport implemented in step 8 (executor-delegated via the
+	// image-capable AntigravityImageExecutor boundary; OAuth bearer + project
+	// ID + proxy route preserved by the wire adapter). No longer Unsupported.
+	"antigravity": {AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatAntigravity},
 }
 
 // KnownProviders is the static set of provider ids with an image config, used

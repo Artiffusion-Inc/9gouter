@@ -153,8 +153,8 @@ var configs = map[string]Config{
 		Format:     FormatCodex,
 	},
 	// Deferred providers — registered so the handler can 501 them honestly.
-	"sdwebui":           {BaseURL: "http://localhost:7860/sdapi/v1/txt2img", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatSDWebUI, Unsupported: true},
-	"comfyui":           {BaseURL: "http://localhost:8188", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatComfyUI, Unsupported: true},
+	"sdwebui":           {BaseURL: "http://127.0.0.1:7860/sdapi/v1/txt2img", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatSDWebUI, Unsupported: true},
+	"comfyui":           {BaseURL: "http://127.0.0.1:8188", AuthType: AuthTypeNone, AuthHeader: AuthNone, Format: FormatComfyUI, Unsupported: true},
 	"huggingface":       {BaseURL: "https://api-inference.huggingface.co/models", AuthType: AuthTypeAPIKey, AuthHeader: AuthBearer, Format: FormatHuggingFace, Unsupported: true},
 	"fal-ai":            {BaseURL: "https://queue.fal.run", AuthType: AuthTypeAPIKey, AuthHeader: AuthFalKey, Format: FormatFalAI, Unsupported: true},
 	"black-forest-labs": {BaseURL: "https://api.bfl.ai/v1", AuthType: AuthTypeAPIKey, AuthHeader: AuthXKey, Format: FormatBlackForest, Unsupported: true},

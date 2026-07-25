@@ -184,10 +184,25 @@ type Request struct {
 // steps 6–7); the sync/OpenAI/Gemini/Codex paths ignore it for now.
 type RequestOptions struct {
 	// ImageInputs are the validated image inputs (data URL or HTTPS URL) for
-	// img2img / inpainting. nil when no image was supplied.
+	// img2img / inpainting. nil when no image was supplied. Populated by the safe
+	// input resolver (step 4); until then the handler forwards the raw supplied
+	// image values via RawImageInputs.
 	ImageInputs []ImageInput
 	// Mask is the validated mask input for inpainting. nil when not supplied.
+	// Populated by the safe input resolver (step 4); until then the handler
+	// forwards the canonical raw mask via RawMask.
 	Mask *ImageInput
+	// RawImageInputs carries the raw, presence-bearing image inputs (the
+	// `image` and `images` JSON values) as supplied by the client, BEFORE the
+	// safe input resolver (step 4) converts them into typed ImageInputs. The
+	// HTTP handler populates this in step 3 so the capability table and the
+	// adapter probe can observe presence; step 4 will replace it with resolved
+	// ImageInputs and clear it.
+	RawImageInputs []json.RawMessage
+	// RawMask carries the canonical raw mask value (one of mask_image/maskImage/
+	// mask after alias canonicalization) before the safe input resolver (step 4)
+	// converts it into a typed Mask.
+	RawMask json.RawMessage
 	// Width/Height override Size when set (Cloudflare JSON / some providers).
 	Width  json.RawMessage
 	Height json.RawMessage

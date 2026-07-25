@@ -775,6 +775,7 @@ func (h *imageProxyHandler) Handle(ctx context.Context, req httptransport.ImageR
 		Credentials:           req.Credentials,
 		UserAgent:             req.UserAgent,
 		PreferredConnectionID: req.PreferredConnectionID,
+		Options:               req.Options,
 	})
 	return httptransport.ImageResult{
 		StatusCode:  res.StatusCode,

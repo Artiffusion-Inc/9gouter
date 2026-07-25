@@ -28,6 +28,7 @@ import (
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
 	domainProv "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/imageproxy"
 )
 
 // ChatHandler is the boundary between the HTTP transport layer and the chat
@@ -219,6 +220,12 @@ type ImageRequest struct {
 	// the credential resolver pins to this connection (same path chat uses for
 	// combos). Empty → auto-resolve via the sticky round-robin strategy.
 	PreferredConnectionID string
+	// Options carries provider-specific optional fields with presence semantics
+	// (json.RawMessage so missing key ≠ supplied null/""/0). Populated by the
+	// HTTP handler after the capability table has authorised each field; the
+	// usecase does not enforce provider policy (capability table lives in the
+	// handler, step 3 of the image-provider-parity plan).
+	Options imageproxy.RequestOptions
 }
 
 // ImageResult carries the generated image response back to the HTTP layer.
@@ -1339,6 +1346,24 @@ func resolveStream(body []byte, headers http.Header, providerID string) bool {
 func isNoAuthProvider(id string) bool {
 	switch id {
 	case "mimo-free", "opencode", "grok-web", "mmf":
+		return true
+	}
+	// Image no-auth local providers (sdwebui/comfyui) are AuthTypeNone loopback
+	// services. They never have stored credentials and resolve to virtual public
+	// credentials via the same path; the image handler enforces the loopback-viewer
+	// guard (isLocalRequest) before the call proceeds.
+	if isNoAuthImageProvider(id) {
+		return true
+	}
+	return false
+}
+
+// isNoAuthImageProvider reports whether the provider is an image-generation
+// no-auth local provider (sdwebui/comfyui). These use literal loopback targets
+// and virtual credentials; the image handler rejects external viewers with 403.
+func isNoAuthImageProvider(id string) bool {
+	switch id {
+	case "sdwebui", "comfyui":
 		return true
 	}
 	return false

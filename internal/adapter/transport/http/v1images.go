@@ -7,16 +7,23 @@ import (
 	"strings"
 
 	imageprov "github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/image"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/imageproxy"
 )
 
 // imageMaxBodyBytes caps the JSON request body read for
-// /v1/images/generations. Image prompts are small; the cap is a guard.
-const imageMaxBodyBytes int64 = 16 << 20
+// /v1/images/generations. The envelope may carry base64-encoded image/mask
+// inputs; the spec allows up to 24 MiB for the JSON/base64 envelope. The safe
+// input resolver (step 4) independently caps each decoded image at 16 MiB.
+const imageMaxBodyBytes int64 = 24 << 20
 
 // imagesRequestBody is the OpenAI-compatible /v1/images/generations request
-// body. Only the fields the usecase consumes are parsed; unknown fields are
-// ignored.
+// body. Base fields are typed; extended fields are json.RawMessage so the
+// handler can distinguish an absent key (nil) from a supplied null/""/0
+// (non-nil) — the capability table (image_capabilities.go) treats any
+// non-nil value as supplied and rejects it unless the provider/model row
+// authorises that field.
 type imagesRequestBody struct {
+	// Base fields (existing OpenAI contract).
 	Model          string `json:"model"`
 	Prompt         string `json:"prompt"`
 	N              int    `json:"n"`
@@ -26,6 +33,28 @@ type imagesRequestBody struct {
 	ResponseFormat string `json:"response_format"`
 	OutputFormat   string `json:"output_format"`
 	Background     string `json:"background"`
+
+	// Extended image inputs (presence-bearing). nil = key absent.
+	Image  json.RawMessage `json:"image"`
+	Images json.RawMessage `json:"images"`
+
+	// Mask aliases (mutually exclusive). At most one may be supplied.
+	MaskImage json.RawMessage `json:"mask_image"`
+	MaskCamel json.RawMessage `json:"maskImage"`
+	Mask      json.RawMessage `json:"mask"`
+
+	// Dimension overrides (Cloudflare JSON / providers that use separate
+	// width/height instead of a size string).
+	Width  json.RawMessage `json:"width"`
+	Height json.RawMessage `json:"height"`
+
+	// Six named Cloudflare-ish optional fields.
+	NegativePrompt json.RawMessage `json:"negative_prompt"`
+	Guidance       json.RawMessage `json:"guidance"`
+	Seed           json.RawMessage `json:"seed"`
+	NumSteps       json.RawMessage `json:"num_steps"`
+	Steps          json.RawMessage `json:"steps"`
+	Strength       json.RawMessage `json:"strength"`
 }
 
 // handleImagesGenerations implements POST /v1/images/generations — the
@@ -40,8 +69,54 @@ type imagesRequestBody struct {
 // raw image bytes; output_format then selects the Content-Type (png/jpeg/webp,
 // default png). Like chat, image gen echoes x-9gouter-connection-id so the
 // dashboard can pin the connection.
+//
+// Step 3 (image-provider-parity): the handler enforces the default-deny
+// capability table (image_capabilities.go) BEFORE the executor, canonicalises
+// the three mask aliases into a single mask, and guards the no-auth local
+// providers (sdwebui/comfyui) against external viewers with a 403 returned
+// before the image usecase is called.
 func (h *v1Handler) handleImagesGenerations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	// Decode the body first so the provider can be resolved before the auth
+	// gate: the no-auth local providers (sdwebui/comfyui) must reject external
+	// viewers with 403 regardless of API-key presence, and a missing model
+	// should report 400 before auth too.
+	var body imagesRequestBody
+	if err := json.NewDecoder(io.LimitReader(r.Body, imageMaxBodyBytes)).Decode(&body); err != nil {
+		h.writeError(w, http.StatusBadRequest, "Invalid JSON body")
+		return
+	}
+	body.Model = strings.TrimSpace(body.Model)
+	if body.Model == "" {
+		h.writeError(w, http.StatusBadRequest, "Missing required field: model")
+		return
+	}
+	body.Prompt = strings.TrimSpace(body.Prompt)
+	if body.Prompt == "" {
+		h.writeError(w, http.StatusBadRequest, "Missing required field: prompt")
+		return
+	}
+
+	// Resolve provider from model. "provider/model" → provider prefix only when
+	// the first segment is a known image provider; bare model → openai fallback.
+	providerID, bareModel := resolveImageProvider(body.Model)
+	if providerID == "" {
+		h.writeError(w, http.StatusBadRequest, "Could not resolve image provider from model: "+body.Model)
+		return
+	}
+
+	// Local guard (before auth gate and executor): sdwebui/comfyui are no-auth
+	// loopback-only providers. An external viewer (non-loopback remote address,
+	// or a request that arrived through the dashboard proxy stamp X-9r-Via-Proxy)
+	// gets a 403 BEFORE the auth gate, the credential resolution, and the image
+	// usecase — so the guard is visible even before step 5 lifts the Unsupported
+	// flag. This deliberately precedes the API-key gate: a loopback-only service
+	// must not be reachable by an external viewer under any auth state.
+	if isNoAuthImageProvider(providerID) && !isLocalRequest(r) {
+		h.writeError(w, http.StatusForbidden, "local image provider only accessible from loopback viewer")
+		return
+	}
 
 	// API-key gate (same as /v1/chat).
 	apiKey := extractAPIKey(r)
@@ -66,22 +141,6 @@ func (h *v1Handler) handleImagesGenerations(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	var body imagesRequestBody
-	if err := json.NewDecoder(io.LimitReader(r.Body, imageMaxBodyBytes)).Decode(&body); err != nil {
-		h.writeError(w, http.StatusBadRequest, "Invalid JSON body")
-		return
-	}
-	body.Model = strings.TrimSpace(body.Model)
-	if body.Model == "" {
-		h.writeError(w, http.StatusBadRequest, "Missing required field: model")
-		return
-	}
-	body.Prompt = strings.TrimSpace(body.Prompt)
-	if body.Prompt == "" {
-		h.writeError(w, http.StatusBadRequest, "Missing required field: prompt")
-		return
-	}
-
 	// response_format precedence: body → query → "url".
 	responseFormat := strings.TrimSpace(body.ResponseFormat)
 	if responseFormat == "" {
@@ -91,11 +150,39 @@ func (h *v1Handler) handleImagesGenerations(w http.ResponseWriter, r *http.Reque
 		responseFormat = "url"
 	}
 
-	// Resolve provider from model. "provider/model" → provider prefix only when
-	// the first segment is a known image provider; bare model → openai fallback.
-	providerID, bareModel := resolveImageProvider(body.Model)
-	if providerID == "" {
-		h.writeError(w, http.StatusBadRequest, "Could not resolve image provider from model: "+body.Model)
+	// Canonicalise mask aliases before the capability check: at most one of
+	// mask_image/maskImage/mask may be supplied. The capability table then
+	// decides whether a mask is permitted for this provider/model.
+	supplied := suppliedImageFields{
+		image:          body.Image,
+		images:         body.Images,
+		width:          body.Width,
+		height:         body.Height,
+		negativePrompt: body.NegativePrompt,
+		guidance:       body.Guidance,
+		seed:           body.Seed,
+		numSteps:       body.NumSteps,
+		steps:          body.Steps,
+		strength:       body.Strength,
+		maskImage:      body.MaskImage,
+		maskCamel:      body.MaskCamel,
+		mask:           body.Mask,
+	}
+	canonicalMask, maskSupplied, err := canonicalizeMask(supplied)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Capability table (default-deny). The first matching row wins; any supplied
+	// field not authorised by the row is rejected with 400 before the executor.
+	cap, ok := imageCapabilities(providerID, bareModel)
+	if !ok {
+		// Unknown provider to the matrix: still default-deny all extended fields.
+		cap = imageCapability{provider: providerID}
+	}
+	if cerr := checkImageCapabilities(providerID, bareModel, cap, supplied, maskSupplied); cerr != nil {
+		h.writeError(w, http.StatusBadRequest, cerr.Error())
 		return
 	}
 
@@ -111,9 +198,36 @@ func (h *v1Handler) handleImagesGenerations(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Local guard: sdwebui/comfyui are no-auth loopback-only providers. An
+	// external viewer (non-loopback remote address, or a request that arrived
+	// through the dashboard proxy stamp X-9r-Via-Proxy) gets a 403 BEFORE the
+	// image usecase is called — earlier than the 501 the Unsupported flag would
+	// produce, so the guard is visible even before step 5 lifts the flag.
+	if isNoAuthImageProvider(providerID) && !isLocalRequest(r) {
+		h.writeError(w, http.StatusForbidden, "local image provider only accessible from loopback viewer")
+		return
+	}
+
 	if h.deps.Image == nil {
 		h.writeError(w, http.StatusNotImplemented, "Image generation pipeline not wired")
 		return
+	}
+
+	// Build the provider-specific Options from the supplied, capability-
+	// authorised fields. The safe input resolver (step 4) will convert
+	// RawImageInputs/RawMask into typed ImageInputs/Mask; for step 3 the raw
+	// values are forwarded so the adapter probe can observe presence.
+	opts := imageproxy.RequestOptions{
+		RawImageInputs: rawImageInputs(supplied),
+		RawMask:        canonicalMask,
+		Width:          supplied.width,
+		Height:         supplied.height,
+		NegativePrompt: supplied.negativePrompt,
+		Guidance:       supplied.guidance,
+		Seed:           supplied.seed,
+		NumSteps:       supplied.numSteps,
+		Steps:          supplied.steps,
+		Strength:       supplied.strength,
 	}
 
 	res, err := h.deps.Image.Handle(ctx, ImageRequest{
@@ -131,6 +245,7 @@ func (h *v1Handler) handleImagesGenerations(w http.ResponseWriter, r *http.Reque
 		Credentials:           creds,
 		UserAgent:             r.UserAgent(),
 		PreferredConnectionID: preferredConnID,
+		Options:               opts,
 	})
 	if err != nil && res.Err == nil {
 		res.Err = err

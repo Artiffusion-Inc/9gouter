@@ -9,6 +9,7 @@ import (
 
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/managedashboard"
+	"github.com/Artiffusion-Inc/9gouter/internal/usecase/quotafetch"
 )
 
 // RegisterUsageExtra mounts additional usage routes not covered by the initial
@@ -191,15 +192,36 @@ func (h *usageExtraHandler) byConnection(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Live quota fetching is provider-specific and not yet ported into the Go
-	// rewrite. Return a parseable empty quotas map so the UI can keep the
-	// "loading → loaded" state machine working without crashing on `null`.
-	writeJSON(w, http.StatusOK, map[string]any{
-		"connectionId": id,
-		"provider":     provider,
-		"quotas":       map[string]any{},
-		"message":      "Quota fetch not implemented for this provider in the Go backend yet",
-	})
+	// Live quota fetch: dispatch to the per-provider quotafetch.Fetcher
+	// (ports of the legacy open-sse/services/usage/*.js handlers). The fetcher
+	// rides the proxy stack through connectionProxyFetch wrapped as a Doer, so
+	// per-connection proxy config / proxy pools apply exactly like the JS
+	// proxyAwareFetch path. When no fetcher is registered for this provider,
+	// fall back to the parseable empty payload so the UI settles.
+	fetcher := quotafetch.Lookup(provider)
+	if fetcher == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"connectionId": id,
+			"provider":     provider,
+			"quotas":       map[string]any{},
+			"message":      "Usage not available for this provider",
+		})
+		return
+	}
+	do := func(ctx context.Context, req *http.Request) (*http.Response, error) {
+		return connectionProxyFetch(ctx, h.deps.ProxyPools, h.deps.ProxyOpts, c, req)
+	}
+	result, err := fetcher.Fetch(r.Context(), c, do)
+	if err != nil || result == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"connectionId": id,
+			"provider":     provider,
+			"quotas":       map[string]any{},
+			"message":      "Quota fetch failed for this connection",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 // isUsageEligible mirrors the legacy JS whitelist:

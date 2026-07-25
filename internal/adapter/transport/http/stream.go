@@ -80,6 +80,22 @@ type PipeOpts struct {
 	// only "data:", so this is set only when the client source format is Claude.
 	// Mirrors legacy streamHelpers.js formatSSE (sourceFormat === CLAUDE).
 	EmitEventPrefix bool
+
+	// OnFrame, when non-nil, is invoked for every de-framed upstream frame
+	// (before translation/sanitization) so the caller can extract final usage
+	// from the stream. It mirrors the JS SSE transform stream's per-frame
+	// usage accumulation that fed onStreamComplete (streamingHandler.js). The
+	// frame is the raw de-framed upstream payload (may carry a "data:" prefix
+	// for SSE framings or be a bare JSON line for NDJSON). The callback must
+	// be non-blocking and tolerate non-JSON frames. Invoked from the writer
+	// goroutine.
+	OnFrame func(frame []byte)
+
+	// OnFirstByte, when non-nil, is invoked once immediately before the first
+	// client write, marking time-to-first-token (TTFT). Mirrors the JS
+	// `ttftAt` capture used to compute streamMs. Invoked from the writer
+	// goroutine.
+	OnFirstByte func()
 }
 
 // DefaultReason is the reason string used in the terminal error SSE.
@@ -182,7 +198,11 @@ func Pipe(ctx context.Context, upstream io.Reader, w *Writer, opts PipeOpts) err
 		// (terminal-event tracking) and the EOF [DONE] emitter so the sentinel
 		// is never duplicated (upstream c22f11de/a9785a5f).
 		var state map[string]any
+		firstByte := true
 		for frame := range frameCh {
+			if opts.OnFrame != nil {
+				opts.OnFrame(frame)
+			}
 			out, err := translateOrPassthrough(w, opts.TranslateResponse, opts.PassthroughSanitizer, opts.EmitEventPrefix, &state, frame)
 			if err != nil {
 				errCh <- err
@@ -190,6 +210,12 @@ func Pipe(ctx context.Context, upstream io.Reader, w *Writer, opts PipeOpts) err
 				return
 			}
 			for _, ev := range out {
+				if firstByte {
+					firstByte = false
+					if opts.OnFirstByte != nil {
+						opts.OnFirstByte()
+					}
+				}
 				if err := w.WriteRaw(ev); err != nil {
 					errCh <- err
 					closeFrameCh()

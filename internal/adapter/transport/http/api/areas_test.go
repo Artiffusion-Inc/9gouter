@@ -154,8 +154,22 @@ func TestMediaProviders_HappyPath(t *testing.T) {
 	RegisterMediaProviders(mux, deps)
 	ck := authCookie(t, deps.SessionStore.(*adapterauth.CookieStore))
 
+	// The generic /tts/voices route serves the static edge-tts voice list
+	// without any connection, so it stays 200.
+	req := httptest.NewRequest("GET", "/api/media-providers/tts/voices", nil)
+	req.Header.Set("Cookie", "auth_token="+ck)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/tts/voices status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Per-provider voice routes now hit a live upstream keyed off the first
+	// active connection (ported from the legacy JS routes). With no connection
+	// seeded they return the JS-parity 400 "No <provider> connection found"
+	// rather than the old empty-stub 200. The full happy-path + upstream parse
+	// is covered by TestMediaVoices_RoutesAuthAndNoConnection.
 	for _, path := range []string{
-		"/api/media-providers/tts/voices",
 		"/api/media-providers/tts/deepgram/voices",
 		"/api/media-providers/tts/elevenlabs/voices",
 		"/api/media-providers/tts/inworld/voices",
@@ -165,8 +179,8 @@ func TestMediaProviders_HappyPath(t *testing.T) {
 		req.Header.Set("Cookie", "auth_token="+ck)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s status = %d, want 200; body=%s", path, rec.Code, rec.Body.String())
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d, want 400 (no connection); body=%s", path, rec.Code, rec.Body.String())
 		}
 	}
 }

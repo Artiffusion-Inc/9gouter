@@ -80,19 +80,25 @@ func (h *mediaHandler) voices(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *mediaHandler) deepgramVoices(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"voices": []any{}})
+	h.fetchGroupedVoices(w, r, "deepgram")
 }
 
 func (h *mediaHandler) elevenlabsVoices(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"voices": []any{}})
+	h.fetchGroupedVoices(w, r, "elevenlabs")
 }
 
 func (h *mediaHandler) inworldVoices(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"voices": []any{}})
+	h.fetchGroupedVoices(w, r, "inworld")
 }
 
 func (h *mediaHandler) minimaxVoices(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"voices": []any{}})
+	// ?provider=minimax-cn routes to the china endpoint (same shape, different
+	// host). Mirrors the legacy JS MINIMAX_VOICE_ENDPOINTS map.
+	provider := strings.TrimSpace(r.URL.Query().Get("provider"))
+	if provider != "minimax-cn" {
+		provider = "minimax"
+	}
+	h.fetchGroupedVoices(w, r, provider)
 }
 
 type edgeVoice struct {

@@ -83,6 +83,14 @@ type Dependencies struct {
 	// Pricing computes the USD cost of a request from its token breakdown. nil
 	// → cost stays 0 (legacy wiring / tests that only check token counts).
 	Pricing *pricing.Resolver
+	// RequestDetails persists observability rows (the dashboard "Request
+	// Details" tab). nil → no request-detail recording (tests / legacy wiring).
+	// Recording is additionally gated by ObservabilityGate, so the dashboard
+	// enableObservability toggle can disable it live.
+	RequestDetails RequestDetailSaver
+	// ObservabilityGate reads the enableObservability flag + retention knobs.
+	// nil → observability disabled.
+	ObservabilityGate ObservabilityGate
 }
 
 // UsageEventPublisher is the live real-time analytics surface. proxychat
@@ -162,6 +170,13 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	exec := prov.Executor()
 
 	targetFormat := resolveTargetFormat(providerID, sourceFormat, req.Model)
+
+	// Request-detail observability builder (ports JS saveRequestDetail).
+	// Pre-fetch the gate once so the per-path save calls are a no-op when
+	// observability is disabled. requestCfg is captured once for all paths.
+	detail := newRequestDetailBuilder(h.deps.RequestDetails, h.deps.ObservabilityGate, providerID, req.Model, req.ConnectionID)
+	detailEnabled := detail.maybeEnabled(req.Ctx)
+	requestCfg := extractRequestConfig(req.Body, req.Stream)
 
 	var translatedBody json.RawMessage
 	if translator.NeedsTranslation(sourceFormat, targetFormat) {
@@ -328,6 +343,9 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 			status = 499
 		}
 		h.saveUsage(ctx, req, providerID, start, 0, 0, "error", nil, nil)
+		if detailEnabled {
+			detail.save(ctx, "error", int(time.Since(start).Milliseconds()), nil, nil, nil, requestCfg, translatedBody, nil, mustMarshal(map[string]any{"error": fmt.Sprintf("upstream error: %v", err), "status": status}), nil)
+		}
 		return h.errorResult(status, fmt.Sprintf("upstream error: %v", err), start)
 	}
 	// closeAndDone closes the upstream body and then releases the fetch
@@ -347,6 +365,9 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 		// provider returned non-2xx
 		msg := readShortResponse(resp.Response)
 		h.saveUsage(ctx, req, providerID, start, 0, 0, fmt.Sprintf("failed %d", resp.Response.StatusCode), nil, nil)
+		if detailEnabled {
+			detail.save(ctx, fmt.Sprintf("failed %d", resp.Response.StatusCode), int(time.Since(start).Milliseconds()), nil, nil, nil, requestCfg, translatedBody, nil, mustMarshal(map[string]any{"error": msg, "status": resp.Response.StatusCode}), nil)
+		}
 		return h.errorResult(resp.Response.StatusCode, msg, start)
 	}
 
@@ -426,17 +447,51 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 			// streamHelpers.js formatSSE (sourceFormat === CLAUDE).
 			EmitEventPrefix: sourceFormat == format.Claude,
 		}
+		// Stream usage/timing collector (ports JS streamingHandler.js
+		// onStreamComplete): the pipe invokes OnFrame for every de-framed
+		// upstream frame so the collector can parse the final usage object
+		// (OpenAI terminal chunk / Claude message_delta / Gemini
+		// usageMetadata / Ollama eval_count), and OnFirstByte marks TTFT so
+		// we can compute streamMs and tps. Without this, streaming requests
+		// recorded zero tokens/cost/streamMs/tps (the prior fallback to
+		// headroom-only estimates).
+		usageCollector := newStreamUsageCollector()
+		var firstByteAt time.Time
+		opts.OnFrame = usageCollector.OnFrame
+		opts.OnFirstByte = func() { firstByteAt = time.Now() }
 		err = h.deps.StreamPipe.Pipe(ctx, resp.Response.Body, w, opts)
 
-		var promptTokens, completionTokens int
-		if headroomStats != nil {
+		// Prefer the upstream-reported usage; fall back to headroom token
+		// estimates (pre-token-saver counts) when the stream carried none.
+		promptTokens, completionTokens := usageCollector.promptCompletion()
+		if promptTokens == 0 && completionTokens == 0 && headroomStats != nil {
 			promptTokens = headroomStats.tokensBefore
 			completionTokens = headroomStats.tokensAfter - headroomStats.tokensBefore
 			if completionTokens < 0 {
 				completionTokens = 0
 			}
 		}
-		h.saveUsage(ctx, req, providerID, start, promptTokens, completionTokens, "success", nil, nil)
+		var streamMs *int
+		var tps *float64
+		if !firstByteAt.IsZero() {
+			// Floor to 1ms: time.Since has millisecond granularity, so an
+			// effectively-instant stream yields 0 and would drop the timing
+			// signal. OnFirstByte firing means the stream did reach the client,
+			// so a non-nil streamMs is the honest "stream happened" record.
+			elapsedMs := int(time.Since(firstByteAt).Milliseconds())
+			if elapsedMs < 1 {
+				elapsedMs = 1
+			}
+			streamMs = &elapsedMs
+			if completionTokens > 0 {
+				v := float64(completionTokens) / (float64(elapsedMs) / 1000.0)
+				tps = &v
+			}
+		}
+		h.saveUsageWith(ctx, req, providerID, start, promptTokens, completionTokens, "success", streamMs, tps, usageCollector.tokens())
+		if detailEnabled {
+			detail.save(ctx, "success", int(time.Since(start).Milliseconds()), streamMs, tps, streamTokensMap(usageCollector.tokens(), promptTokens, completionTokens), requestCfg, translatedBody, nil, nil, nil)
+		}
 		return Result{StatusCode: http.StatusOK, Streamed: true, Err: err}, nil
 	}
 
@@ -444,6 +499,9 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	bodyBytes, err := io.ReadAll(resp.Response.Body)
 	if err != nil {
 		h.saveUsage(ctx, req, providerID, start, 0, 0, "error", nil, nil)
+		if detailEnabled {
+			detail.save(ctx, "error", int(time.Since(start).Milliseconds()), nil, nil, nil, requestCfg, translatedBody, nil, mustMarshal(map[string]any{"error": "read upstream body", "status": http.StatusBadGateway}), nil)
+		}
 		return h.errorResult(http.StatusBadGateway, "read upstream body", start)
 	}
 	var upstreamBody map[string]any
@@ -462,6 +520,9 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	completion := tokenCount(clientBody, "completion_tokens", "output_tokens")
 	tok := extractTokens(clientBody, prompt, completion)
 	h.saveUsageWith(ctx, req, providerID, start, prompt, completion, "success", nil, nil, tok)
+	if detailEnabled {
+		detail.save(ctx, "success", int(time.Since(start).Milliseconds()), nil, nil, tokensMapFromTokens(tok, prompt, completion), requestCfg, translatedBody, bodyBytesOrNil(bodyBytes), clientBytes, nil)
+	}
 	return Result{StatusCode: http.StatusOK}, nil
 }
 

@@ -1,0 +1,71 @@
+version: "3"
+
+# Task runner for the 9router Go rewrite.
+# Tooling policy (CLAUDE.md): go-task is the task runner (not Makefile/Justfile),
+# bun for the dashboard, go for the binary. `task --list` enumerates targets.
+
+vars:
+  BINARY: /tmp/9gouter
+  DB_PATH: ./data/9gouter.db
+  PORT: "20127"
+  # ≥16 bytes (session store hard-rejects shorter secrets).
+  SESSION_SECRET: shadowdiff-session-secret-32bytes-min
+  ASSETS_DIR: internal/adapter/transport/http/dashboard_assets
+
+dotenv:
+  - .env
+
+tasks:
+  # ---- Dashboard static export ----
+  dashboard:
+    desc: Rebuild the Next.js static export into the embedded dashboard_assets dir
+    sources:
+      - src/app/**/*
+      - src/components/**/*
+      - public/**/*
+      - package.json
+      - bun.lock
+      - next.config.*
+      - scripts/build-dashboard.sh
+    generates:
+      - "{{.ASSETS_DIR}}/index.html"
+    cmds:
+      - bash scripts/build-dashboard.sh
+
+  # ---- Go binary ----
+  build:
+    desc: Build the Go binary (CGO_ENABLED=0) with the embedded dashboard
+    deps: [dashboard]
+    sources:
+      - cmd/**/*.go
+      - internal/**/*.go
+      - go.mod
+      - go.sum
+      - "{{.ASSETS_DIR}}/index.html"
+    generates:
+      - "{{.BINARY}}"
+    cmds:
+      - CGO_ENABLED=0 go build -o {{.BINARY}} ./cmd/9gouter
+
+  # ---- Run ----
+  run:
+    desc: Build and run the Go binary on :20127
+    deps: [build]
+    cmds:
+      - >
+        DB_PATH={{.DB_PATH}}
+        DASHBOARD_SESSION_SECRET={{.SESSION_SECRET}}
+        SESSION_SECRET={{.SESSION_SECRET}}
+        PORT={{.PORT}}
+        {{.BINARY}}
+
+  # ---- Tests ----
+  test:
+    desc: go test -race ./...
+    cmds:
+      - go test -race ./...
+
+  test-affected:
+    desc: Race-test the packages touched by the T025/T026 fixes
+    cmds:
+      - go test -race ./internal/adapter/transport/http/ ./internal/usecase/proxychat/ ./internal/adapter/translator/... ./internal/adapter/provider/base/... ./internal/adapter/provider/default/...

@@ -514,7 +514,19 @@ func translateOrPassthrough(
 	if *state == nil {
 		*state = map[string]any{}
 	}
-	chunks, err := translate(frame, *state)
+	// The de-framer hands us the raw upstream frame. For SSE upstreams the
+	// frame carries the "data: <json>" (and optional "event:"/"id:"/"retry:")
+	// SSE lines; for NDJSON upstreams (ollama) it is already a bare JSON
+	// line. Translators expect a bare JSON payload, so for cross-format
+	// translation extract the JSON payload from the SSE frame first.
+	// Without this, a gemini SSE frame "data: {candidates:...}" reaches the
+	// translator as-is, json.Unmarshal fails on the leading "data:", and Pipe
+	// emits nothing — the gemini /v1/chat/completions stream returned 200 +
+	// correct SSE headers but 0 bytes (T026, surfaced by the T025 shadow-diff
+	// re-run). stripSSEDataPayload is a no-op for bare JSON lines (NDJSON),
+	// so ollama translation is unchanged.
+	payload := stripSSEDataPayload(frame)
+	chunks, err := translate(payload, *state)
 	if err != nil {
 		return nil, err
 	}
@@ -570,4 +582,84 @@ func extractEventType(chunk []byte) []byte {
 		return nil
 	}
 	return []byte(probe.Type)
+}
+
+// stripSSEDataPayload extracts the JSON payload from a de-framed upstream frame
+// so it can be handed to a cross-format TranslateResponse callback.
+//
+// SSE upstreams emit frames as a block of field lines terminated by a blank
+// line, e.g.:
+//
+//	event: message
+//	data: {"candidates":[...]}
+//
+// or a multi-line data block:
+//
+//	data: {"a": 1,
+//	data: "second line"}
+//
+// The translator expects a bare JSON object, so we concatenate every "data:"
+// line (per the SSE spec, multiple data lines are joined with "\n") and drop
+// "event:"/"id:"/"retry:"/"comment" lines. The OpenAI "[DONE]" sentinel (a
+// "data: [DONE]" line) is returned verbatim as "[DONE]" so the same downstream
+// EOF/dedup logic keeps working.
+//
+// NDJSON upstreams (ollama) already emit bare JSON lines with no "data:" prefix;
+// for those the frame is returned untouched. A frame that is neither valid SSE
+// (no data lines) nor a bare JSON object returns the trimmed frame so a
+// non-JSON passthrough path can still see the bytes.
+func stripSSEDataPayload(frame []byte) []byte {
+	trimmed := bytes.TrimSpace(frame)
+	if len(trimmed) == 0 {
+		return frame
+	}
+	// Fast path: bare JSON line (NDJSON / already-stripped) — return as-is.
+	if trimmed[0] == '{' || trimmed[0] == '[' {
+		return frame
+	}
+
+	// Scan the SSE field lines and collect "data:" payloads.
+	var dataLines [][]byte
+	hasData := false
+	for _, raw := range bytes.Split(trimmed, []byte("\n")) {
+		line := bytes.TrimSpace(raw)
+		if len(line) == 0 {
+			continue
+		}
+		field, value, ok := splitSSEField(line)
+		if !ok {
+			continue
+		}
+		if bytes.Equal(field, []byte("data")) {
+			hasData = true
+			dataLines = append(dataLines, value)
+		}
+		// event:/id:/retry: and comments are dropped — translators only
+		// consume the JSON payload.
+	}
+	if !hasData {
+		// No "data:" lines: not a standard SSE field block. Return the
+		// trimmed frame so a non-JSON frame still reaches the translator
+		// (which will report the error rather than silently dropping it).
+		return trimmed
+	}
+	payload := bytes.Join(dataLines, []byte("\n"))
+	return bytes.TrimSpace(payload)
+}
+
+// splitSSEField splits one SSE field line "name: value" into name and value,
+// stripping the single optional space after the colon (per the SSE spec).
+// A line with no colon is treated as a comment and reports ok=false.
+func splitSSEField(line []byte) (name, value []byte, ok bool) {
+	idx := bytes.IndexByte(line, ':')
+	if idx < 0 {
+		return nil, nil, false
+	}
+	name = bytes.TrimSpace(line[:idx])
+	rest := line[idx+1:]
+	// The SSE spec allows exactly one optional space after the colon.
+	if len(rest) > 0 && rest[0] == ' ' {
+		rest = rest[1:]
+	}
+	return name, rest, true
 }

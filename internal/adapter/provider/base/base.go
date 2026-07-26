@@ -292,6 +292,27 @@ func (e *BaseExecutor) BuildURL(model string, stream bool, urlIndex int, creds p
 		url = e.Config.BaseURL
 	}
 
+	// Gemini generateContent endpoint shape: <base>/<model>:<action>. This
+	// branch lives in the BASE BuildURL (not the DefaultExecutor override)
+	// because BaseExecutor.Execute calls e.BuildURL statically — Go's
+	// embedded-method promotion (#142) means a DefaultExecutor.BuildURL
+	// override is NOT dispatched from the promoted BaseExecutor.Execute, so
+	// the override was silently dropped and the upstream call hit the raw
+	// BaseURL (…/v1beta/models) without the /<model>:generateContent suffix,
+	// producing "upstream returned 404" on every gemini /v1/chat/completions
+	// and /v1/messages request (surfaced by the T022 shadow-diff run).
+	// Putting the gemini shape here fixes it for every gemini-format provider
+	// that routes through the base Execute path (DefaultExecutor-built
+	// providers like "gemini"); antigravity/gemini-cli/vertex keep their own
+	// BuildURL/Execute overrides and never reach this branch.
+	if e.Config.Format == "gemini" {
+		action := "generateContent"
+		if stream {
+			action = "streamGenerateContent?alt=sse"
+		}
+		return fmt.Sprintf("%s/%s:%s", strings.TrimSuffix(url, "/"), model, action)
+	}
+
 	if e.Config.URLSuffix != "" {
 		return url + e.Config.URLSuffix
 	}

@@ -32,6 +32,13 @@ const nextConfig = {
     serverComponentsHmrCache: true,
     // Tree-shake heavy barrel imports to cut compile + bundle size
     optimizePackageImports: ["@xyflow/react", "@dnd-kit/core", "@dnd-kit/sortable", "material-symbols", "marked"],
+    // Page-data collection spawns a worker per page; with better-sqlite3 +
+    // serverExternalPackages each worker loads the legacy ~/.9router db
+    // driver. On a memory-constrained host (swap exhausted by other processes)
+    // the default 4-worker pool gets SIGTERM'd at "Collecting page data" with
+    // exit 143 before producing out/. Pin to a single worker so the build
+    // completes without fighting for memory. Output is identical.
+    cpus: 1,
   },
   webpack: (config, { isServer }) => {
     // Ignore fs/path modules in browser bundle

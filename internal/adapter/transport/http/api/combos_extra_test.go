@@ -176,3 +176,63 @@ func TestCombos_UpdateWithModelsAndKind(t *testing.T) {
 		t.Fatalf("kind = %v, want round-robin", updated["kind"])
 	}
 }
+
+// TestCombos_ResetRotationInvoked verifies the combos API calls the injected
+// ResetComboRotation hook on create/update/delete, and that a rename clears
+// the stale entry under the old name as well as the new one. This guards the
+// round-robin cursor against surviving a model-list change with a stale index.
+func TestCombos_ResetRotationInvoked(t *testing.T) {
+	db := mustOpenDB(t)
+	deps := buildDeps(t, db)
+
+	calls := map[string]int{}
+	deps.ResetComboRotation = func(name string) { calls[name]++ }
+
+	mux := http.NewServeMux()
+	RegisterCombos(mux, deps)
+	ck := authCookie(t, deps.SessionStore.(*adapterauth.CookieStore))
+
+	// Create → reset for the new name.
+	req := httptest.NewRequest("POST", "/api/combos", strings.NewReader(`{"name":"rot","models":["m1"],"kind":"round-robin"}`))
+	req.Header.Set("Cookie", "auth_token="+ck)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201; body=%s", rec.Code, rec.Body.String())
+	}
+	var created map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &created)
+	id, _ := created["id"].(string)
+	if calls["rot"] != 1 {
+		t.Fatalf("after create: reset calls for rot = %d, want 1", calls["rot"])
+	}
+
+	// Rename → reset for both old and new name.
+	req = httptest.NewRequest("PUT", "/api/combos/"+id, strings.NewReader(`{"name":"rot2","models":["m1","m2"]}`))
+	req.Header.Set("Cookie", "auth_token="+ck)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if calls["rot2"] != 1 {
+		t.Fatalf("after rename: reset calls for rot2 = %d, want 1", calls["rot2"])
+	}
+	if calls["rot"] != 2 {
+		t.Fatalf("after rename: reset calls for old name rot = %d, want 2 (create + rename)", calls["rot"])
+	}
+
+	// Delete → reset for the current name.
+	req = httptest.NewRequest("DELETE", "/api/combos/"+id, nil)
+	req.Header.Set("Cookie", "auth_token="+ck)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if calls["rot2"] != 2 {
+		t.Fatalf("after delete: reset calls for rot2 = %d, want 2", calls["rot2"])
+	}
+}

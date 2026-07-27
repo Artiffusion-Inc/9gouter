@@ -215,7 +215,7 @@ func TestProxyLocalOnlyPassthrough(t *testing.T) {
 	r := proxyViewerRequest(http.MethodGet, "/api/headroom/proxy/stats", nil, "localhost:20127")
 	r.Header.Set("Cookie", "viewer=1")
 	rec := httptest.NewRecorder()
-	proxyLocalOnly(rec, r)
+	proxyLocalOnly(&headroomHandler{}, rec, r)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
@@ -247,7 +247,7 @@ func TestProxyLocalOnlyNonLoopbackViewerRefused(t *testing.T) {
 
 	r := proxyViewerRequest(http.MethodGet, "/api/headroom/proxy/stats", nil, "example.com:20127")
 	rec := httptest.NewRecorder()
-	proxyLocalOnly(rec, r)
+	proxyLocalOnly(&headroomHandler{}, rec, r)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403; body=%s", rec.Code, rec.Body.String())
 	}
@@ -292,7 +292,7 @@ func TestProxyLocalOnlyDashboardHTMLRewrite(t *testing.T) {
 
 	r := proxyViewerRequest(http.MethodGet, "/api/headroom/proxy/dashboard", nil, "localhost:20127")
 	rec := httptest.NewRecorder()
-	proxyLocalOnly(rec, r)
+	proxyLocalOnly(&headroomHandler{}, rec, r)
 	if !strings.Contains(rec.Body.String(), dashboardProxyPrefix+"/stats") {
 		t.Errorf("dashboard HTML not rewritten: %s", rec.Body.String())
 	}
@@ -318,7 +318,7 @@ func TestProxyLocalOnlyPOSTBody(t *testing.T) {
 	body := strings.NewReader(`{"q":"hi"}`)
 	r := proxyViewerRequest(http.MethodPost, "/api/headroom/proxy/stats", body, "localhost:20127")
 	rec := httptest.NewRecorder()
-	proxyLocalOnly(rec, r)
+	proxyLocalOnly(&headroomHandler{}, rec, r)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want 204", rec.Code)
 	}
@@ -339,7 +339,7 @@ func TestProxyLocalOnlyManualRedirect(t *testing.T) {
 
 	r := proxyViewerRequest(http.MethodGet, "/api/headroom/proxy/stats", nil, "localhost:20127")
 	rec := httptest.NewRecorder()
-	proxyLocalOnly(rec, r)
+	proxyLocalOnly(&headroomHandler{}, rec, r)
 	if rec.Code != http.StatusFound {
 		t.Fatalf("status = %d, want 302 (manual, not followed)", rec.Code)
 	}

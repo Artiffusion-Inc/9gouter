@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	domainauth "github.com/Artiffusion-Inc/9gouter/internal/domain/auth"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http/api"
+	domainauth "github.com/Artiffusion-Inc/9gouter/internal/domain/auth"
 )
 
 // Middleware is an HTTP middleware function.
@@ -152,10 +152,29 @@ type AuthFunc func(r *http.Request) bool
 // NewAuthFunc returns an AuthFunc backed by a session store. It validates the
 // auth_token HMAC cookie (T016) and reports true for any /api/ request that
 // carries a valid, non-expired session.
-func NewAuthFunc(store domainauth.Store) AuthFunc {
+//
+// If a requireLogin gate is supplied, /api/* routes that are not public and not
+// ALWAYS_PROTECTED skip the session check when settings.requireLogin is false
+// (mirrors legacy dashboardGuard.js isAuthenticated()). ALWAYS_PROTECTED
+// routes (/api/shutdown, /api/settings/database, /api/oauth/.../auto-import,
+// /api/version/{shutdown,update}) still require a session regardless. A nil
+// gate preserves the historical deny-by-default behaviour.
+func NewAuthFunc(store domainauth.Store, loginGate *requireLoginGate) AuthFunc {
 	return func(r *http.Request) bool {
-		_, err := store.Get(r)
-		return err == nil
+		if _, err := store.Get(r); err == nil {
+			return true
+		}
+		// No valid session. Allow through only when requireLogin is disabled
+		// AND the route is not ALWAYS_PROTECTED (and is /api/* — the gate is
+		// only consulted here from APIMiddleware, which already gated on the
+		// /api/ prefix and IsPublicRoute).
+		if loginGate == nil {
+			return false
+		}
+		if api.IsAlwaysProtected(r.URL.Path) {
+			return false
+		}
+		return !loginGate.RequireLogin(r.Context())
 	}
 }
 

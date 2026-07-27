@@ -34,7 +34,11 @@ func (h *proxyPoolsHandler) list(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Failed to fetch proxy pools")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"proxyPools": pools})
+	out := make([]map[string]any, 0, len(pools))
+	for _, p := range pools {
+		out = append(out, proxyPoolToMap(p))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"proxyPools": out})
 }
 
 func (h *proxyPoolsHandler) get(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +52,7 @@ func (h *proxyPoolsHandler) get(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Proxy pool not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"proxyPool": pool})
+	writeJSON(w, http.StatusOK, map[string]any{"proxyPool": proxyPoolToMap(*pool)})
 }
 
 type proxyPoolInput struct {
@@ -100,7 +104,7 @@ func (h *proxyPoolsHandler) create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Failed to create proxy pool")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"proxyPool": created})
+	writeJSON(w, http.StatusCreated, map[string]any{"proxyPool": proxyPoolToMap(*created)})
 }
 
 func (h *proxyPoolsHandler) update(w http.ResponseWriter, r *http.Request) {
@@ -162,7 +166,34 @@ func (h *proxyPoolsHandler) update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Failed to update proxy pool")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"proxyPool": updated})
+	writeJSON(w, http.StatusOK, map[string]any{"proxyPool": proxyPoolToMap(*updated)})
+}
+
+// proxyPoolToMap flattens a proxy pool for the API response, mirroring the
+// legacy JS rowToPool: the data blob (name, proxyUrl, noProxy, type,
+// strictProxy, lastError, lastTestedAt, boundConnectionCount) is spread onto
+// the top level and the struct fields (id, isActive, testStatus, createdAt,
+// updatedAt) override any same-named data keys. The dashboard UI reads
+// pool.name / pool.proxyUrl / pool.type at the top level, so returning data
+// as a nested blob (the raw struct JSON) left every name blank.
+func proxyPoolToMap(p settings.ProxyPool) map[string]any {
+	m := map[string]any{}
+	var data map[string]any
+	if len(p.Data) > 0 {
+		_ = json.Unmarshal(p.Data, &data)
+	}
+	for k, v := range data {
+		m[k] = v
+	}
+	// Struct fields override data: matches rowToPool's spread-then-assign.
+	m["id"] = p.ID
+	m["isActive"] = p.IsActive
+	if p.TestStatus != "" {
+		m["testStatus"] = p.TestStatus
+	}
+	m["createdAt"] = p.CreatedAt
+	m["updatedAt"] = p.UpdatedAt
+	return m
 }
 
 func (h *proxyPoolsHandler) delete(w http.ResponseWriter, r *http.Request) {

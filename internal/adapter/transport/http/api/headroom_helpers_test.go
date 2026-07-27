@@ -17,10 +17,10 @@ func TestHeadroom_PureHelpers(t *testing.T) {
 		{"Python 3.12.4", 3, 12, true},
 		{"Python 3.10", 3, 10, true},
 		{"python 3.13.0rc1", 3, 13, true},
-		{"Python 3", 0, 0, false},        // missing minor
-		{"not a version", 0, 0, false},   // no space
-		{"", 0, 0, false},                // empty
-		{"Python v3.11.2", 3, 11, true},  // v-prefix stripped
+		{"Python 3", 0, 0, false},       // missing minor
+		{"not a version", 0, 0, false},  // no space
+		{"", 0, 0, false},               // empty
+		{"Python v3.11.2", 3, 11, true}, // v-prefix stripped
 		{"Python 3.12.4-rc1", 3, 12, true},
 		{"foo\nPython 3.9.1\nbar", 3, 9, true}, // multi-line
 	}
@@ -81,14 +81,17 @@ func TestHeadroom_PureHelpers(t *testing.T) {
 		t.Fatalf("nilOrInt(42) = %v, want 42", nilOrInt(42))
 	}
 
-	// headroomURLFromSettings — env override.
-	os.Setenv("HEADROOM_URL", "http://example.com")
-	if got := headroomURLFromSettings(); got != "http://example.com" {
-		t.Fatalf("headroomURLFromSettings env override = %q, want http://example.com", got)
-	}
-	os.Unsetenv("HEADROOM_URL")
-	if got := headroomURLFromSettings(); got != "http://localhost:8787" {
-		t.Fatalf("headroomURLFromSettings default = %q, want http://localhost:8787", got)
+	// headroomURL — env override (nil deps falls through to env/default).
+	{
+		h := &headroomHandler{}
+		os.Setenv("HEADROOM_URL", "http://example.com")
+		if got := h.headroomURL(); got != "http://example.com" {
+			t.Fatalf("headroomURL env override = %q, want http://example.com", got)
+		}
+		os.Unsetenv("HEADROOM_URL")
+		if got := h.headroomURL(); got != "http://localhost:8787" {
+			t.Fatalf("headroomURL default = %q, want http://localhost:8787", got)
+		}
 	}
 
 	// headroomDataDir env override.

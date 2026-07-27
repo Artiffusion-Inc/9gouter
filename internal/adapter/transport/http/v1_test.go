@@ -825,3 +825,108 @@ func TestV1_ChatCompletions_EmitsRouteDiagnostics(t *testing.T) {
 		}
 	}
 }
+
+// mustCreateCombo creates a combo with the given name, kind, and models JSON,
+// so combo-dispatch tests can exercise the handleChat combo-fallback loop.
+func mustCreateCombo(t *testing.T, db *sql.DB, name, kind, modelsJSON string) {
+	t.Helper()
+	comboRepo := repo.NewComboRepo(db)
+	if err := comboRepo.Create(context.Background(), settings.Combo{
+		ID:     "combo-" + name,
+		Name:   name,
+		Kind:   kind,
+		Models: json.RawMessage(modelsJSON),
+	}); err != nil {
+		t.Fatalf("create combo %s: %v", name, err)
+	}
+}
+
+// TestV1_ComboFallback_FallsThroughToSecondModel verifies the #2703 combo port:
+// when the first combo model's accounts all fail with a fallback-worthy error,
+// handleChat falls through to the second combo model rather than surfacing the
+// first model's failure (the old behaviour collapsed a combo to models[0]).
+func TestV1_ComboFallback_FallsThroughToSecondModel(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+	mustCreateConnectionWithID(t, db, "openai-a", "openai", `{"apiKey":"sk-a","providerSpecificData":{"connectionProxyEnabled":false}}`)
+	mustCreateConnectionWithID(t, db, "anthropic-a", "anthropic", `{"apiKey":"sk-c","providerSpecificData":{"connectionProxyEnabled":false}}`)
+	mustCreateCombo(t, db, "mycombo", "fallback", `["openai/gpt-4","anthropic/claude-3"]`)
+
+	// openai (first model) fails 429; anthropic (second) succeeds.
+	chat := &perConnChatHandler{results: map[string]ChatResult{
+		"openai-a":    {StatusCode: http.StatusTooManyRequests, Err: errors.New("rate limit exceeded")},
+		"anthropic-a": {StatusCode: http.StatusOK},
+	}}
+	deps := V1Deps{
+		APIKeysRepo:    repo.NewAPIKeyRepo(db),
+		SettingsRepo:   repo.NewSettingsRepo(db),
+		ConnectionRepo: repo.NewConnectionRepo(db),
+		ComboRepo:      repo.NewComboRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
+		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
+		Chat:           chat,
+		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	}
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"model":"mycombo","messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (combo should fall through to second model); body=%s", rec.Code, rec.Body.String())
+	}
+	// Both combo models were attempted: openai failed, anthropic served.
+	if len(chat.seen) != 2 {
+		t.Fatalf("expected 2 attempts (openai then anthropic), got %d: %v", len(chat.seen), chat.seen)
+	}
+	if chat.seen[1] != "anthropic-a" {
+		t.Fatalf("second attempt should be the fallback combo model; got %v", chat.seen)
+	}
+}
+
+// TestV1_ComboFallback_AllModelsFail503 verifies that when every combo model
+// fails, the client gets a 503 (the last model's status if it was non-2xx).
+func TestV1_ComboFallback_AllModelsFail503(t *testing.T) {
+	db := mustOpenDB(t)
+	defer db.Close()
+	mustCreateConnectionWithID(t, db, "openai-a", "openai", `{"apiKey":"sk-a","providerSpecificData":{"connectionProxyEnabled":false}}`)
+	mustCreateConnectionWithID(t, db, "anthropic-a", "anthropic", `{"apiKey":"sk-c","providerSpecificData":{"connectionProxyEnabled":false}}`)
+	mustCreateCombo(t, db, "badcombo", "fallback", `["openai/gpt-4","anthropic/claude-3"]`)
+
+	chat := &perConnChatHandler{results: map[string]ChatResult{
+		"openai-a":    {StatusCode: http.StatusTooManyRequests, Err: errors.New("rate limit exceeded")},
+		"anthropic-a": {StatusCode: http.StatusTooManyRequests, Err: errors.New("rate limit exceeded")},
+	}}
+	deps := V1Deps{
+		APIKeysRepo:    repo.NewAPIKeyRepo(db),
+		SettingsRepo:   repo.NewSettingsRepo(db),
+		ConnectionRepo: repo.NewConnectionRepo(db),
+		ComboRepo:      repo.NewComboRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
+		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
+		Chat:           chat,
+		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	}
+	mux := http.NewServeMux()
+	RegisterV1(mux, deps)
+
+	body := `{"model":"badcombo","messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:12345"
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429 (last combo model's status); body=%s", rec.Code, rec.Body.String())
+	}
+}

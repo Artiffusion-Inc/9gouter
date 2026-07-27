@@ -12,6 +12,7 @@ import (
 
 	adapterauth "github.com/Artiffusion-Inc/9gouter/internal/adapter/auth"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/config"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
 	domainauth "github.com/Artiffusion-Inc/9gouter/internal/domain/auth"
 	usecaseauth "github.com/Artiffusion-Inc/9gouter/internal/usecase/auth"
 	"github.com/Artiffusion-Inc/9gouter/internal/usecase/managedashboard"
@@ -50,20 +51,38 @@ type loginResponse struct {
 }
 
 func newAuthHandler(deps Deps, cfg config.Config) *authHandler {
-	var verifier usecaseauth.PasswordVerifier
+	// Fallback verifier used when no settings.password is stored (fresh
+	// install / password reset to default): honour DASHBOARD_PASSWORD_HASH if
+	// set, otherwise the legacy initial password "123456".
+	var fallback usecaseauth.PasswordVerifier
 	if cfg.DashboardPasswordHash != "" {
 		// Real bcrypt comparator (golang.org/x/crypto/bcrypt). The previous
 		// bcryptCompareStub always returned an error, so env-hash login was
 		// impossible from the HTTP path — only unit tests that minted a
 		// session directly via the SessionStore could exercise the dashboard.
-		verifier = &usecaseauth.BcryptVerifier{Hash: cfg.DashboardPasswordHash, Comparator: adapterauth.CompareBcrypt}
+		fallback = &usecaseauth.BcryptVerifier{Hash: cfg.DashboardPasswordHash, Comparator: adapterauth.CompareBcrypt}
 	} else {
-		verifier = &usecaseauth.PlainVerifier{InitialPassword: "123456"}
+		fallback = &usecaseauth.PlainVerifier{InitialPassword: "123456"}
+	}
+
+	// Primary verifier: the bcrypt hash a user sets through the UI is persisted
+	// under settings.password and must be honoured (mirrors legacy
+	// dashboardSession.js). The previous wiring read only env/fallback and
+	// silently rejected any UI-changed password with 401 — the dashboard looked
+	// logged-out for every /api/* call. Falls back to `fallback` only when no
+	// settings password is stored.
+	var verifier usecaseauth.PasswordVerifier = &usecaseauth.SettingsBcryptVerifier{
+		Reader:     settingsReaderFor(deps.Settings),
+		Comparator: adapterauth.CompareBcrypt,
+		Fallback:   fallback,
 	}
 	return &authHandler{
 		deps: deps,
-		uc:   usecaseauth.New(deps.SessionStore, adapterauth.NewLoginLimiter(), verifier, 0),
-		svc:  &managedashboard.SettingsService{Repo: deps.Settings},
+		// 24h session TTL, matching the legacy JWT expiry in
+		// src/lib/auth/dashboardSession.js (.setExpirationTime("24h")). The
+		// usecase normalizes <=0 to 24h too; pass it explicitly for clarity.
+		uc:  usecaseauth.New(deps.SessionStore, adapterauth.NewLoginLimiter(), verifier, 24*time.Hour),
+		svc: &managedashboard.SettingsService{Repo: deps.Settings},
 	}
 }
 
@@ -412,4 +431,29 @@ func probeOIDCClientSecret(ctx context.Context, tokenURL, clientID, clientSecret
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode >= 200 && resp.StatusCode < 300
+}
+
+// settingsReader adapts *repo.SettingsRepo.Get to the
+// usecaseauth.SettingsJSONReader interface used by SettingsBcryptVerifier.
+// It returns the merged settings JSON (defaults applied) so the verifier can
+// read settings.password without the usecase depending on the concrete repo
+// type from the adapter/db layer.
+func settingsReaderFor(r *repo.SettingsRepo) usecaseauth.SettingsJSONReader {
+	if r == nil {
+		return nil
+	}
+	return settingsReader{r: r}
+}
+
+type settingsReader struct{ r *repo.SettingsRepo }
+
+func (s settingsReader) SettingsJSON(ctx context.Context) ([]byte, error) {
+	if s.r == nil {
+		return nil, nil
+	}
+	st, err := s.r.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(st.Data), nil
 }

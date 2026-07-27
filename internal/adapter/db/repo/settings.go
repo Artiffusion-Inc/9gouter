@@ -11,53 +11,70 @@ import (
 )
 
 // SettingsRepo persists the single-row settings object, ported from settingsRepo.js.
-type SettingsRepo struct{ db *sql.DB }
+type SettingsRepo struct {
+	db       *sql.DB
+	onUpdate []func(ctx context.Context, merged map[string]any)
+}
 
 func NewSettingsRepo(db *sql.DB) *SettingsRepo { return &SettingsRepo{db: db} }
 
+// OnUpdate registers a callback invoked after a successful Update with the
+// merged settings (defaults applied). The composition root uses it to re-apply
+// side-effect-bearing settings — e.g. the dashboard "Outbound proxy" panel,
+// which must rewrite HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY on change —
+// mirroring the legacy JS side-effect import that ran applyOutboundProxyEnv on
+// every settings read. Callbacks run on the caller's goroutine; keep them
+// cheap (the outbound-proxy apply mutates only os.Environ).
+func (r *SettingsRepo) OnUpdate(fn func(ctx context.Context, merged map[string]any)) {
+	if fn == nil {
+		return
+	}
+	r.onUpdate = append(r.onUpdate, fn)
+}
+
 var defaultSettings = map[string]any{
-	"cloudEnabled":                    false,
-	"tunnelEnabled":                   false,
-	"tunnelUrl":                       "",
-	"tunnelProvider":                  "cloudflare",
-	"tailscaleEnabled":                false,
-	"tailscaleUrl":                    "",
-	"stickyRoundRobinLimit":           3,
-	"providerStrategies":              map[string]any{},
-	"quotaVisibility":                 map[string]any{},
-	"comboStrategy":                   "fallback",
-	"comboStickyRoundRobinLimit":      1,
-	"comboStrategies":                 map[string]any{},
-	"requireLogin":                    true,
-	"tunnelDashboardAccess":           true,
-	"authMode":                        "password",
-	"oidcIssuerUrl":                   "",
-	"oidcClientId":                    "",
-	"oidcClientSecret":                "",
-	"oidcScopes":                      "openid profile email",
-	"oidcLoginLabel":                  "Sign in with OIDC",
-	"enableObservability":             true,
-	"observabilityMaxRecords":         1000,
-	"observabilityBatchSize":          20,
-	"observabilityFlushIntervalMs":    5000,
-	"observabilityMaxJsonSize":        5,
-	"outboundProxyEnabled":            false,
-	"outboundProxyUrl":                "",
-	"outboundNoProxy":                 "",
-	"mitmRouterBaseUrl":               "http://localhost:20128",
-	"dnsToolEnabled":                  map[string]any{},
-	"rtkEnabled":                      true,
-	"headroomEnabled":                 false,
-	"headroomUrl":                     "http://localhost:8787",
-	"headroomCompressUserMessages":    false,
-	"cavemanEnabled":                  false,
-	"cavemanLevel":                    "full",
-	"ponytailEnabled":                 false,
-	"ponytailLevel":                   "full",
-	"pxpipeEnabled":                   false,
-	"pxpipeAutoInstall":               true,
-	"pxpipeMinChars":                  25000,
-	"pxpipeTimeoutMs":                 15000,
+	"cloudEnabled":                 false,
+	"tunnelEnabled":                false,
+	"tunnelUrl":                    "",
+	"tunnelProvider":               "cloudflare",
+	"tailscaleEnabled":             false,
+	"tailscaleUrl":                 "",
+	"stickyRoundRobinLimit":        3,
+	"providerStrategies":           map[string]any{},
+	"quotaVisibility":              map[string]any{},
+	"comboStrategy":                "fallback",
+	"comboStickyRoundRobinLimit":   1,
+	"comboStrategies":              map[string]any{},
+	"requireLogin":                 true,
+	"tunnelDashboardAccess":        true,
+	"authMode":                     "password",
+	"oidcIssuerUrl":                "",
+	"oidcClientId":                 "",
+	"oidcClientSecret":             "",
+	"oidcScopes":                   "openid profile email",
+	"oidcLoginLabel":               "Sign in with OIDC",
+	"enableObservability":          true,
+	"observabilityMaxRecords":      1000,
+	"observabilityBatchSize":       20,
+	"observabilityFlushIntervalMs": 5000,
+	"observabilityMaxJsonSize":     5,
+	"outboundProxyEnabled":         false,
+	"outboundProxyUrl":             "",
+	"outboundNoProxy":              "",
+	"mitmRouterBaseUrl":            "http://localhost:20128",
+	"dnsToolEnabled":               map[string]any{},
+	"rtkEnabled":                   true,
+	"headroomEnabled":              false,
+	"headroomUrl":                  "http://localhost:8787",
+	"headroomCompressUserMessages": false,
+	"cavemanEnabled":               false,
+	"cavemanLevel":                 "full",
+	"ponytailEnabled":              false,
+	"ponytailLevel":                "full",
+	"pxpipeEnabled":                false,
+	"pxpipeAutoInstall":            true,
+	"pxpipeMinChars":               25000,
+	"pxpipeTimeoutMs":              15000,
 }
 
 func (r *SettingsRepo) Get(ctx context.Context) (*settings.Settings, error) {
@@ -131,6 +148,15 @@ func (r *SettingsRepo) Update(ctx context.Context, updates json.RawMessage) (*se
 	mergedBytes, err := json.Marshal(merged)
 	if err != nil {
 		return nil, err
+	}
+	// Fire side-effect hooks (e.g. re-apply outbound-proxy env) after the row
+	// is committed. A panicking hook is recovered so a misconfigured callback
+	// cannot corrupt the settings write that already succeeded.
+	for _, fn := range r.onUpdate {
+		func() {
+			defer func() { _ = recover() }()
+			fn(ctx, merged)
+		}()
 	}
 	return &settings.Settings{ID: 1, Data: json.RawMessage(mergedBytes)}, nil
 }

@@ -91,6 +91,17 @@ type Dependencies struct {
 	// ObservabilityGate reads the enableObservability flag + retention knobs.
 	// nil → observability disabled.
 	ObservabilityGate ObservabilityGate
+	// TokenSaverGate reads the dashboard token-saver switches (rtk/headroom/
+	// caveman/ponytail/pxpipe) so the chat path honours them live. nil → all
+	// token-saver stages off (pre-#208 behaviour; Request.TokenSavers untouched
+	// when the caller already set it for a test).
+	TokenSaverGate TokenSaverGate
+	// ProviderThinkingGate reads settings.providerThinking[provider].mode so the
+	// dashboard per-provider "Thinking" toggle injects a thinking/reasoning_effort
+	// override into the raw client body before translation (ports
+	// open-sse/handlers/chatCore.js:70-82). nil → no override (auto), matching
+	// the pre-port behaviour.
+	ProviderThinkingGate ProviderThinkingGate
 }
 
 // UsageEventPublisher is the live real-time analytics surface. proxychat
@@ -177,6 +188,31 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 	detail := newRequestDetailBuilder(h.deps.RequestDetails, h.deps.ObservabilityGate, providerID, req.Model, req.ConnectionID)
 	detailEnabled := detail.maybeEnabled(req.Ctx)
 	requestCfg := extractRequestConfig(req.Body, req.Stream)
+
+	// Fill the token-saver config from the live settings gate so the dashboard
+	// rtk/headroom/caveman/ponytail/pxpipe toggles take effect on the chat path
+	// (ports src/sse/handlers/chat.js reading getSettings() per request). When
+	// the caller already populated req.TokenSavers (tests / explicit callers)
+	// OR no gate is wired, leave it as-is — preserving the fail-open behaviour
+	// for callers that pass a hand-built config and for misconfigured wiring.
+	if h.deps.TokenSaverGate != nil && isZeroTokenSaverConfig(req.TokenSavers) {
+		req.TokenSavers = h.deps.TokenSaverGate.Config(req.Ctx)
+	}
+
+	// Inject the per-provider thinking-mode override into the raw client body
+	// BEFORE translation (ports open-sse/handlers/chatCore.js:70-82). The
+	// dashboard "Thinking" toggle per provider (settings.providerThinking[provider]
+	// .mode) only takes effect here; the downstream translator + per-provider
+	// thinking logic then remaps thinking/reasoning_effort into the
+	// provider-native field. Without this the toggle was a no-op in the Go
+	// rewrite (isThinkingEnabled was a hard-coded heuristic that never read
+	// settings). Injection is skipped when the client already set the field
+	// (mode != "auto" only overrides an unset field — matches JS).
+	if h.deps.ProviderThinkingGate != nil {
+		if mode := h.deps.ProviderThinkingGate.Mode(req.Ctx, providerID); mode != "" {
+			req.Body = injectProviderThinking(req.Body, mode)
+		}
+	}
 
 	var translatedBody json.RawMessage
 	if translator.NeedsTranslation(sourceFormat, targetFormat) {
@@ -884,6 +920,50 @@ func isThinkingEnabled(body json.RawMessage, headers http.Header, model string) 
 	}
 	mod := strings.ToLower(model)
 	return strings.Contains(mod, "thinking") || strings.Contains(mod, "-reason")
+}
+
+// injectProviderThinking ports open-sse/handlers/chatCore.js:70-82. It mutates
+// the raw client body so a per-provider thinking-mode override
+// (settings.providerThinking[provider].mode, mode != "auto") takes effect before
+// translation:
+//   - mode "on"  + body has no `thinking`           → thinking = {type:"enabled", budget_tokens:10000}
+//   - mode "off" + body has no `thinking`           → thinking = {type:"disabled"}
+//   - any other non-auto mode + no `reasoning_effort` → reasoning_effort = mode
+//
+// The "only if the client hasn't set it" guard matches JS exactly: an explicit
+// client field wins over the dashboard override. On any parse/marshal error the
+// body is returned unchanged (fail-open — translation proceeds on the original
+// body) rather than failing the whole request.
+func injectProviderThinking(body json.RawMessage, mode string) json.RawMessage {
+	if mode == "" || mode == "auto" {
+		return body
+	}
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		return body
+	}
+	_, hasThinking := m["thinking"]
+	switch mode {
+	case "on":
+		if !hasThinking {
+			m["thinking"] = map[string]any{"type": "enabled", "budget_tokens": float64(10000)}
+		}
+	case "off":
+		if !hasThinking {
+			m["thinking"] = map[string]any{"type": "disabled"}
+		}
+	default:
+		// low / medium / high / xhigh / max / none / thinking / ... → reasoning_effort,
+		// but only if the client did not set it.
+		if effort, ok := m["reasoning_effort"].(string); !ok || effort == "" {
+			m["reasoning_effort"] = mode
+		}
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return body
+	}
+	return out
 }
 
 func rawToMap(raw json.RawMessage) (map[string]any, error) {

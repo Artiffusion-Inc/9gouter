@@ -79,6 +79,23 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 
 	repos := buildRepos(db)
 
+	// Re-apply the dashboard "Outbound proxy" settings to the process env every
+	// time settings change (PATCH /api/settings, backup import), mirroring the
+	// legacy JS applyOutboundProxyEnv side-effect that ran on every settings
+	// read. The boot-time apply below covers the initial row; this hook covers
+	// live edits. Fail-open: a read error leaves operator env untouched.
+	repos.Settings.OnUpdate(func(ctx context.Context, merged map[string]any) {
+		proxy.ApplyOutboundProxyEnv(outboundProxyConfigFromMap(merged))
+	})
+
+	// Apply the dashboard "Outbound proxy" settings (settings.outboundProxyUrl
+	// /Enabled/NoProxy) to the process env so the proxy stack's
+	// resolveEnvProxyURL — which reads HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/
+	// NO_PROXY — honours them on every outbound fetch. Mirrors legacy
+	// src/lib/network/initOutboundProxy.js, which applied settings once at
+	// boot. Fail-open: a read error leaves operator env untouched.
+	proxy.ApplyOutboundProxyEnv(readOutboundProxyConfig(context.Background(), repos.Settings))
+
 	// Register live-model resolvers with their real token refreshers so a
 	// 401 from the upstream /models endpoint triggers an actual refresh +
 	// retry instead of the stub-refresher fallback. kiro, grok-cli (xAI),
@@ -159,23 +176,24 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("session store: %w", err)
 	}
 	apiDeps := api.Deps{
-		APIKeys:        repos.APIKeys,
-		Alias:          repos.Aliases,
-		Combos:         repos.Combos,
-		Connections:    repos.Connections,
-		DisabledModels: repos.DisabledModels,
-		Nodes:          repos.Nodes,
-		Pricing:        repos.Pricing,
-		ProxyPools:     repos.ProxyPools,
-		RequestDetails: repos.RequestDetails,
-		Settings:       repos.Settings,
-		Usage:          repos.Usage,
-		UsageTracker:   usageTracker,
-		SessionStore:   sessionStore,
-		Logger:         logger,
-		DB:             db,
-		Version:        cfg.Version,
-		ProxyOpts:      proxyOpts,
+		APIKeys:            repos.APIKeys,
+		Alias:              repos.Aliases,
+		Combos:             repos.Combos,
+		Connections:        repos.Connections,
+		DisabledModels:     repos.DisabledModels,
+		Nodes:              repos.Nodes,
+		Pricing:            repos.Pricing,
+		ProxyPools:         repos.ProxyPools,
+		RequestDetails:     repos.RequestDetails,
+		Settings:           repos.Settings,
+		Usage:              repos.Usage,
+		UsageTracker:       usageTracker,
+		SessionStore:       sessionStore,
+		Logger:             logger,
+		DB:                 db,
+		Version:            cfg.Version,
+		ProxyOpts:          proxyOpts,
+		ResetComboRotation: httptransport.ResetComboRotation,
 	}
 	api.RegisterHealth(mux)
 	api.RegisterVersion(mux, cfg.Version)
@@ -213,13 +231,18 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	// Static dashboard catch-all: serves the embedded Next.js static export
 	// for any path NOT claimed by /v1, /api, or /health above. Must be
 	// registered last so the ServeMux longest-prefix match keeps API routes
-	// taking precedence. (T018 wiring.)
-	mux.Handle("/", httptransport.NewStaticHandler(logger))
+	// taking precedence. (T018 wiring.) The handler is wrapped in a
+	// DashboardGuard that ports src/dashboardGuard.js: enforce requireLogin +
+	// tunnelDashboardAccess (block tunnel/tailscale hostname exposure) for
+	// /dashboard* — without it the dashboard UI was served to anyone reaching
+	// the port, and the dashboard "Require login" / "Block tunnel dashboard
+	// access" toggles did nothing.
+	mux.Handle("/", httptransport.NewDashboardGuard(httptransport.NewStaticHandler(logger), sessionStore, repos.Settings))
 
 	server := httptransport.NewServer(httptransport.Deps{
 		Config:  cfg,
 		Logger:  logger,
-		Auth:    httptransport.NewAuthFunc(sessionStore),
+		Auth:    httptransport.NewAuthFunc(sessionStore, httptransport.NewRequireLoginGate(repos.Settings)),
 		Handler: mux,
 	})
 
@@ -314,16 +337,18 @@ func newProxyChatHandler(r repos, opts proxy.Options, cfg config.Config, logger 
 	return &proxyChatHandler{
 		logger: logger,
 		handler: proxychat.New(proxychat.Dependencies{
-			Registry:          domainProvRegistry,
-			UsageRepo:         r.Usage,
-			StreamPipe:        pipeAdapter{},
-			JSONToSSE:         synthesizerFunc(translator.Synthesize),
-			Logger:            &slogLogger{logger},
-			Config:            cfg,
-			UsageEvents:       events,
-			Pricing:           priceResolver,
-			RequestDetails:    r.RequestDetails,
-			ObservabilityGate: proxychat.NewObservabilityGate(r.Settings),
+			Registry:             domainProvRegistry,
+			UsageRepo:            r.Usage,
+			StreamPipe:           pipeAdapter{},
+			JSONToSSE:            synthesizerFunc(translator.Synthesize),
+			Logger:               &slogLogger{logger},
+			Config:               cfg,
+			UsageEvents:          events,
+			Pricing:              priceResolver,
+			RequestDetails:       r.RequestDetails,
+			ObservabilityGate:    proxychat.NewObservabilityGate(r.Settings),
+			TokenSaverGate:       proxychat.NewTokenSaverGate(r.Settings),
+			ProviderThinkingGate: proxychat.NewProviderThinkingGate(r.Settings),
 		}),
 	}
 }
@@ -1038,4 +1063,39 @@ func (h *searchHandler) Handle(ctx context.Context, req httptransport.SearchRequ
 		Body:        res.Body,
 		ContentType: res.ContentType,
 	}, nil
+}
+
+// readOutboundProxyConfig reads the dashboard "Outbound proxy" panel fields
+// from the settings repo. On any read/parse error it returns the zero config
+// (disabled), so ApplyOutboundProxyEnv leaves operator env untouched — the
+// fail-open contract of legacy applyOutboundProxyEnv.
+func readOutboundProxyConfig(ctx context.Context, s *repo.SettingsRepo) proxy.OutboundProxyConfig {
+	if s == nil {
+		return proxy.OutboundProxyConfig{}
+	}
+	st, err := s.Get(ctx)
+	if err != nil || len(st.Data) == 0 {
+		return proxy.OutboundProxyConfig{}
+	}
+	var m map[string]any
+	if err := json.Unmarshal(st.Data, &m); err != nil {
+		return proxy.OutboundProxyConfig{}
+	}
+	return outboundProxyConfigFromMap(m)
+}
+
+// outboundProxyConfigFromMap pulls the three outbound-proxy keys from a merged
+// settings map (defaults already applied by SettingsRepo.mergeWithDefaults).
+func outboundProxyConfigFromMap(m map[string]any) proxy.OutboundProxyConfig {
+	cfg := proxy.OutboundProxyConfig{}
+	if b, ok := m["outboundProxyEnabled"].(bool); ok {
+		cfg.Enabled = b
+	}
+	if s, ok := m["outboundProxyUrl"].(string); ok {
+		cfg.ProxyURL = s
+	}
+	if s, ok := m["outboundNoProxy"].(string); ok {
+		cfg.NoProxy = s
+	}
+	return cfg
 }

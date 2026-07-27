@@ -27,9 +27,15 @@ func (r *ComboRepo) List(ctx context.Context) ([]settings.Combo, error) {
 		var c settings.Combo
 		var created, updated string
 		var models []byte
-		if err := rows.Scan(&c.ID, &c.Name, &c.Kind, &models, &created, &updated); err != nil {
+		// kind is nullable (legacy combos store NULL), so scan into a
+		// NullString instead of &c.Kind — database/sql rejects scanning a
+		// NULL column into a plain string, which made /api/combos return 500
+		// for any row with kind=NULL (the common case from the JS backend).
+		var kind sql.NullString
+		if err := rows.Scan(&c.ID, &c.Name, &kind, &models, &created, &updated); err != nil {
 			return nil, fmt.Errorf("combos scan: %w", err)
 		}
+		c.Kind = kind.String
 		c.Models = json.RawMessage(models)
 		c.CreatedAt, _ = parseTime(created)
 		c.UpdatedAt, _ = parseTime(updated)
@@ -52,13 +58,16 @@ func (r *ComboRepo) scanCombo(row *sql.Row) (*settings.Combo, error) {
 	var c settings.Combo
 	var created, updated string
 	var models []byte
-	err := row.Scan(&c.ID, &c.Name, &c.Kind, &models, &created, &updated)
+	// kind is nullable (legacy combos store NULL) — see List.
+	var kind sql.NullString
+	err := row.Scan(&c.ID, &c.Name, &kind, &models, &created, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("combos scan: %w", err)
 	}
+	c.Kind = kind.String
 	c.Models = json.RawMessage(models)
 	c.CreatedAt, _ = parseTime(created)
 	c.UpdatedAt, _ = parseTime(updated)

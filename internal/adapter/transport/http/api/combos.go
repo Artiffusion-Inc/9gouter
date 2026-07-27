@@ -96,6 +96,9 @@ func (h *combosHandler) create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Failed to create combo")
 		return
 	}
+	if h.deps.ResetComboRotation != nil {
+		h.deps.ResetComboRotation(created.Name)
+	}
 	writeJSON(w, http.StatusCreated, created)
 }
 
@@ -145,12 +148,21 @@ func (h *combosHandler) update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Failed to update combo")
 		return
 	}
+	if h.deps.ResetComboRotation != nil {
+		// Clear any stale entry under the previous name (rename) as well as
+		// the current name, so the next request re-seeds the cursor from the
+		// new model list.
+		h.deps.ResetComboRotation(updated.Name)
+		if prev.Name != updated.Name {
+			h.deps.ResetComboRotation(prev.Name)
+		}
+	}
 	writeJSON(w, http.StatusOK, updated)
 }
 
 func (h *combosHandler) delete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	_, err := h.svc.Get(r.Context(), id)
+	prev, err := h.svc.Get(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to fetch combo")
 		return
@@ -158,6 +170,11 @@ func (h *combosHandler) delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.Delete(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, "Failed to delete combo")
 		return
+	}
+	// Delete is idempotent (mirrors JS deleteCombo); only clear rotation state
+	// if the combo actually existed, so a repeated delete does not re-touch it.
+	if prev != nil && h.deps.ResetComboRotation != nil {
+		h.deps.ResetComboRotation(prev.Name)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
 }

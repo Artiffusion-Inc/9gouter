@@ -50,7 +50,7 @@ const dashboardProxyPrefix = "/api/headroom/proxy"
 // proxyLocalOnly is the real reverse-proxy behind h.proxy. It returns an
 // error response (JSON) on failure so the dashboard UI gets a structured
 // message rather than an empty 200, matching the JS `catch` branch.
-func proxyLocalOnly(w http.ResponseWriter, r *http.Request) {
+func proxyLocalOnly(h *headroomHandler, w http.ResponseWriter, r *http.Request) {
 	// LOCAL_ONLY gate: restrict to loopback viewers. Without the CLI-token
 	// subsystem (deferred), non-loopback callers are refused outright so a
 	// remote browser cannot drive the dashboard proxy. Session auth is handled
@@ -62,7 +62,7 @@ func proxyLocalOnly(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	base := headroomURLFromSettings()
+	base := h.headroomURL()
 	target, err := buildHeadroomTargetURL(base, r.URL.Path, r.URL.RawQuery)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})

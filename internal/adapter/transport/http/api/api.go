@@ -43,6 +43,35 @@ var publicRoutes = []string{
 	"/api/version/update",
 }
 
+// alwaysProtectedRoutes lists /api paths that require a valid session even
+// when settings.requireLogin is false. They carry destructive or secret
+// surface (shutdown, DB backup import/export, OAuth auto-import) and must not
+// be opened by the requireLogin=false gate. Mirrors the legacy
+// dashboardGuard.js ALWAYS_PROTECTED list. Keep sorted longest-first.
+//
+// Note: some of these (/api/version/shutdown, /api/version/update) are also in
+// publicRoutes; that is a pre-existing quirk of the JS contract (they were
+// listed in both) and is outside the scope of T020/#205 — leave them as-is.
+var alwaysProtectedRoutes = []string{
+	"/api/oauth/cursor/auto-import",
+	"/api/oauth/kiro/auto-import",
+	"/api/settings/database",
+	"/api/shutdown",
+	"/api/version/shutdown",
+	"/api/version/update",
+}
+
+// IsAlwaysProtected reports whether path must carry a valid session even when
+// settings.requireLogin is false (mirrors dashboardGuard.js ALWAYS_PROTECTED).
+func IsAlwaysProtected(path string) bool {
+	for _, prefix := range alwaysProtectedRoutes {
+		if strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsPublicRoute reports whether path is a public /api route. The comparison is
 // prefix-based, which matches the static Next.js public routes and any nested
 // OIDC paths.
@@ -93,6 +122,12 @@ type Deps struct {
 	// (proxy.ProxyAwareFetch). Zero-value when unset → those handlers fall back
 	// to a plain timeout client (the pre-#154 behaviour).
 	ProxyOpts proxy.Options
+
+	// ResetComboRotation, when set, is called by the combos API on
+	// create/update/delete so the round-robin cursor honors the new model list
+	// immediately instead of carrying a stale index. nil → no-op (rotation
+	// state only self-corrects once the cursor wraps past the new length).
+	ResetComboRotation func(comboName string)
 }
 
 // writeJSON writes a JSON response with the given status code.

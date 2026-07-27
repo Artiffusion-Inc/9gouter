@@ -280,7 +280,7 @@ func (h *headroomHandler) status(w http.ResponseWriter, r *http.Request) {
 	bin := findHeadroomBinary()
 	py := findPython310()
 	installed := bin != ""
-	settingsURL := headroomURLFromSettings()
+	settingsURL := h.headroomURL()
 	localURL := isLoopbackHeadroomURL(settingsURL)
 	running := false
 	if installed && localURL {
@@ -310,14 +310,29 @@ func (h *headroomHandler) status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// headroomURLFromSettings returns the headroom URL the UI is configured
-// against. The JS server reads this from settingsRepo; for the Go rewrite we
-// fall back to HEADROOM_URL env (matches detect.js DEFAULT_HEADROOM_URL) and
-// otherwise the loopback default. This keeps the status response stable
-// when settings storage is unavailable.
-func headroomURLFromSettings() string {
+// headroomURL returns the headroom URL the UI is configured against. The legacy
+// JS dashboard-guard / headroom route handlers honoured HEADROOM_URL env first
+// (matches detect.js DEFAULT_HEADROOM_URL override used by the management
+// surface), then the stored settings value, then the loopback default. The
+// previous standalone headroomURLFromSettings read only env + hardcoded
+// default, so a UI-changed headroomUrl was silently ignored when no env was
+// set. Resolution order:
+//  1. HEADROOM_URL env (matches the original env-priority handler behaviour)
+//  2. settings.headroomUrl (set through the Settings UI)
+//  3. loopback default http://localhost:8787
+func (h *headroomHandler) headroomURL() string {
 	if v := os.Getenv("HEADROOM_URL"); v != "" {
 		return v
+	}
+	if h != nil && h.deps.Settings != nil {
+		if st, err := h.deps.Settings.Get(context.Background()); err == nil && len(st.Data) > 0 {
+			var m map[string]any
+			if err := json.Unmarshal(st.Data, &m); err == nil {
+				if v, _ := m["headroomUrl"].(string); v != "" {
+					return v
+				}
+			}
+		}
 	}
 	return "http://localhost:8787"
 }
@@ -524,7 +539,7 @@ func (h *headroomHandler) start(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusPreconditionFailed, "Headroom CLI not installed")
 		return
 	}
-	settingsURL := headroomURLFromSettings()
+	settingsURL := h.headroomURL()
 	if !isLoopbackHeadroomURL(settingsURL) {
 		writeError(w, http.StatusBadRequest, "headroomUrl is not a loopback URL; cannot start a managed daemon for an external endpoint")
 		return
@@ -600,7 +615,7 @@ func (h *headroomHandler) restart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusPreconditionFailed, "Headroom CLI not installed")
 		return
 	}
-	settingsURL := headroomURLFromSettings()
+	settingsURL := h.headroomURL()
 	if !isLoopbackHeadroomURL(settingsURL) {
 		writeError(w, http.StatusBadRequest, "headroomUrl is not a loopback URL; cannot restart a managed daemon for an external endpoint")
 		return
@@ -619,7 +634,7 @@ func (h *headroomHandler) proxy(w http.ResponseWriter, r *http.Request) {
 	// Reverse-proxy to the Headroom dashboard (#2372 / 481e7e46). Implemented in
 	// headroom_proxy.go so this file stays focused on the process/management
 	// surface. The handler is method-dispatched by the mux registrations above.
-	proxyLocalOnly(w, r)
+	proxyLocalOnly(h, w, r)
 }
 
 // managedPID reads headroom's pid file and verifies the process is alive.

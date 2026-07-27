@@ -571,6 +571,73 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// CLI bypass (ports open-sse/utils/bypassHandler.js). Claude Code CLI
+	// (user-agent contains "claude-cli") sends housekeeping probes — Warmup,
+	// "count", title extraction "{", the SKIP_PATTERNS title prompt, and (when
+	// the dashboard ccFilterNaming toggle is on) the "isNewTopic" naming probe —
+	// that must short-circuit with a fake response BEFORE combo rotation so they
+	// neither waste rotation slots nor cost upstream tokens. The Go rewrite
+	// dropped this path, so the toggle did nothing and the probes hit the
+	// provider. Patterns 1-4 run regardless of the setting; pattern 5 needs
+	// settings.ccFilterNaming (read here alongside the combo data blob).
+	data, _ := h.settingsData(ctx)
+	ccFilterNaming := false
+	if v, ok := data["ccFilterNaming"].(bool); ok {
+		ccFilterNaming = v
+	}
+	if h.handleBypassRequest(w, body, modelStr, r.UserAgent(), r.URL.Path, ccFilterNaming) {
+		return
+	}
+
+	// Combo dispatch (decolua/9router #2703 combo port). If modelStr names a
+	// combo, iterate its (rotated) models and fall through to the next model on
+	// a fallback-worthy error — the two-axis fallback the JS had (combo level
+	// + account level). For each combo model, runAccountFallback runs the
+	// existing account-fallback loop (Fix 3). Non-combo models take the single
+	// model path unchanged. The combo check runs before resolveModel so a combo
+	// name is not collapsed to models[0] (the old behaviour) and stream is
+	// resolved per combo member (members may target different providers).
+	comboModels, _ := h.resolveComboModels(ctx, modelStr, data)
+	if len(comboModels) > 0 {
+		var lastComboStatus int
+		var lastComboErr error
+		var lastComboModel string
+		for _, comboModel := range comboModels {
+			mi, err := h.resolveModel(ctx, comboModel)
+			if err != nil || mi == nil || mi.Provider == "" {
+				// Unresolvable combo member — skip to the next rather than
+				// aborting the whole combo (mirrors JS handleComboChat
+				// continuing past a bad model entry).
+				lastComboStatus = http.StatusServiceUnavailable
+				lastComboErr = fmt.Errorf("unknown combo model %q", comboModel)
+				lastComboModel = comboModel
+				continue
+			}
+			stream := resolveStream(body, r.Header, mi.Provider)
+			outcome := h.runAccountFallback(ctx, w, r, body, mi, apiKey, stream)
+			if outcome.handled {
+				// Success or hard-fail already written to w.
+				return
+			}
+			// Fallback-worthy exhaustion: record and try the next combo model.
+			lastComboStatus = outcome.lastStatus
+			lastComboErr = outcome.lastErr
+			lastComboModel = comboModel
+			resetResponseHeaders(w)
+		}
+		// All combo models unavailable.
+		status := lastComboStatus
+		if status == 0 {
+			status = http.StatusServiceUnavailable
+		}
+		msg := "All combo models unavailable"
+		if lastComboErr != nil {
+			msg = lastComboErr.Error()
+		}
+		h.writeError(w, status, fmt.Sprintf("[combo:%s/%s] %s", modelStr, lastComboModel, msg))
+		return
+	}
+
 	modelInfo, err := h.resolveModel(ctx, modelStr)
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
@@ -583,19 +650,51 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	stream := resolveStream(body, r.Header, modelInfo.Provider)
 
-	// Account fallback loop (decolua/9router #2703 Fix 3). Mirrors the JS
-	// chat.js while(true) loop: resolve credentials (skipping excluded/locked
-	// connections), run the chat pipeline, and on a non-2xx / error classify
-	// the failure. A proxy/relay outage (typed ProxyRouteError) fails hard
-	// against the current account without locking it; any fallback-worthy
-	// failure marks the connection unavailable for the model and rotates to
-	// the next account. The loop is bounded by the number of active
-	// connections for the provider.
-	//
-	// Streaming-success and non-streaming-success exit the loop immediately.
-	// Mid-stream fallback is not attempted (matches JS: once the upstream
-	// begins streaming, the response is committed); a streaming error after
-	// the headers are written is surfaced as-is.
+	outcome := h.runAccountFallback(ctx, w, r, body, modelInfo, apiKey, stream)
+	if !outcome.handled {
+		// Accounts exhausted on fallback-worthy errors. Mirrors the JS
+		// chat.js while(true) loop: reuse the last non-2xx status (429 here),
+		// falling back to 503 only when no status was recorded, and surface
+		// the last error message.
+		status := outcome.lastStatus
+		if status == 0 {
+			status = http.StatusServiceUnavailable
+		}
+		msg := "All accounts unavailable"
+		if outcome.lastErr != nil {
+			msg = outcome.lastErr.Error()
+		}
+		h.writeError(w, status, fmt.Sprintf("[%s/%s] %s", modelInfo.Provider, modelInfo.Model, msg))
+	}
+}
+
+// accountFallbackOutcome is the result of runAccountFallback.
+//
+// handled is true when a terminal response was written to w (streaming or
+// non-streaming success, a hard-fail, or a no-credentials error) — the caller
+// must not touch w further. handled is false when every account for the model
+// was exhausted on a fallback-worthy error; lastStatus/lastErr carry that
+// failure so a combo-level caller can fall through to the next combo model.
+type accountFallbackOutcome struct {
+	handled    bool
+	lastStatus int
+	lastErr    error
+}
+
+// runAccountFallback runs the per-model account-fallback loop (decolua/9router
+// #2703 Fix 3). Mirrors the JS chat.js while(true) loop: resolve credentials
+// (skipping excluded/locked connections), run the chat pipeline, and on a
+// non-2xx / error classify the failure. A proxy/relay outage (typed
+// ProxyRouteError) fails hard against the current account without locking it;
+// any fallback-worthy failure marks the connection unavailable for the model
+// and rotates to the next account. The loop is bounded by the number of active
+// connections for the provider.
+//
+// Streaming-success and non-streaming-success exit the loop immediately. A
+// streaming error after the headers are written is surfaced as-is. When all
+// accounts are exhausted on a fallback-worthy error, handled is false and the
+// last failure is returned for combo-level fall-through.
+func (h *v1Handler) runAccountFallback(ctx context.Context, w http.ResponseWriter, r *http.Request, body []byte, modelInfo *modelInfo, apiKey string, stream bool) accountFallbackOutcome {
 	excluded := map[string]struct{}{}
 	var lastErr error
 	var lastStatus int
@@ -633,21 +732,14 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 				if len(excluded) == 0 {
 					// No credentials configured at all (not an exhausted loop).
 					h.writeError(w, http.StatusNotFound, fmt.Sprintf("No active credentials for provider: %s", modelInfo.Provider))
-					return
+					return accountFallbackOutcome{handled: true}
 				}
-				status := lastStatus
-				if status == 0 {
-					status = http.StatusServiceUnavailable
-				}
-				msg := "All accounts unavailable"
-				if lastErr != nil {
-					msg = lastErr.Error()
-				}
-				h.writeError(w, status, fmt.Sprintf("[%s/%s] %s", modelInfo.Provider, modelInfo.Model, msg))
-				return
+				// Accounts exhausted on fallback-worthy errors: hand back to
+				// the combo loop (if any) to try the next combo model.
+				return accountFallbackOutcome{handled: false, lastStatus: lastStatus, lastErr: lastErr}
 			}
 			h.writeError(w, http.StatusNotFound, fmt.Sprintf("No active credentials for provider: %s", modelInfo.Provider))
-			return
+			return accountFallbackOutcome{handled: true}
 		}
 
 		sseWriter := New(w, ctx)
@@ -686,14 +778,8 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 
 		// Success path: streaming committed or non-streaming body written.
 		if res.Err == nil {
-			if res.Streamed {
-				// On success, clear the model lock for the account that just
-				// served the request (lazy recovery — Fix 3).
-				h.clearAccountErrorOnSuccess(ctx, req.ConnectionID, modelInfo.Model)
-				return
-			}
 			h.clearAccountErrorOnSuccess(ctx, req.ConnectionID, modelInfo.Model)
-			return
+			return accountFallbackOutcome{handled: true}
 		}
 
 		// Failure: classify and decide fallback vs hard-fail. A streaming
@@ -704,7 +790,7 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 			h.logger.Warn("chat streaming error after commit",
 				"provider", modelInfo.Provider, "model", modelInfo.Model,
 				"connectionId", req.ConnectionID, "status", res.StatusCode, "error", res.Err)
-			return
+			return accountFallbackOutcome{handled: true}
 		}
 
 		fallback := h.classifyAndMark(ctx, req.ConnectionID, modelInfo.Provider, modelInfo.Model, res.StatusCode, res.Err)
@@ -718,7 +804,7 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 				}
 				h.writeError(w, status, res.Err.Error())
 			}
-			return
+			return accountFallbackOutcome{handled: true}
 		}
 
 		// Rotate: exclude this connection and retry with the next.
@@ -736,6 +822,25 @@ func (h *v1Handler) handleChat(w http.ResponseWriter, r *http.Request) {
 		// response (the failed attempt only touched w.Header(), not WriteHeader).
 		resetResponseHeaders(w)
 	}
+}
+
+// settingsData returns the parsed settings blob (map) or an empty map on
+// error. Used by combo dispatch to read comboStrategy / comboStrategies /
+// comboStickyRoundRobinLimit without forcing every caller to handle parse
+// errors — a missing/unparseable settings blob just yields defaults.
+func (h *v1Handler) settingsData(ctx context.Context) (map[string]any, error) {
+	settings, err := h.deps.SettingsRepo.Get(ctx)
+	if err != nil {
+		return map[string]any{}, err
+	}
+	var data map[string]any
+	if err := json.Unmarshal(settings.Data, &data); err != nil {
+		return map[string]any{}, err
+	}
+	if data == nil {
+		return map[string]any{}, nil
+	}
+	return data, nil
 }
 
 func (h *v1Handler) requireAPIKey(ctx context.Context) (bool, error) {
@@ -780,13 +885,15 @@ func (h *v1Handler) resolveModel(ctx context.Context, modelStr string) (*modelIn
 		}
 	}
 
-	// Combo lookup.
+	// Combo members are resolved individually by handleChat before reaching
+	// here; a bare combo name passed straight to resolveModel (e.g. via an
+	// alias that expands to a combo name) is collapsed to its first model so
+	// the single-model account path still works.
 	combo, err := h.deps.ComboRepo.GetByName(ctx, modelStr)
 	if err == nil && combo != nil {
 		var models []string
 		_ = json.Unmarshal(combo.Models, &models)
 		if len(models) > 0 {
-			// Fallback strategy: use first model.
 			return h.resolveModel(ctx, models[0])
 		}
 	}

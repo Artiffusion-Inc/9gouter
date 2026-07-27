@@ -24,14 +24,18 @@
 //	}
 //
 // Supported in this MVP slice:
-//   - Dedicated: serper, tavily, searxng (full request build + normalize).
+//   - Dedicated: serper, tavily, searxng, exa, brave-search, perplexity,
+//     google-pse, linkup, searchapi, youcom (full request build + normalize).
 //   - Chat: gemini (generateContent + google_search tool, grounding chunks),
 //     openai (chat/completions + web_search tool, annotations citations),
-//     perplexity-chat fallback (chat/completions + top-level citations).
+//     perplexity-chat fallback (chat/completions + top-level citations),
+//     xai (/v1/responses + web_search, output[]/annotations citations),
+//     kimi (chat/completions + $web_search builtin, tool_calls citations),
+//     minimax (chatcompletion_v2 + web_search, web_search_results citations),
+//     perplexity-agent (/v1/responses + web_search, output[]/results citations).
 //
-// Deferred (501): brave-search, google-pse, linkup, searchapi, youcom, exa
-// (dedicated), xai/kimi/minimax/perplexity-agent (chat). Registered so the
-// handler can 501 them honestly. Combo expansion, account-fallback rotation,
+// Every provider in the search registry now has a working transport; there is
+// no remaining 501 surface. Combo expansion, account-fallback rotation,
 // on-401 token refresh, and usage persistence are separate slices.
 package searchproxy
 
@@ -44,6 +48,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -92,18 +97,18 @@ func New(deps Dependencies) *Handler {
 
 // Request is the input to Handle.
 type Request struct {
-	Ctx          context.Context
-	ProviderID   string
-	Query        string
-	Model        string // optional override (chat-based search)
-	MaxResults   int
-	SearchType   string // "web" (default) | "news"
-	Country      string
-	Language     string
-	TimeRange    string
-	Offset       int
-	Credentials  domainProv.Credentials
-	UserAgent    string
+	Ctx         context.Context
+	ProviderID  string
+	Query       string
+	Model       string // optional override (chat-based search)
+	MaxResults  int
+	SearchType  string // "web" (default) | "news"
+	Country     string
+	Language    string
+	TimeRange   string
+	Offset      int
+	Credentials domainProv.Credentials
+	UserAgent   string
 }
 
 // Result is the output of Handle.
@@ -118,23 +123,23 @@ type Result struct {
 // fields populated by the MVP providers are non-zero; the rest are omitted via
 // omitempty so the JSON stays compact.
 type SearchResult struct {
-	Title      string `json:"title"`
-	URL        string `json:"url"`
-	Snippet    string `json:"snippet,omitempty"`
-	Position   int    `json:"position,omitempty"`
-	Score      any    `json:"score,omitempty"`
-	PublishedAt any   `json:"published_at,omitempty"`
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	Snippet     string `json:"snippet,omitempty"`
+	Position    int    `json:"position,omitempty"`
+	Score       any    `json:"score,omitempty"`
+	PublishedAt any    `json:"published_at,omitempty"`
 }
 
 // searchResponse is the unified response body.
 type searchResponse struct {
-	Provider string          `json:"provider"`
-	Query    string          `json:"query"`
-	Results  []SearchResult  `json:"results"`
-	Answer   *answerPayload  `json:"answer"`
-	Usage    usagePayload    `json:"usage"`
-	Metrics  metricsPayload  `json:"metrics"`
-	Errors   []string        `json:"errors"`
+	Provider string         `json:"provider"`
+	Query    string         `json:"query"`
+	Results  []SearchResult `json:"results"`
+	Answer   *answerPayload `json:"answer"`
+	Usage    usagePayload   `json:"usage"`
+	Metrics  metricsPayload `json:"metrics"`
+	Errors   []string       `json:"errors"`
 }
 
 type answerPayload struct {
@@ -150,8 +155,8 @@ type usagePayload struct {
 }
 
 type metricsPayload struct {
-	ResponseTimeMS       int `json:"response_time_ms"`
-	UpstreamLatencyMS    int `json:"upstream_latency_ms"`
+	ResponseTimeMS        int `json:"response_time_ms"`
+	UpstreamLatencyMS     int `json:"upstream_latency_ms"`
 	TotalResultsAvailable any `json:"total_results_available"`
 }
 
@@ -235,6 +240,20 @@ func (h *Handler) runDedicated(ctx context.Context, cfg search.Config, req Reque
 		return h.dedicatedTavily(ctx, cfg, req, query, maxResults, searchType)
 	case "searxng":
 		return h.dedicatedSearxng(ctx, cfg, req, query, maxResults, searchType)
+	case "exa":
+		return h.dedicatedExa(ctx, cfg, req, query, maxResults, searchType)
+	case "brave-search":
+		return h.dedicatedBrave(ctx, cfg, req, query, maxResults, searchType)
+	case "perplexity":
+		return h.dedicatedPerplexity(ctx, cfg, req, query, maxResults, searchType)
+	case "google-pse":
+		return h.dedicatedGooglePSE(ctx, cfg, req, query, maxResults, searchType)
+	case "linkup":
+		return h.dedicatedLinkup(ctx, cfg, req, query, maxResults, searchType)
+	case "searchapi":
+		return h.dedicatedSearchApi(ctx, cfg, req, query, maxResults, searchType)
+	case "youcom":
+		return h.dedicatedYouCom(ctx, cfg, req, query, maxResults, searchType)
 	default:
 		return nil, http.StatusNotImplemented, fmt.Errorf("dedicated search for '%s' not implemented", req.ProviderID)
 	}
@@ -250,6 +269,14 @@ func (h *Handler) runChat(ctx context.Context, cfg search.Config, req Request, q
 		return h.chatOpenAI(ctx, cfg, req, query)
 	case "perplexity":
 		return h.chatPerplexity(ctx, cfg, req, query)
+	case "xai":
+		return h.chatXai(ctx, cfg, req, query)
+	case "kimi":
+		return h.chatKimi(ctx, cfg, req, query)
+	case "minimax":
+		return h.chatMinimax(ctx, cfg, req, query)
+	case "perplexity-agent":
+		return h.chatPerplexityAgent(ctx, cfg, req, query)
 	default:
 		return nil, http.StatusNotImplemented, fmt.Errorf("chat-based search for '%s' not implemented", req.ProviderID)
 	}
@@ -418,9 +445,9 @@ func (h *Handler) dedicatedSearxng(ctx context.Context, cfg search.Config, req R
 	}
 	var parsed struct {
 		Results []struct {
-			Title        string `json:"title"`
-			URL          string `json:"url"`
-			Content      string `json:"content"`
+			Title         string `json:"title"`
+			URL           string `json:"url"`
+			Content       string `json:"content"`
 			PublishedDate string `json:"publishedDate"`
 		} `json:"results"`
 	}
@@ -435,6 +462,553 @@ func (h *Handler) dedicatedSearxng(ctx context.Context, cfg search.Config, req R
 		})
 	}
 	return h.buildUnified(req.ProviderID, query, results, nil, len(parsed.Results), 0), http.StatusOK, nil
+}
+
+// dedicatedExa POSTs {query,numResults,type:"auto",text:true,highlights:true,
+// category:"news"?} to https://api.exa.ai/search with x-api-key. The response
+// is normalized from results[] {title,url,highlights[],text,score,publishedDate},
+// mirroring open-sse/handlers/search/normalizers.js normalizeExa: the snippet is
+// the first highlight, falling back to the first 300 chars of text.
+func (h *Handler) dedicatedExa(ctx context.Context, cfg search.Config, req Request, query string, maxResults int, searchType string) ([]byte, int, error) {
+	payload := map[string]any{
+		"query":      query,
+		"numResults": maxResults,
+		"type":       "auto",
+		"text":       true,
+		"highlights": true,
+	}
+	if searchType == "news" {
+		payload["category"] = "news"
+	}
+	raw, _ := json.Marshal(payload)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.BaseURL, bytes.NewReader(raw))
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if tok := credentialToken(req.Credentials); tok != "" {
+		httpReq.Header.Set("x-api-key", tok)
+	}
+	if req.UserAgent != "" {
+		httpReq.Header.Set("User-Agent", req.UserAgent)
+	}
+	respBody, status, err := h.doUpstream(ctx, httpReq)
+	if err != nil {
+		return nil, status, err
+	}
+	if status >= 400 {
+		return nil, status, upstreamError(respBody)
+	}
+	var parsed struct {
+		Results []struct {
+			Title         string   `json:"title"`
+			URL           string   `json:"url"`
+			Highlights    []string `json:"highlights"`
+			Text          string   `json:"text"`
+			Score         float64  `json:"score"`
+			PublishedDate string   `json:"publishedDate"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, http.StatusBadGateway, fmt.Errorf("exa: failed to parse response: %w", err)
+	}
+	results := []SearchResult{}
+	for i, r := range parsed.Results {
+		snippet := ""
+		if len(r.Highlights) > 0 {
+			snippet = r.Highlights[0]
+		} else if r.Text != "" {
+			if len(r.Text) > 300 {
+				snippet = r.Text[:300]
+			} else {
+				snippet = r.Text
+			}
+		}
+		results = append(results, SearchResult{
+			Title: r.Title, URL: r.URL, Snippet: snippet, Position: i + 1,
+			Score: r.Score, PublishedAt: orString(r.PublishedDate),
+		})
+	}
+	return h.buildUnified(req.ProviderID, query, results, nil, len(parsed.Results), 0), http.StatusOK, nil
+}
+
+// dedicatedBrave GETs <base>/web/search or /news/search?q=&count=&country=&search_lang=
+// with X-Subscription-Token. Mirrors callers.js buildBraveRequest and
+// normalizers.js normalizeBrave: container = (news ? data.news||data : data.web),
+// items = container.results[] {title,url,description,page_age|age}.
+func (h *Handler) dedicatedBrave(ctx context.Context, cfg search.Config, req Request, query string, maxResults int, searchType string) ([]byte, int, error) {
+	endpoint := strings.TrimRight(cfg.BaseURL, "/")
+	if searchType == "news" {
+		endpoint += "/news/search"
+	} else {
+		endpoint += "/web/search"
+	}
+	q := url.Values{}
+	q.Set("q", query)
+	q.Set("count", fmt.Sprintf("%d", maxResults))
+	if req.Country != "" {
+		q.Set("country", req.Country)
+	}
+	if req.Language != "" {
+		q.Set("search_lang", req.Language)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?"+q.Encode(), nil)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	httpReq.Header.Set("Accept", "application/json")
+	if tok := credentialToken(req.Credentials); tok != "" {
+		httpReq.Header.Set("X-Subscription-Token", tok)
+	}
+	if req.UserAgent != "" {
+		httpReq.Header.Set("User-Agent", req.UserAgent)
+	}
+	respBody, status, err := h.doUpstream(ctx, httpReq)
+	if err != nil {
+		return nil, status, err
+	}
+	if status >= 400 {
+		return nil, status, upstreamError(respBody)
+	}
+	// Container is data.news (or data) for news, data.web for web. Each container
+	// has results[] {title,url,description,page_age,age}.
+	var parsed struct {
+		Web struct {
+			Results []struct {
+				Title       string `json:"title"`
+				URL         string `json:"url"`
+				Description string `json:"description"`
+				PageAge     string `json:"page_age"`
+				Age         string `json:"age"`
+			} `json:"results"`
+			TotalCount any `json:"totalCount"`
+		} `json:"web"`
+		News *struct {
+			Results []struct {
+				Title       string `json:"title"`
+				URL         string `json:"url"`
+				Description string `json:"description"`
+				PageAge     string `json:"page_age"`
+				Age         string `json:"age"`
+			} `json:"results"`
+			TotalCount any `json:"totalCount"`
+		} `json:"news"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, http.StatusBadGateway, fmt.Errorf("brave-search: failed to parse response: %w", err)
+	}
+	results := []SearchResult{}
+	var total any
+	if searchType == "news" {
+		// news container may be the top-level object when the API omits the news
+		// wrapper; normalizeBrave uses data.news || data.
+		container := parsed.News
+		if container == nil {
+			// Fall back: treat top-level as a news container via a second parse.
+			var bare struct {
+				Results []struct {
+					Title       string `json:"title"`
+					URL         string `json:"url"`
+					Description string `json:"description"`
+					PageAge     string `json:"page_age"`
+					Age         string `json:"age"`
+				} `json:"results"`
+				TotalCount any `json:"totalCount"`
+			}
+			_ = json.Unmarshal(respBody, &bare)
+			for i, it := range bare.Results {
+				results = append(results, SearchResult{Title: it.Title, URL: it.URL, Snippet: it.Description, Position: i + 1, PublishedAt: orString(firstNonEmpty(it.PageAge, it.Age))})
+			}
+			total = bare.TotalCount
+			return h.buildUnified(req.ProviderID, query, results, nil, total, 0), http.StatusOK, nil
+		}
+		for i, it := range container.Results {
+			results = append(results, SearchResult{Title: it.Title, URL: it.URL, Snippet: it.Description, Position: i + 1, PublishedAt: orString(firstNonEmpty(it.PageAge, it.Age))})
+		}
+		total = container.TotalCount
+	} else {
+		for i, it := range parsed.Web.Results {
+			results = append(results, SearchResult{Title: it.Title, URL: it.URL, Snippet: it.Description, Position: i + 1, PublishedAt: orString(firstNonEmpty(it.PageAge, it.Age))})
+		}
+		total = parsed.Web.TotalCount
+	}
+	return h.buildUnified(req.ProviderID, query, results, nil, total, 0), http.StatusOK, nil
+}
+
+// dedicatedPerplexity POSTs {query,max_results,country,search_language_filter,
+// search_domain_filter} to https://api.perplexity.ai with Bearer. Mirrors
+// callers.js buildPerplexityRequest + normalizers.js normalizePerplexity:
+// results[] {title,url,snippet,date|last_updated}.
+func (h *Handler) dedicatedPerplexity(ctx context.Context, cfg search.Config, req Request, query string, maxResults int, searchType string) ([]byte, int, error) {
+	payload := map[string]any{
+		"query":       query,
+		"max_results": maxResults,
+	}
+	if req.Country != "" {
+		payload["country"] = req.Country
+	}
+	if req.Language != "" {
+		payload["search_language_filter"] = []string{req.Language}
+	}
+	raw, _ := json.Marshal(payload)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.BaseURL, bytes.NewReader(raw))
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if tok := credentialToken(req.Credentials); tok != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+tok)
+	}
+	if req.UserAgent != "" {
+		httpReq.Header.Set("User-Agent", req.UserAgent)
+	}
+	respBody, status, err := h.doUpstream(ctx, httpReq)
+	if err != nil {
+		return nil, status, err
+	}
+	if status >= 400 {
+		return nil, status, upstreamError(respBody)
+	}
+	var parsed struct {
+		Results []struct {
+			Title       string `json:"title"`
+			URL         string `json:"url"`
+			Snippet     string `json:"snippet"`
+			Date        string `json:"date"`
+			LastUpdated string `json:"last_updated"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, http.StatusBadGateway, fmt.Errorf("perplexity: failed to parse response: %w", err)
+	}
+	results := []SearchResult{}
+	for i, r := range parsed.Results {
+		results = append(results, SearchResult{Title: r.Title, URL: r.URL, Snippet: r.Snippet, Position: i + 1, PublishedAt: orString(firstNonEmpty(r.Date, r.LastUpdated))})
+	}
+	return h.buildUnified(req.ProviderID, query, results, nil, len(parsed.Results), 0), http.StatusOK, nil
+}
+
+// dedicatedGooglePSE GETs googleapis.com/customsearch/v1?key=&cx=&q=&num=&gl=&hl=
+// &dateRestrict=&start= with no auth header (key is in query). Mirrors
+// callers.js buildGooglePseRequest + normalizers.js normalizeGooglePse:
+// items[] {title,link,snippet}, total from searchInformation.totalResults.
+func (h *Handler) dedicatedGooglePSE(ctx context.Context, cfg search.Config, req Request, query string, maxResults int, searchType string) ([]byte, int, error) {
+	tok := credentialToken(req.Credentials)
+	cx := ""
+	if v, ok := req.Credentials.ProviderSpecificData["cx"].(string); ok {
+		cx = v
+	}
+	if tok == "" || cx == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("google-pse: google programmable search requires both apiKey and cx")
+	}
+	q := url.Values{}
+	q.Set("key", tok)
+	q.Set("cx", cx)
+	q.Set("q", query)
+	num := maxResults
+	if num > 10 {
+		num = 10
+	}
+	q.Set("num", fmt.Sprintf("%d", num))
+	if req.Country != "" {
+		q.Set("gl", strings.ToLower(req.Country))
+	}
+	if req.Language != "" {
+		q.Set("hl", req.Language)
+	}
+	if req.TimeRange != "" && req.TimeRange != "any" {
+		dateRestrictMap := map[string]string{"day": "d1", "week": "w1", "month": "m1", "year": "y1"}
+		if dr, ok := dateRestrictMap[req.TimeRange]; ok {
+			q.Set("dateRestrict", dr)
+		}
+	}
+	if req.Offset > 0 {
+		start := req.Offset + 1
+		if start > 91 {
+			start = 91
+		}
+		q.Set("start", fmt.Sprintf("%d", start))
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.BaseURL+"?"+q.Encode(), nil)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	httpReq.Header.Set("Accept", "application/json")
+	if req.UserAgent != "" {
+		httpReq.Header.Set("User-Agent", req.UserAgent)
+	}
+	respBody, status, err := h.doUpstream(ctx, httpReq)
+	if err != nil {
+		return nil, status, err
+	}
+	if status >= 400 {
+		return nil, status, upstreamError(respBody)
+	}
+	var parsed struct {
+		Items []struct {
+			Title   string `json:"title"`
+			Link    string `json:"link"`
+			Snippet string `json:"snippet"`
+		} `json:"items"`
+		SearchInformation struct {
+			TotalResults string `json:"totalResults"`
+		} `json:"searchInformation"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, http.StatusBadGateway, fmt.Errorf("google-pse: failed to parse response: %w", err)
+	}
+	results := []SearchResult{}
+	for i, it := range parsed.Items {
+		results = append(results, SearchResult{Title: it.Title, URL: it.Link, Snippet: it.Snippet, Position: i + 1})
+	}
+	total := any(nil)
+	if n, convErr := strconvAtoi(parsed.SearchInformation.TotalResults); convErr == nil {
+		total = n
+	} else if len(parsed.Items) > 0 {
+		total = len(parsed.Items)
+	}
+	return h.buildUnified(req.ProviderID, query, results, nil, total, 0), http.StatusOK, nil
+}
+
+// dedicatedLinkup POSTs {q,depth,outputType:"searchResults",maxResults,
+// includeDomains,excludeDomains,fromDate,toDate} to /search with Bearer.
+// Mirrors callers.js buildLinkupRequest + normalizers.js normalizeLinkup:
+// results[] {name|title,url,content|snippet}.
+func (h *Handler) dedicatedLinkup(ctx context.Context, cfg search.Config, req Request, query string, maxResults int, searchType string) ([]byte, int, error) {
+	depth := "standard"
+	if d, ok := req.Credentials.ProviderSpecificData["depth"].(string); ok {
+		switch d {
+		case "fast", "standard", "deep":
+			depth = d
+		}
+	}
+	payload := map[string]any{
+		"q":          query,
+		"depth":      depth,
+		"outputType": "searchResults",
+		"maxResults": maxResults,
+	}
+	raw, _ := json.Marshal(payload)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.BaseURL, bytes.NewReader(raw))
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if tok := credentialToken(req.Credentials); tok != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+tok)
+	}
+	if req.UserAgent != "" {
+		httpReq.Header.Set("User-Agent", req.UserAgent)
+	}
+	respBody, status, err := h.doUpstream(ctx, httpReq)
+	if err != nil {
+		return nil, status, err
+	}
+	if status >= 400 {
+		return nil, status, upstreamError(respBody)
+	}
+	var parsed struct {
+		Results []struct {
+			Name    string `json:"name"`
+			Title   string `json:"title"`
+			URL     string `json:"url"`
+			Content string `json:"content"`
+			Snippet string `json:"snippet"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, http.StatusBadGateway, fmt.Errorf("linkup: failed to parse response: %w", err)
+	}
+	results := []SearchResult{}
+	for i, r := range parsed.Results {
+		title := r.Name
+		if title == "" {
+			title = r.Title
+		}
+		snippet := r.Content
+		if snippet == "" {
+			snippet = r.Snippet
+		}
+		results = append(results, SearchResult{Title: title, URL: r.URL, Snippet: snippet, Position: i + 1})
+	}
+	return h.buildUnified(req.ProviderID, query, results, nil, len(parsed.Results), 0), http.StatusOK, nil
+}
+
+// dedicatedSearchApi GETs <base>?engine=google|google_news&q=&api_key=&gl=&hl=&page=
+// with no auth header. Mirrors callers.js buildSearchApiRequest + normalizers.js
+// normalizeSearchApi: organic_results[] or top_stories[] {title,link,snippet|description,
+// date|published_at}, total from search_information.total_results.
+func (h *Handler) dedicatedSearchApi(ctx context.Context, cfg search.Config, req Request, query string, maxResults int, searchType string) ([]byte, int, error) {
+	tok := credentialToken(req.Credentials)
+	if tok == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("searchapi: searchapi requires an api key")
+	}
+	q := url.Values{}
+	if searchType == "news" {
+		q.Set("engine", "google_news")
+	} else {
+		q.Set("engine", "google")
+	}
+	q.Set("q", query)
+	q.Set("api_key", tok)
+	if req.Country != "" {
+		q.Set("gl", strings.ToLower(req.Country))
+	}
+	if req.Language != "" {
+		q.Set("hl", req.Language)
+	}
+	if req.Offset > 0 && maxResults > 0 {
+		q.Set("page", fmt.Sprintf("%d", req.Offset/maxResults+1))
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.BaseURL+"?"+q.Encode(), nil)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	httpReq.Header.Set("Accept", "application/json")
+	if req.UserAgent != "" {
+		httpReq.Header.Set("User-Agent", req.UserAgent)
+	}
+	respBody, status, err := h.doUpstream(ctx, httpReq)
+	if err != nil {
+		return nil, status, err
+	}
+	if status >= 400 {
+		return nil, status, upstreamError(respBody)
+	}
+	// organic_results (web) or top_stories (news); search_information.total_results.
+	var parsed struct {
+		OrganicResults []struct {
+			Title       string `json:"title"`
+			Link        string `json:"link"`
+			Snippet     string `json:"snippet"`
+			Description string `json:"description"`
+			Date        string `json:"date"`
+			PublishedAt string `json:"published_at"`
+		} `json:"organic_results"`
+		TopStories []struct {
+			Title       string `json:"title"`
+			Link        string `json:"link"`
+			Snippet     string `json:"snippet"`
+			Description string `json:"description"`
+			Date        string `json:"date"`
+			PublishedAt string `json:"published_at"`
+		} `json:"top_stories"`
+		SearchInformation struct {
+			TotalResults any `json:"total_results"`
+		} `json:"search_information"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, http.StatusBadGateway, fmt.Errorf("searchapi: failed to parse response: %w", err)
+	}
+	results := []SearchResult{}
+	items := parsed.OrganicResults
+	if searchType == "news" {
+		items = parsed.TopStories
+	}
+	for i, r := range items {
+		snippet := r.Snippet
+		if snippet == "" {
+			snippet = r.Description
+		}
+		results = append(results, SearchResult{Title: r.Title, URL: r.Link, Snippet: snippet, Position: i + 1, PublishedAt: orString(firstNonEmpty(r.Date, r.PublishedAt))})
+	}
+	total := parsed.SearchInformation.TotalResults
+	if total == nil {
+		total = len(results)
+	}
+	return h.buildUnified(req.ProviderID, query, results, nil, total, 0), http.StatusOK, nil
+}
+
+// dedicatedYouCom GETs <base>?query=&count=&freshness=&offset=&country=&language=
+// &include_domains=&exclude_domains= with X-API-Key. Mirrors callers.js
+// buildYouComRequest + normalizers.js normalizeYouCom: container = data.results,
+// section = container.news (news) or container.web (web) {title,url,snippets[],
+// description,page_age}.
+func (h *Handler) dedicatedYouCom(ctx context.Context, cfg search.Config, req Request, query string, maxResults int, searchType string) ([]byte, int, error) {
+	tok := credentialToken(req.Credentials)
+	if tok == "" {
+		return nil, http.StatusBadRequest, fmt.Errorf("youcom: you.com search requires an api key")
+	}
+	count := maxResults
+	if count > 100 {
+		count = 100
+	}
+	q := url.Values{}
+	q.Set("query", query)
+	q.Set("count", fmt.Sprintf("%d", count))
+	if req.TimeRange != "" && req.TimeRange != "any" {
+		q.Set("freshness", req.TimeRange)
+	}
+	if req.Offset > 0 && maxResults > 0 {
+		off := req.Offset / maxResults
+		if off > 9 {
+			off = 9
+		}
+		q.Set("offset", fmt.Sprintf("%d", off))
+	}
+	if req.Country != "" {
+		q.Set("country", req.Country)
+	}
+	if req.Language != "" {
+		q.Set("language", req.Language)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.BaseURL+"?"+q.Encode(), nil)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("X-API-Key", tok)
+	if req.UserAgent != "" {
+		httpReq.Header.Set("User-Agent", req.UserAgent)
+	}
+	respBody, status, err := h.doUpstream(ctx, httpReq)
+	if err != nil {
+		return nil, status, err
+	}
+	if status >= 400 {
+		return nil, status, upstreamError(respBody)
+	}
+	// data.results is an object {news:[], web:[]}.
+	var parsed struct {
+		Results struct {
+			News []struct {
+				Title       string   `json:"title"`
+				URL         string   `json:"url"`
+				Snippets    []string `json:"snippets"`
+				Description string   `json:"description"`
+				PageAge     string   `json:"page_age"`
+			} `json:"news"`
+			Web []struct {
+				Title       string   `json:"title"`
+				URL         string   `json:"url"`
+				Snippets    []string `json:"snippets"`
+				Description string   `json:"description"`
+				PageAge     string   `json:"page_age"`
+			} `json:"web"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, http.StatusBadGateway, fmt.Errorf("youcom: failed to parse response: %w", err)
+	}
+	results := []SearchResult{}
+	items := parsed.Results.Web
+	if searchType == "news" {
+		items = parsed.Results.News
+	}
+	for i, it := range items {
+		snippet := ""
+		for _, s := range it.Snippets {
+			if s != "" {
+				snippet = s
+				break
+			}
+		}
+		if snippet == "" {
+			snippet = it.Description
+		}
+		results = append(results, SearchResult{Title: it.Title, URL: it.URL, Snippet: snippet, Position: i + 1, PublishedAt: orString(it.PageAge)})
+	}
+	return h.buildUnified(req.ProviderID, query, results, nil, len(results), 0), http.StatusOK, nil
 }
 
 // === Chat-based providers ===
@@ -664,6 +1238,453 @@ func (h *Handler) chatPerplexity(ctx context.Context, cfg search.Config, req Req
 	return h.buildUnified(req.ProviderID, query, results, ans, len(results), parsed.Usage.TotalTokens), http.StatusOK, nil
 }
 
+// chatXai calls /v1/responses with {model,input,tools:[{type:"web_search"}]},
+// extracting the answer text from output[].content[].text and citations from
+// output[].content[].annotations[] ({url|url_citation}) plus a top-level
+// citations[] fallback. Mirrors chatSearch.js xai.
+func (h *Handler) chatXai(ctx context.Context, cfg search.Config, req Request, query string) ([]byte, int, error) {
+	model := orDefault(req.Model, cfg.DefaultModel)
+	payload := map[string]any{
+		"model": model,
+		"input": []any{map[string]any{"role": "user", "content": query}},
+		"tools": []any{map[string]any{"type": "web_search"}},
+	}
+	raw, _ := json.Marshal(payload)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.BaseURL, bytes.NewReader(raw))
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if tok := credentialToken(req.Credentials); tok != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+tok)
+	}
+	if req.UserAgent != "" {
+		httpReq.Header.Set("User-Agent", req.UserAgent)
+	}
+	respBody, status, err := h.doUpstream(ctx, httpReq)
+	if err != nil {
+		return nil, status, err
+	}
+	if status >= 400 {
+		return nil, status, upstreamError(respBody)
+	}
+	var parsed struct {
+		Output []struct {
+			Content []struct {
+				Text        string `json:"text"`
+				Annotations []struct {
+					URL         string `json:"url"`
+					URLCitation struct {
+						URL   string `json:"url"`
+						Title string `json:"title"`
+					} `json:"url_citation"`
+				} `json:"annotations"`
+			} `json:"content"`
+		} `json:"output"`
+		Citations []json.RawMessage `json:"citations"`
+		Usage     struct {
+			TotalTokens int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, http.StatusBadGateway, fmt.Errorf("xai: failed to parse response: %w", err)
+	}
+	var textParts []string
+	type citation struct{ url, title string }
+	cits := []citation{}
+	seen := map[string]bool{}
+	addCit := func(u, title string) {
+		if u == "" || seen[u] {
+			return
+		}
+		seen[u] = true
+		cits = append(cits, citation{u, title})
+	}
+	for _, item := range parsed.Output {
+		for _, p := range item.Content {
+			if p.Text != "" {
+				textParts = append(textParts, p.Text)
+			}
+			for _, a := range p.Annotations {
+				if a.URL != "" {
+					addCit(a.URL, "")
+				}
+				addCit(a.URLCitation.URL, a.URLCitation.Title)
+			}
+		}
+	}
+	if len(cits) == 0 {
+		for _, raw := range parsed.Citations {
+			var s string
+			if json.Unmarshal(raw, &s) == nil && s != "" {
+				addCit(s, "")
+				continue
+			}
+			var obj struct {
+				URL   string `json:"url"`
+				Title string `json:"title"`
+			}
+			if json.Unmarshal(raw, &obj) == nil {
+				addCit(obj.URL, obj.Title)
+			}
+		}
+	}
+	answerText := strings.Join(textParts, "")
+	results := []SearchResult{}
+	for i, c := range cits {
+		results = append(results, SearchResult{Title: c.title, URL: c.url, Position: i + 1})
+	}
+	ans := &answerPayload{Source: "xai", Text: answerText, Model: model}
+	return h.buildUnified(req.ProviderID, query, results, ans, len(results), parsed.Usage.TotalTokens), http.StatusOK, nil
+}
+
+// chatKimi calls chat/completions with tools:[{type:"builtin_function",function:
+// {name:"$web_search"}}], extracting the answer text from choices[0].message.
+// content and citations from message.tool_calls[].function.arguments
+// (JSON {search_results|results|references:[{url|link,title,snippet|summary}]}).
+// Mirrors chatSearch.js kimi.
+func (h *Handler) chatKimi(ctx context.Context, cfg search.Config, req Request, query string) ([]byte, int, error) {
+	model := orDefault(req.Model, cfg.DefaultModel)
+	payload := map[string]any{
+		"model":    model,
+		"messages": []any{map[string]any{"role": "user", "content": query}},
+		"tools": []any{map[string]any{
+			"type":     "builtin_function",
+			"function": map[string]any{"name": "$web_search"},
+		}},
+	}
+	raw, _ := json.Marshal(payload)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.BaseURL, bytes.NewReader(raw))
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if tok := credentialToken(req.Credentials); tok != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+tok)
+	}
+	if req.UserAgent != "" {
+		httpReq.Header.Set("User-Agent", req.UserAgent)
+	}
+	respBody, status, err := h.doUpstream(ctx, httpReq)
+	if err != nil {
+		return nil, status, err
+	}
+	if status >= 400 {
+		return nil, status, upstreamError(respBody)
+	}
+	var parsed struct {
+		Choices []struct {
+			Message struct {
+				Content   string `json:"content"`
+				ToolCalls []struct {
+					Function struct {
+						Arguments json.RawMessage `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			TotalTokens int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, http.StatusBadGateway, fmt.Errorf("kimi: failed to parse response: %w", err)
+	}
+	answerText := ""
+	if len(parsed.Choices) > 0 {
+		answerText = parsed.Choices[0].Message.Content
+	}
+	type citation struct{ url, title, snippet string }
+	cits := []citation{}
+	seen := map[string]bool{}
+	for _, ch := range parsed.Choices {
+		for _, call := range ch.Message.ToolCalls {
+			argsBytes, ok := unmarshalToolCallArguments(call.Function.Arguments)
+			if !ok {
+				continue
+			}
+			var args struct {
+				SearchResults []struct {
+					URL     string `json:"url"`
+					Link    string `json:"link"`
+					Title   string `json:"title"`
+					Snippet string `json:"snippet"`
+					Summary string `json:"summary"`
+				} `json:"search_results"`
+				Results []struct {
+					URL     string `json:"url"`
+					Link    string `json:"link"`
+					Title   string `json:"title"`
+					Snippet string `json:"snippet"`
+					Summary string `json:"summary"`
+				} `json:"results"`
+				References []struct {
+					URL     string `json:"url"`
+					Link    string `json:"link"`
+					Title   string `json:"title"`
+					Snippet string `json:"snippet"`
+				} `json:"references"`
+			}
+			if json.Unmarshal(argsBytes, &args) != nil {
+				continue
+			}
+			add := func(u, title, snippet string) {
+				if u == "" || seen[u] {
+					return
+				}
+				seen[u] = true
+				cits = append(cits, citation{u, title, snippet})
+			}
+			for _, it := range args.SearchResults {
+				add(firstNonEmpty(it.URL, it.Link), it.Title, firstNonEmpty(it.Snippet, it.Summary))
+			}
+			for _, it := range args.Results {
+				add(firstNonEmpty(it.URL, it.Link), it.Title, firstNonEmpty(it.Snippet, it.Summary))
+			}
+			for _, it := range args.References {
+				add(firstNonEmpty(it.URL, it.Link), it.Title, it.Snippet)
+			}
+		}
+	}
+	results := []SearchResult{}
+	for i, c := range cits {
+		results = append(results, SearchResult{Title: c.title, URL: c.url, Snippet: c.snippet, Position: i + 1})
+	}
+	ans := &answerPayload{Source: "kimi", Text: answerText, Model: model}
+	return h.buildUnified(req.ProviderID, query, results, ans, len(results), parsed.Usage.TotalTokens), http.StatusOK, nil
+}
+
+// chatMinimax calls chatcompletion_v2 with tools:[{type:"web_search"}],
+// extracting the answer text from choices[0].message.content and citations
+// from the top-level web_search_results[] (or tool_calls[].function.arguments
+// .results[] fallback). Mirrors chatSearch.js minimax.
+func (h *Handler) chatMinimax(ctx context.Context, cfg search.Config, req Request, query string) ([]byte, int, error) {
+	model := orDefault(req.Model, cfg.DefaultModel)
+	payload := map[string]any{
+		"model":    model,
+		"messages": []any{map[string]any{"role": "user", "content": query}},
+		"tools":    []any{map[string]any{"type": "web_search"}},
+	}
+	raw, _ := json.Marshal(payload)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.BaseURL, bytes.NewReader(raw))
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if tok := credentialToken(req.Credentials); tok != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+tok)
+	}
+	if req.UserAgent != "" {
+		httpReq.Header.Set("User-Agent", req.UserAgent)
+	}
+	respBody, status, err := h.doUpstream(ctx, httpReq)
+	if err != nil {
+		return nil, status, err
+	}
+	if status >= 400 {
+		return nil, status, upstreamError(respBody)
+	}
+	var parsed struct {
+		Choices []struct {
+			Message struct {
+				Content   string `json:"content"`
+				ToolCalls []struct {
+					Function struct {
+						Arguments json.RawMessage `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+		WebSearchResults []struct {
+			URL     string `json:"url"`
+			Link    string `json:"link"`
+			Title   string `json:"title"`
+			Snippet string `json:"snippet"`
+			Summary string `json:"summary"`
+		} `json:"web_search_results"`
+		Usage struct {
+			TotalTokens int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, http.StatusBadGateway, fmt.Errorf("minimax: failed to parse response: %w", err)
+	}
+	answerText := ""
+	if len(parsed.Choices) > 0 {
+		answerText = parsed.Choices[0].Message.Content
+	}
+	type citation struct{ url, title, snippet string }
+	cits := []citation{}
+	seen := map[string]bool{}
+	for _, it := range parsed.WebSearchResults {
+		u := firstNonEmpty(it.URL, it.Link)
+		if u == "" || seen[u] {
+			continue
+		}
+		seen[u] = true
+		cits = append(cits, citation{u, it.Title, firstNonEmpty(it.Snippet, it.Summary)})
+	}
+	if len(cits) == 0 {
+		for _, ch := range parsed.Choices {
+			for _, call := range ch.Message.ToolCalls {
+				argsBytes, ok := unmarshalToolCallArguments(call.Function.Arguments)
+				if !ok {
+					continue
+				}
+				var args struct {
+					Results []struct {
+						URL     string `json:"url"`
+						Link    string `json:"link"`
+						Title   string `json:"title"`
+						Snippet string `json:"snippet"`
+					} `json:"results"`
+					SearchResults []struct {
+						URL     string `json:"url"`
+						Link    string `json:"link"`
+						Title   string `json:"title"`
+						Snippet string `json:"snippet"`
+					} `json:"search_results"`
+				}
+				if json.Unmarshal(argsBytes, &args) != nil {
+					continue
+				}
+				for _, it := range args.Results {
+					u := firstNonEmpty(it.URL, it.Link)
+					if u == "" || seen[u] {
+						continue
+					}
+					seen[u] = true
+					cits = append(cits, citation{u, it.Title, it.Snippet})
+				}
+				for _, it := range args.SearchResults {
+					u := firstNonEmpty(it.URL, it.Link)
+					if u == "" || seen[u] {
+						continue
+					}
+					seen[u] = true
+					cits = append(cits, citation{u, it.Title, it.Snippet})
+				}
+			}
+		}
+	}
+	results := []SearchResult{}
+	for i, c := range cits {
+		results = append(results, SearchResult{Title: c.title, URL: c.url, Snippet: c.snippet, Position: i + 1})
+	}
+	ans := &answerPayload{Source: "minimax", Text: answerText, Model: model}
+	return h.buildUnified(req.ProviderID, query, results, ans, len(results), parsed.Usage.TotalTokens), http.StatusOK, nil
+}
+
+// chatPerplexityAgent calls /v1/responses with {model,input,tools:[{type:
+// "web_search"}]}, extracting the answer text from output[].content[].text and
+// citations from output[].content[].annotations[] and output[].results[]
+// ({url|link,title,snippet}) plus a top-level citations[] fallback. Mirrors
+// chatSearch.js perplexity-agent.
+func (h *Handler) chatPerplexityAgent(ctx context.Context, cfg search.Config, req Request, query string) ([]byte, int, error) {
+	model := orDefault(req.Model, cfg.DefaultModel)
+	payload := map[string]any{
+		"model": model,
+		"input": query,
+		"tools": []any{map[string]any{"type": "web_search"}},
+	}
+	raw, _ := json.Marshal(payload)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.BaseURL, bytes.NewReader(raw))
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if tok := credentialToken(req.Credentials); tok != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+tok)
+	}
+	if req.UserAgent != "" {
+		httpReq.Header.Set("User-Agent", req.UserAgent)
+	}
+	respBody, status, err := h.doUpstream(ctx, httpReq)
+	if err != nil {
+		return nil, status, err
+	}
+	if status >= 400 {
+		return nil, status, upstreamError(respBody)
+	}
+	var parsed struct {
+		Output []struct {
+			Content []struct {
+				Text        string `json:"text"`
+				Annotations []struct {
+					URL         string `json:"url"`
+					URLCitation struct {
+						URL   string `json:"url"`
+						Title string `json:"title"`
+					} `json:"url_citation"`
+				} `json:"annotations"`
+			} `json:"content"`
+			Results []struct {
+				URL     string `json:"url"`
+				Link    string `json:"link"`
+				Title   string `json:"title"`
+				Snippet string `json:"snippet"`
+			} `json:"results"`
+		} `json:"output"`
+		Citations []json.RawMessage `json:"citations"`
+		Usage     struct {
+			TotalTokens int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, http.StatusBadGateway, fmt.Errorf("perplexity-agent: failed to parse response: %w", err)
+	}
+	var textParts []string
+	type citation struct{ url, title, snippet string }
+	cits := []citation{}
+	seen := map[string]bool{}
+	addCit := func(u, title, snippet string) {
+		if u == "" || seen[u] {
+			return
+		}
+		seen[u] = true
+		cits = append(cits, citation{u, title, snippet})
+	}
+	for _, item := range parsed.Output {
+		for _, p := range item.Content {
+			if p.Text != "" {
+				textParts = append(textParts, p.Text)
+			}
+			for _, a := range p.Annotations {
+				if a.URL != "" {
+					addCit(a.URL, "", "")
+				}
+				addCit(a.URLCitation.URL, a.URLCitation.Title, "")
+			}
+		}
+		for _, r := range item.Results {
+			addCit(firstNonEmpty(r.URL, r.Link), r.Title, r.Snippet)
+		}
+	}
+	if len(cits) == 0 {
+		for _, raw := range parsed.Citations {
+			var s string
+			if json.Unmarshal(raw, &s) == nil && s != "" {
+				addCit(s, "", "")
+				continue
+			}
+			var obj struct {
+				URL   string `json:"url"`
+				Title string `json:"title"`
+			}
+			if json.Unmarshal(raw, &obj) == nil {
+				addCit(obj.URL, obj.Title, "")
+			}
+		}
+	}
+	answerText := strings.Join(textParts, "")
+	results := []SearchResult{}
+	for i, c := range cits {
+		results = append(results, SearchResult{Title: c.title, URL: c.url, Snippet: c.snippet, Position: i + 1})
+	}
+	ans := &answerPayload{Source: "perplexity-agent", Text: answerText, Model: model}
+	return h.buildUnified(req.ProviderID, query, results, ans, len(results), parsed.Usage.TotalTokens), http.StatusOK, nil
+}
+
 // === shared helpers ===
 
 // buildUnified assembles the unified response payload.
@@ -753,6 +1774,52 @@ func orString(s string) any {
 		return nil
 	}
 	return s
+}
+
+// firstNonEmpty returns the first non-empty argument, used for fields where
+// providers offer aliases (e.g. brave page_age|age, perplexity date|last_updated).
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// strconvAtoi is a thin wrapper over strconv.Atoi so google-pse / searchapi can
+// coerce a string totalResults into an int without importing strconv at every
+// call site (the rest of the file avoids strconv).
+func strconvAtoi(s string) (int, error) {
+	return strconv.Atoi(strings.TrimSpace(s))
+}
+
+// unmarshalToolCallArguments normalizes a chat tool_call's function.arguments
+// field into raw JSON bytes suitable for unmarshalling into a struct. Providers
+// (kimi, minimax) encode arguments either as a JSON-encoded string —
+// "arguments":"{\"search_results\":[...]}" — or as an inline object —
+// "arguments":{"results":[...]}. This mirrors the legacy JS
+// `typeof argStr === "string" ? JSON.parse(argStr) : argStr`. Returns (nil,
+// false) when the field is empty or neither shape parses.
+func unmarshalToolCallArguments(raw json.RawMessage) (json.RawMessage, bool) {
+	if len(raw) == 0 {
+		return nil, false
+	}
+	// Try inline object first (raw already starts with '{').
+	trimmed := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(trimmed, "{") {
+		return raw, true
+	}
+	// Otherwise it's a JSON string: unescape it to get the inner JSON object.
+	var s string
+	if json.Unmarshal(raw, &s) != nil || s == "" {
+		return nil, false
+	}
+	inner := strings.TrimSpace(s)
+	if !strings.HasPrefix(inner, "{") {
+		return nil, false
+	}
+	return json.RawMessage(inner), true
 }
 
 func credentialToken(c domainProv.Credentials) string {

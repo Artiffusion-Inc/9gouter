@@ -66,3 +66,51 @@ func TestComboRepo_RoundTrip(t *testing.T) {
 		t.Fatalf("list after delete len = %d, want 0", len(list))
 	}
 }
+
+// TestComboRepo_NullKind reproduces the regression where legacy combos store
+// kind as SQL NULL: scanning a NULL column into a plain string fails and
+// /api/combos returned 500. List/GetByName/GetByID must accept NULL kind and
+// surface it as an empty string.
+func TestComboRepo_NullKind(t *testing.T) {
+	db := testDB(t)
+	r := NewComboRepo(db)
+	ctx := context.Background()
+
+	// Insert a row with kind = NULL, mirroring the JS-era rows.
+	if _, err := db.ExecContext(ctx, `INSERT INTO combos(id, name, kind, models, createdAt, updatedAt) VALUES(?, ?, NULL, ?, ?, ?)`,
+		"combo-null", "nulkind", `["a"]`, "2026-05-16T06:58:06.860Z", "2026-05-16T06:58:06.860Z"); err != nil {
+		t.Fatalf("seed null-kind row: %v", err)
+	}
+
+	list, err := r.List(ctx)
+	if err != nil {
+		t.Fatalf("list with NULL kind should not error, got: %v", err)
+	}
+	var found bool
+	for _, c := range list {
+		if c.ID == "combo-null" {
+			found = true
+			if c.Kind != "" {
+				t.Fatalf("NULL kind should scan to empty string, got %q", c.Kind)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("NULL-kind row missing from list")
+	}
+
+	byName, err := r.GetByName(ctx, "nulkind")
+	if err != nil || byName == nil {
+		t.Fatalf("getByName null-kind: %v %v", err, byName)
+	}
+	if byName.Kind != "" {
+		t.Fatalf("getByName NULL kind should be empty, got %q", byName.Kind)
+	}
+	byID, err := r.GetByID(ctx, "combo-null")
+	if err != nil || byID == nil {
+		t.Fatalf("getByID null-kind: %v %v", err, byID)
+	}
+	if byID.Kind != "" {
+		t.Fatalf("getByID NULL kind should be empty, got %q", byID.Kind)
+	}
+}

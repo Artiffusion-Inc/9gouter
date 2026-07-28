@@ -821,4 +821,3 @@ func TestShutdown_AuthRequired(t *testing.T) {
 		t.Fatalf("status = %d, want 401", rec.Code)
 	}
 }
-

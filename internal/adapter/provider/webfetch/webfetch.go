@@ -155,10 +155,10 @@ func (firecrawlAdapter) Fetch(ctx context.Context, client *http.Client, creds do
 	}
 	var parsed struct {
 		Data struct {
-			Markdown  string            `json:"markdown"`
-			HTML      string            `json:"html"`
-			Text      string            `json:"text"`
-			Metadata  map[string]any    `json:"metadata"`
+			Markdown string         `json:"markdown"`
+			HTML     string         `json:"html"`
+			Text     string         `json:"text"`
+			Metadata map[string]any `json:"metadata"`
 		} `json:"data"`
 		Error any `json:"error"`
 	}

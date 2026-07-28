@@ -76,8 +76,8 @@ func TestGenerateCursorChecksumUniqueOverTime(t *testing.T) {
 func TestBuildCursorHeadersBumpedVersionAndCommit(t *testing.T) {
 	h := BuildCursorHeaders(CursorHeadersOpts{
 		AccessToken: "raw-token",
-		MachineID: "machine-1",
-		GhostMode: true,
+		MachineID:   "machine-1",
+		GhostMode:   true,
 	})
 	if h["x-cursor-client-version"] != "3.12.17" {
 		t.Errorf("client-version = %q want 3.12.17", h["x-cursor-client-version"])
@@ -114,8 +114,8 @@ func TestBuildCursorHeadersSplitsTokenPrefix(t *testing.T) {
 	// the suffix for the Bearer header and derived values.
 	h := BuildCursorHeaders(CursorHeadersOpts{
 		AccessToken: "cursor::actual-secret",
-		MachineID: "m",
-		GhostMode: false,
+		MachineID:   "m",
+		GhostMode:   false,
 	})
 	if h["authorization"] != "Bearer actual-secret" {
 		t.Errorf("authorization = %q want Bearer actual-secret (prefix stripped)", h["authorization"])
@@ -134,8 +134,8 @@ func TestBuildCursorHeadersDerivesMachineID(t *testing.T) {
 	// When machineID is empty, it is derived from the cleaned token.
 	h := BuildCursorHeaders(CursorHeadersOpts{
 		AccessToken: "tok",
-		MachineID: "",
-		GhostMode: true,
+		MachineID:   "",
+		GhostMode:   true,
 	})
 	derived := GenerateHashed64Hex("tok", "machineId")
 	if !strings.HasSuffix(h["x-cursor-checksum"], derived) {

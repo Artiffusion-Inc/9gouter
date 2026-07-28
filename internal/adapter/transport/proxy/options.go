@@ -20,17 +20,17 @@ const (
 // Options are populated from config.Config by callers; fields intentionally
 // mirror the JS env names documented in CLAUDE.md and the Go config package.
 type Options struct {
-	FetchConnectTimeout          time.Duration
-	FetchHeadersTimeout          time.Duration
-	FetchBodyTimeout             time.Duration
-	FetchKeepaliveTimeout        time.Duration
-	SocksHandshakeTimeout        time.Duration
-	ProxyDispatcherConnections   int
-	ProxyFastFailTimeout         time.Duration
-	ProxyHealthCacheTTL          time.Duration
-	ProxyHealthUnhealthyTTL      time.Duration
-	ProxyFallbackProbeTimeout    time.Duration
-	ProxyAutoSelectEnabled       bool
+	FetchConnectTimeout        time.Duration
+	FetchHeadersTimeout        time.Duration
+	FetchBodyTimeout           time.Duration
+	FetchKeepaliveTimeout      time.Duration
+	SocksHandshakeTimeout      time.Duration
+	ProxyDispatcherConnections int
+	ProxyFastFailTimeout       time.Duration
+	ProxyHealthCacheTTL        time.Duration
+	ProxyHealthUnhealthyTTL    time.Duration
+	ProxyFallbackProbeTimeout  time.Duration
+	ProxyAutoSelectEnabled     bool
 
 	// ConnectionProxy is a per-connection dashboard proxy override.
 	ConnectionProxy *url.URL

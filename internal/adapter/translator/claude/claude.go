@@ -417,14 +417,14 @@ func openaiToClaudeResponse(chunk map[string]any, state map[string]any) []map[st
 		results = append(results, map[string]any{
 			"type": "message_start",
 			"message": map[string]any{
-				"id":              id,
-				"type":            "message",
-				"role":            roleAssistant,
-				"model":           state["model"],
-				"content":         []any{},
-				"stop_reason":     nil,
-				"stop_sequence":   nil,
-				"usage":           map[string]any{"input_tokens": 0, "output_tokens": 0},
+				"id":            id,
+				"type":          "message",
+				"role":          roleAssistant,
+				"model":         state["model"],
+				"content":       []any{},
+				"stop_reason":   nil,
+				"stop_sequence": nil,
+				"usage":         map[string]any{"input_tokens": 0, "output_tokens": 0},
 			},
 		})
 	}

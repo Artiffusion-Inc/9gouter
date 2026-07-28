@@ -208,3 +208,24 @@ Legacy JS conflicts land on `legacy/js-backend` in `runtimeConfig.js` (env-var p
 - **Dashboard**: Next.js (`output:export`), built with `bun`, embedded via `//go:embed`
 - **Auth**: session cookie (HMAC `auth_token`), bcrypt password hash, OIDC
 - **Config**: `kelseyhightower/envconfig` with `DurationMs` ms-or-duration setter
+
+## Lint Policy
+
+**Pre-existing findings are in scope.** When debugging or finishing work, run
+`staticcheck ./internal/... ./cmd/...` and `golangci-lint run ./internal/... ./cmd/...`
+and resolve ALL reported findings, including ones in files the current task did
+not touch. "Not my diff" is not an excuse — the repo must stay lint-clean.
+
+Severity ordering for fixes:
+1. **Real bugs first** — SA-class (ineffassign, dead branches, ignored return
+   values, canonicalized header keys), nil-deref/race, correctness regressions.
+2. **Style / dead code** — ST1005 (capitalized error strings), U1000 (unused),
+   S1021/S1005/S1033 (style), misspell, dupword.
+3. **Tests** — same linters apply; `//nolint:staticcheck // <reason>` is the
+   established convention for *intentional* violations (e.g. raw-map header
+   access that verifies exact-casing preservation in `base_test.go`). Add a
+   nolint only when the violation is deliberate and documented; otherwise fix it.
+
+Guard: after any lint cleanup, `go build ./...`, `go vet ./...`, `gofmt -l`,
+`go test ./...` must all be clean. Commit lint fixes separately from feature
+work so a revert never loses a real bug fix.

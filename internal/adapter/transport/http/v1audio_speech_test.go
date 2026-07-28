@@ -202,12 +202,12 @@ func TestV1AudioSpeech_NotWired(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	mustCreateConnection(t, db, "openai", `{"apiKey":"k"}`)
 	deps := V1Deps{
-		APIKeysRepo:    repo.NewAPIKeyRepo(db), SettingsRepo: repo.NewSettingsRepo(db),
+		APIKeysRepo: repo.NewAPIKeyRepo(db), SettingsRepo: repo.NewSettingsRepo(db),
 		ConnectionRepo: repo.NewConnectionRepo(db), ComboRepo: repo.NewComboRepo(db),
 		AliasRepo: repo.NewAliasRepo(db), NodeRepo: repo.NewNodeRepo(db),
 		ProxyPoolRepo: repo.NewProxyPoolRepo(db),
-		Config:       config.Config{ProxyClientMaxBodySize: "128mb"},
-		Logger:       slogDiscard(),
+		Config:        config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:        slogDiscard(),
 	}
 	mux := http.NewServeMux()
 	RegisterV1(mux, deps)

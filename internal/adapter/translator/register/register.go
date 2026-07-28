@@ -13,9 +13,9 @@ package register
 import (
 	// Register every translator pair. Blank imports are intentional.
 	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/claude"
+	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/codex"
 	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/commandcode"
 	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/cursor"
-	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/codex"
 	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/gemini"
 	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/kiro"
 	_ "github.com/Artiffusion-Inc/9gouter/internal/adapter/translator/ollama"

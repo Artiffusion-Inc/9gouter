@@ -154,7 +154,7 @@ func (c *ollamaNDJSONConverter) emitToolCallsDone(w io.Writer) {
 	}
 	c.pendingToolCalls = make(map[int]*pendingToolCall)
 	line, _ := json.Marshal(map[string]any{
-		"model":   c.model,
+		"model": c.model,
 		"message": map[string]any{
 			"role":       "assistant",
 			"content":    "",

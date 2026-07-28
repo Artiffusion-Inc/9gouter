@@ -28,9 +28,9 @@ func TestModels_ListAndCustom(t *testing.T) {
 		t.Fatalf("list status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
 	var listResp struct {
-		Models  []any `json:"models"`
-		Aliases map[string]string `json:"aliases"`
-		Disabled map[string]any `json:"disabled"`
+		Models   []any             `json:"models"`
+		Aliases  map[string]string `json:"aliases"`
+		Disabled map[string]any    `json:"disabled"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &listResp); err != nil {
 		t.Fatalf("unmarshal list: %v", err)

@@ -95,7 +95,7 @@ const (
 	fieldUnifiedModeName = 54
 
 	// ConversationMessage.
-	fieldMsgContent        = 1
+	fieldMsgContent       = 1
 	fieldMsgRole          = 2
 	fieldMsgID            = 13
 	fieldMsgToolResults   = 18
@@ -107,30 +107,30 @@ const (
 	// ConversationMessage.ToolResult.
 	fieldToolResultCallID      = 1
 	fieldToolResultName        = 2
-	fieldToolResultIndex        = 3
-	fieldToolResultRawArgs      = 5
+	fieldToolResultIndex       = 3
+	fieldToolResultRawArgs     = 5
 	fieldToolResultResult      = 8
-	fieldToolResultToolCall     = 11
+	fieldToolResultToolCall    = 11
 	fieldToolResultModelCallID = 12
 
 	// ClientSideToolV2Result (nested inside ToolResult.result).
-	fieldCV2RTool         = 1
-	fieldCV2RMCPResult     = 28
-	fieldCV2RCallID       = 35
-	fieldCV2RModelCallID  = 48
-	fieldCV2RToolIndex    = 49
+	fieldCV2RTool        = 1
+	fieldCV2RMCPResult   = 28
+	fieldCV2RCallID      = 35
+	fieldCV2RModelCallID = 48
+	fieldCV2RToolIndex   = 49
 	// Aliases used by the JS encodeClientSideToolV2Result.
 	fieldMCPRSelectedTool = 1
 	fieldMCPRResult       = 2
 
 	// ClientSideToolV2Call (nested inside ToolResult.tool_call).
-	fieldCV2CTool         = 1
-	fieldCV2CMCPParams    = 27
-	fieldCV2CCallID       = 3
-	fieldCV2CName         = 9
-	fieldCV2CRawArgs      = 10
-	fieldCV2CToolIndex    = 48
-	fieldCV2CModelCallID  = 49
+	fieldCV2CTool        = 1
+	fieldCV2CMCPParams   = 27
+	fieldCV2CCallID      = 3
+	fieldCV2CName        = 9
+	fieldCV2CRawArgs     = 10
+	fieldCV2CToolIndex   = 48
+	fieldCV2CModelCallID = 49
 
 	// Model.
 	fieldModelName  = 1
@@ -145,8 +145,8 @@ const (
 	fieldSettingUnknown6 = 6
 	fieldSettingUnknown8 = 8
 	fieldSettingUnknown9 = 9
-	fieldSetting6Field1   = 1
-	fieldSetting6Field2   = 2
+	fieldSetting6Field1  = 1
+	fieldSetting6Field2  = 2
 
 	// Metadata.
 	fieldMetaPlatform  = 1
@@ -156,9 +156,9 @@ const (
 	fieldMetaTimestamp = 5
 
 	// MessageId.
-	fieldMsgIDID     = 1
-	fieldMsgIDSum    = 2
-	fieldMsgIDRole   = 3
+	fieldMsgIDID   = 1
+	fieldMsgIDSum  = 2
+	fieldMsgIDRole = 3
 
 	// MCPTool.
 	fieldMCPToolName   = 1
@@ -171,12 +171,12 @@ const (
 	fieldRespResponse = 2
 
 	// ClientSideToolV2Call (response side).
-	fieldToolID          = 3
-	fieldToolName        = 9
-	fieldToolRawArgs     = 10
-	fieldToolIsLast      = 11
-	fieldToolIsLastAlt   = 15
-	fieldToolMCPParams   = 27
+	fieldToolID        = 3
+	fieldToolName      = 9
+	fieldToolRawArgs   = 10
+	fieldToolIsLast    = 11
+	fieldToolIsLastAlt = 15
+	fieldToolMCPParams = 27
 
 	// MCPParams.
 	fieldMCPToolsList = 1
@@ -987,9 +987,9 @@ func decodeMessage(data []byte) decodedMessage {
 
 // connectFrame is a parsed Connect RPC frame.
 type connectFrame struct {
-	flags   byte
-	length  int
-	payload []byte
+	flags    byte
+	length   int
+	payload  []byte
 	consumed int
 }
 
@@ -1020,11 +1020,11 @@ func parseConnectRPCFrame(buf []byte) (*connectFrame, int) {
 
 // extractedToolCall is a decoded Cursor tool call, in OpenAI tool_calls shape.
 type extractedToolCall struct {
-	id       string
-	typ      string // always "function"
-	name     string
-	args     string // raw arguments JSON string
-	isLast   bool
+	id     string
+	typ    string // always "function"
+	name   string
+	args   string // raw arguments JSON string
+	isLast bool
 }
 
 // extractToolCall decodes a ClientSideToolV2Call field-1 payload into an
@@ -1080,10 +1080,10 @@ func extractToolCall(toolCallData []byte) *extractedToolCall {
 // extractedResponse is the decoded Cursor response: one of text, thinking, or
 // a tool call. The error/decodeError/raw fields mirror the JS fallback shape.
 type extractedResponse struct {
-	text       *string
-	thinking   *string
-	toolCall   *extractedToolCall
-	decodeErr  string
+	text      *string
+	thinking  *string
+	toolCall  *extractedToolCall
+	decodeErr string
 }
 
 // extractTextAndThinking decodes a StreamUnifiedChatResponse (field 2) payload

@@ -18,11 +18,11 @@ package pricing
 // object: input, output, cached, reasoning, cache_creation. cached/reasoning/
 // cache_creation fall back to input/output respectively when zero.
 type Rate struct {
-	Input          float64 `json:"input"`
-	Output         float64 `json:"output"`
-	Cached         float64 `json:"cached"`
-	Reasoning      float64 `json:"reasoning"`
-	CacheCreation  float64 `json:"cache_creation"`
+	Input         float64 `json:"input"`
+	Output        float64 `json:"output"`
+	Cached        float64 `json:"cached"`
+	Reasoning     float64 `json:"reasoning"`
+	CacheCreation float64 `json:"cache_creation"`
 }
 
 // Tokens is the cache-inclusive token breakdown calculateCostFromTokens expects.
@@ -30,10 +30,10 @@ type Rate struct {
 // subsets); the formula subtracts both so they are not charged at the full input
 // rate. Mirrors the legacy canonicalizeUsage convention.
 type Tokens struct {
-	PromptTokens       int `json:"prompt_tokens"`
-	CompletionTokens  int `json:"completion_tokens"`
-	CachedTokens       int `json:"cached_tokens"`
-	ReasoningTokens    int `json:"reasoning_tokens"`
+	PromptTokens        int `json:"prompt_tokens"`
+	CompletionTokens    int `json:"completion_tokens"`
+	CachedTokens        int `json:"cached_tokens"`
+	ReasoningTokens     int `json:"reasoning_tokens"`
 	CacheCreationTokens int `json:"cache_creation_input_tokens"`
 }
 
@@ -41,50 +41,50 @@ type Tokens struct {
 // open-sse/providers/pricing.js MODEL_PRICING.
 var modelPricing = map[string]Rate{
 	// === Anthropic / Claude ===
-	"claude-opus-4-6":          {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 25.00, CacheCreation: 6.25},
-	"claude-opus-4-5-20251101": {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 25.00, CacheCreation: 6.25},
-	"claude-sonnet-4-6":        {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 15.00, CacheCreation: 3.75},
+	"claude-opus-4-6":            {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 25.00, CacheCreation: 6.25},
+	"claude-opus-4-5-20251101":   {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 25.00, CacheCreation: 6.25},
+	"claude-sonnet-4-6":          {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 15.00, CacheCreation: 3.75},
 	"claude-sonnet-4-5-20250929": {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 15.00, CacheCreation: 3.75},
 	"claude-haiku-4-5-20251001":  {Input: 1.00, Output: 5.00, Cached: 0.10, Reasoning: 5.00, CacheCreation: 1.25},
 	"claude-sonnet-4-20250514":   {Input: 3.00, Output: 15.00, Cached: 1.50, Reasoning: 15.00, CacheCreation: 3.00},
 	"claude-opus-4-20250514":     {Input: 15.00, Output: 25.00, Cached: 7.50, Reasoning: 112.50, CacheCreation: 15.00},
 	"claude-3-5-sonnet-20241022": {Input: 3.00, Output: 15.00, Cached: 1.50, Reasoning: 15.00, CacheCreation: 3.00},
-	"claude-haiku-4.5":          {Input: 0.50, Output: 2.50, Cached: 0.05, Reasoning: 3.75, CacheCreation: 0.50},
-	"claude-opus-4.1":           {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 37.50, CacheCreation: 5.00},
-	"claude-opus-4.5":           {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 37.50, CacheCreation: 5.00},
-	"claude-opus-4.6":           {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 37.50, CacheCreation: 5.00},
-	"claude-sonnet-4":           {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 22.50, CacheCreation: 3.00},
-	"claude-sonnet-4.5":         {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 22.50, CacheCreation: 3.00},
-	"claude-sonnet-4.6":         {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 22.50, CacheCreation: 3.00},
-	"claude-opus-4-5-thinking":  {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 37.50, CacheCreation: 5.00},
-	"claude-opus-4-6-thinking": {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 37.50, CacheCreation: 5.00},
-	"claude-fable-5":            {Input: 10.00, Output: 50.00, Cached: 1.00, Reasoning: 50.00, CacheCreation: 12.50},
+	"claude-haiku-4.5":           {Input: 0.50, Output: 2.50, Cached: 0.05, Reasoning: 3.75, CacheCreation: 0.50},
+	"claude-opus-4.1":            {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 37.50, CacheCreation: 5.00},
+	"claude-opus-4.5":            {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 37.50, CacheCreation: 5.00},
+	"claude-opus-4.6":            {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 37.50, CacheCreation: 5.00},
+	"claude-sonnet-4":            {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 22.50, CacheCreation: 3.00},
+	"claude-sonnet-4.5":          {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 22.50, CacheCreation: 3.00},
+	"claude-sonnet-4.6":          {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 22.50, CacheCreation: 3.00},
+	"claude-opus-4-5-thinking":   {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 37.50, CacheCreation: 5.00},
+	"claude-opus-4-6-thinking":   {Input: 5.00, Output: 25.00, Cached: 0.50, Reasoning: 37.50, CacheCreation: 5.00},
+	"claude-fable-5":             {Input: 10.00, Output: 50.00, Cached: 1.00, Reasoning: 50.00, CacheCreation: 12.50},
 
 	// === OpenAI / GPT ===
-	"gpt-3.5-turbo":   {Input: 0.50, Output: 1.50, Cached: 0.25, Reasoning: 2.25, CacheCreation: 0.50},
-	"gpt-4":           {Input: 2.50, Output: 10.00, Cached: 1.25, Reasoning: 15.00, CacheCreation: 2.50},
-	"gpt-4-turbo":     {Input: 10.00, Output: 30.00, Cached: 5.00, Reasoning: 45.00, CacheCreation: 10.00},
-	"gpt-4o":          {Input: 2.50, Output: 10.00, Cached: 1.25, Reasoning: 15.00, CacheCreation: 2.50},
-	"gpt-4o-mini":     {Input: 0.15, Output: 0.60, Cached: 0.075, Reasoning: 0.90, CacheCreation: 0.15},
-	"gpt-4.1":         {Input: 2.50, Output: 10.00, Cached: 1.25, Reasoning: 15.00, CacheCreation: 2.50},
-	"gpt-5":           {Input: 1.25, Output: 10.00, Cached: 0.625, Reasoning: 10.00, CacheCreation: 1.25},
-	"gpt-5-mini":      {Input: 0.25, Output: 2.00, Cached: 0.125, Reasoning: 2.00, CacheCreation: 0.25},
-	"gpt-5-codex":     {Input: 1.25, Output: 10.00, Cached: 0.625, Reasoning: 10.00, CacheCreation: 1.25},
-	"gpt-5.1":         {Input: 1.25, Output: 10.00, Cached: 0.625, Reasoning: 10.00, CacheCreation: 1.25},
-	"gpt-5.1-codex":   {Input: 1.25, Output: 10.00, Cached: 0.625, Reasoning: 10.00, CacheCreation: 1.25},
+	"gpt-3.5-turbo":           {Input: 0.50, Output: 1.50, Cached: 0.25, Reasoning: 2.25, CacheCreation: 0.50},
+	"gpt-4":                   {Input: 2.50, Output: 10.00, Cached: 1.25, Reasoning: 15.00, CacheCreation: 2.50},
+	"gpt-4-turbo":             {Input: 10.00, Output: 30.00, Cached: 5.00, Reasoning: 45.00, CacheCreation: 10.00},
+	"gpt-4o":                  {Input: 2.50, Output: 10.00, Cached: 1.25, Reasoning: 15.00, CacheCreation: 2.50},
+	"gpt-4o-mini":             {Input: 0.15, Output: 0.60, Cached: 0.075, Reasoning: 0.90, CacheCreation: 0.15},
+	"gpt-4.1":                 {Input: 2.50, Output: 10.00, Cached: 1.25, Reasoning: 15.00, CacheCreation: 2.50},
+	"gpt-5":                   {Input: 1.25, Output: 10.00, Cached: 0.625, Reasoning: 10.00, CacheCreation: 1.25},
+	"gpt-5-mini":              {Input: 0.25, Output: 2.00, Cached: 0.125, Reasoning: 2.00, CacheCreation: 0.25},
+	"gpt-5-codex":             {Input: 1.25, Output: 10.00, Cached: 0.625, Reasoning: 10.00, CacheCreation: 1.25},
+	"gpt-5.1":                 {Input: 1.25, Output: 10.00, Cached: 0.625, Reasoning: 10.00, CacheCreation: 1.25},
+	"gpt-5.1-codex":           {Input: 1.25, Output: 10.00, Cached: 0.625, Reasoning: 10.00, CacheCreation: 1.25},
 	"gpt-5.1-codex-mini":      {Input: 1.50, Output: 6.00, Cached: 0.75, Reasoning: 9.00, CacheCreation: 1.50},
 	"gpt-5.1-codex-mini-high": {Input: 2.00, Output: 8.00, Cached: 1.00, Reasoning: 12.00, CacheCreation: 2.00},
 	"gpt-5.1-codex-max":       {Input: 8.00, Output: 32.00, Cached: 4.00, Reasoning: 48.00, CacheCreation: 8.00},
-	"gpt-5.2":                {Input: 1.75, Output: 14.00, Cached: 0.175, Reasoning: 14.00, CacheCreation: 1.75},
-	"gpt-5.2-codex":          {Input: 1.75, Output: 14.00, Cached: 0.175, Reasoning: 14.00, CacheCreation: 1.75},
-	"gpt-5.3-codex":          {Input: 1.75, Output: 14.00, Cached: 0.175, Reasoning: 14.00, CacheCreation: 1.75},
-	"gpt-5.3-codex-spark":    {Input: 3.00, Output: 12.00, Cached: 0.30, Reasoning: 12.00, CacheCreation: 3.00},
-	"gpt-5.6":                {Input: 2.50, Output: 15.00, Cached: 0.25, Reasoning: 15.00, CacheCreation: 2.50},
-	"gpt-5.6-luna":           {Input: 1.00, Output: 6.00, Cached: 0.10, Reasoning: 6.00, CacheCreation: 1.00},
-	"gpt-5.6-terra":          {Input: 2.50, Output: 15.00, Cached: 0.25, Reasoning: 15.00, CacheCreation: 2.50},
-	"gpt-5.6-sol":            {Input: 5.00, Output: 30.00, Cached: 0.50, Reasoning: 30.00, CacheCreation: 5.00},
-	"o1":                     {Input: 15.00, Output: 60.00, Cached: 7.50, Reasoning: 90.00, CacheCreation: 15.00},
-	"o1-mini":                {Input: 3.00, Output: 12.00, Cached: 1.50, Reasoning: 18.00, CacheCreation: 3.00},
+	"gpt-5.2":                 {Input: 1.75, Output: 14.00, Cached: 0.175, Reasoning: 14.00, CacheCreation: 1.75},
+	"gpt-5.2-codex":           {Input: 1.75, Output: 14.00, Cached: 0.175, Reasoning: 14.00, CacheCreation: 1.75},
+	"gpt-5.3-codex":           {Input: 1.75, Output: 14.00, Cached: 0.175, Reasoning: 14.00, CacheCreation: 1.75},
+	"gpt-5.3-codex-spark":     {Input: 3.00, Output: 12.00, Cached: 0.30, Reasoning: 12.00, CacheCreation: 3.00},
+	"gpt-5.6":                 {Input: 2.50, Output: 15.00, Cached: 0.25, Reasoning: 15.00, CacheCreation: 2.50},
+	"gpt-5.6-luna":            {Input: 1.00, Output: 6.00, Cached: 0.10, Reasoning: 6.00, CacheCreation: 1.00},
+	"gpt-5.6-terra":           {Input: 2.50, Output: 15.00, Cached: 0.25, Reasoning: 15.00, CacheCreation: 2.50},
+	"gpt-5.6-sol":             {Input: 5.00, Output: 30.00, Cached: 0.50, Reasoning: 30.00, CacheCreation: 5.00},
+	"o1":                      {Input: 15.00, Output: 60.00, Cached: 7.50, Reasoning: 90.00, CacheCreation: 15.00},
+	"o1-mini":                 {Input: 3.00, Output: 12.00, Cached: 1.50, Reasoning: 18.00, CacheCreation: 3.00},
 
 	// === Gemini ===
 	"gemini-3-flash-preview":     {Input: 0.50, Output: 3.00, Cached: 0.03, Reasoning: 4.50, CacheCreation: 0.50},
@@ -96,9 +96,9 @@ var modelPricing = map[string]Rate{
 	"gemini-3.5-flash-low":       {Input: 0.50, Output: 3.00, Cached: 0.03, Reasoning: 4.50, CacheCreation: 0.50},
 	"gemini-3.5-flash-extra-low": {Input: 0.50, Output: 3.00, Cached: 0.03, Reasoning: 4.50, CacheCreation: 0.50},
 	"gemini-3-flash":             {Input: 0.50, Output: 3.00, Cached: 0.03, Reasoning: 4.50, CacheCreation: 0.50},
-	"gemini-2.5-pro":              {Input: 2.00, Output: 12.00, Cached: 0.25, Reasoning: 18.00, CacheCreation: 2.00},
-	"gemini-2.5-flash":            {Input: 0.30, Output: 2.50, Cached: 0.03, Reasoning: 3.75, CacheCreation: 0.30},
-	"gemini-2.5-flash-lite":       {Input: 0.15, Output: 1.25, Cached: 0.015, Reasoning: 1.875, CacheCreation: 0.15},
+	"gemini-2.5-pro":             {Input: 2.00, Output: 12.00, Cached: 0.25, Reasoning: 18.00, CacheCreation: 2.00},
+	"gemini-2.5-flash":           {Input: 0.30, Output: 2.50, Cached: 0.03, Reasoning: 3.75, CacheCreation: 0.30},
+	"gemini-2.5-flash-lite":      {Input: 0.15, Output: 1.25, Cached: 0.015, Reasoning: 1.875, CacheCreation: 0.15},
 
 	// === Qwen ===
 	"qwen3-coder-plus":  {Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00},
@@ -106,27 +106,27 @@ var modelPricing = map[string]Rate{
 
 	// === Kimi ===
 	// Official platform.kimi.ai: cache-hit / cache-miss / output per 1M tokens.
-	"kimi-k3":                  {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 15.00, CacheCreation: 3.00},
-	"k3":                       {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 15.00, CacheCreation: 3.00},
-	"kimi-k2.7-code":           {Input: 0.95, Output: 4.00, Cached: 0.19, Reasoning: 4.00, CacheCreation: 0.95},
-	"kimi-k2.7-code-highspeed": {Input: 1.90, Output: 8.00, Cached: 0.38, Reasoning: 8.00, CacheCreation: 1.90},
-	"kimi-for-coding":          {Input: 0.95, Output: 4.00, Cached: 0.19, Reasoning: 4.00, CacheCreation: 0.95},
+	"kimi-k3":                   {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 15.00, CacheCreation: 3.00},
+	"k3":                        {Input: 3.00, Output: 15.00, Cached: 0.30, Reasoning: 15.00, CacheCreation: 3.00},
+	"kimi-k2.7-code":            {Input: 0.95, Output: 4.00, Cached: 0.19, Reasoning: 4.00, CacheCreation: 0.95},
+	"kimi-k2.7-code-highspeed":  {Input: 1.90, Output: 8.00, Cached: 0.38, Reasoning: 8.00, CacheCreation: 1.90},
+	"kimi-for-coding":           {Input: 0.95, Output: 4.00, Cached: 0.19, Reasoning: 4.00, CacheCreation: 0.95},
 	"kimi-for-coding-highspeed": {Input: 1.90, Output: 8.00, Cached: 0.38, Reasoning: 8.00, CacheCreation: 1.90},
-	"kimi-k2":                  {Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00},
-	"kimi-k2-thinking":         {Input: 1.50, Output: 6.00, Cached: 0.75, Reasoning: 9.00, CacheCreation: 1.50},
-	"kimi-k2.5":                {Input: 1.20, Output: 4.80, Cached: 0.60, Reasoning: 7.20, CacheCreation: 1.20},
-	"kimi-k2.5-thinking":       {Input: 1.80, Output: 7.20, Cached: 0.90, Reasoning: 10.80, CacheCreation: 1.80},
-	"kimi-k2.6":                {Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00},
-	"kimi-latest":              {Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00},
+	"kimi-k2":                   {Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00},
+	"kimi-k2-thinking":          {Input: 1.50, Output: 6.00, Cached: 0.75, Reasoning: 9.00, CacheCreation: 1.50},
+	"kimi-k2.5":                 {Input: 1.20, Output: 4.80, Cached: 0.60, Reasoning: 7.20, CacheCreation: 1.20},
+	"kimi-k2.5-thinking":        {Input: 1.80, Output: 7.20, Cached: 0.90, Reasoning: 10.80, CacheCreation: 1.80},
+	"kimi-k2.6":                 {Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00},
+	"kimi-latest":               {Input: 1.00, Output: 4.00, Cached: 0.50, Reasoning: 6.00, CacheCreation: 1.00},
 
 	// === DeepSeek ===
-	"deepseek-chat":       {Input: 0.14, Output: 0.28, Cached: 0.0028, Reasoning: 0.28, CacheCreation: 0.14},
-	"deepseek-reasoner":   {Input: 0.14, Output: 0.28, Cached: 0.0028, Reasoning: 0.28, CacheCreation: 0.14},
-	"deepseek-r1":         {Input: 0.14, Output: 0.28, Cached: 0.0028, Reasoning: 0.28, CacheCreation: 0.14},
-	"deepseek-v3.2-chat":  {Input: 0.14, Output: 0.28, Cached: 0.0028, Reasoning: 0.28, CacheCreation: 0.14},
+	"deepseek-chat":          {Input: 0.14, Output: 0.28, Cached: 0.0028, Reasoning: 0.28, CacheCreation: 0.14},
+	"deepseek-reasoner":      {Input: 0.14, Output: 0.28, Cached: 0.0028, Reasoning: 0.28, CacheCreation: 0.14},
+	"deepseek-r1":            {Input: 0.14, Output: 0.28, Cached: 0.0028, Reasoning: 0.28, CacheCreation: 0.14},
+	"deepseek-v3.2-chat":     {Input: 0.14, Output: 0.28, Cached: 0.0028, Reasoning: 0.28, CacheCreation: 0.14},
 	"deepseek-v3.2-reasoner": {Input: 0.14, Output: 0.28, Cached: 0.0028, Reasoning: 0.28, CacheCreation: 0.14},
-	"deepseek-v4-flash":     {Input: 0.14, Output: 0.28, Cached: 0.0028, Reasoning: 0.28, CacheCreation: 0.14},
-	"deepseek-v4-pro":       {Input: 0.435, Output: 0.87, Cached: 0.003625, Reasoning: 0.87, CacheCreation: 0.435},
+	"deepseek-v4-flash":      {Input: 0.14, Output: 0.28, Cached: 0.0028, Reasoning: 0.28, CacheCreation: 0.14},
+	"deepseek-v4-pro":        {Input: 0.435, Output: 0.87, Cached: 0.003625, Reasoning: 0.87, CacheCreation: 0.435},
 
 	// === GLM ===
 	"glm-4.6":  {Input: 0.50, Output: 2.00, Cached: 0.25, Reasoning: 3.00, CacheCreation: 0.50},

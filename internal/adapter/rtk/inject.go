@@ -182,8 +182,8 @@ type PxpipeTransform func(args PxpipeTransformArgs) (*PxpipeTransformResult, err
 
 // PxpipeTransformArgs is the input to a pxpipe transform.
 type PxpipeTransformArgs struct {
-	Body            []byte
-	Model           string
+	Body             []byte
+	Model            string
 	MinCompressChars int
 }
 

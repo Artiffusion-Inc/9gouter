@@ -272,16 +272,16 @@ func TestConvertOpenAIJSONToGemini_ReasoningContent(t *testing.T) {
 func newV1BetaDeps(t *testing.T, db *sql.DB, chat ChatHandler) V1Deps {
 	t.Helper()
 	return V1Deps{
-		APIKeysRepo:   repo.NewAPIKeyRepo(db),
-		SettingsRepo:  repo.NewSettingsRepo(db),
+		APIKeysRepo:    repo.NewAPIKeyRepo(db),
+		SettingsRepo:   repo.NewSettingsRepo(db),
 		ConnectionRepo: repo.NewConnectionRepo(db),
-		ComboRepo:     repo.NewComboRepo(db),
-		AliasRepo:     repo.NewAliasRepo(db),
-		NodeRepo:      repo.NewNodeRepo(db),
-		ProxyPoolRepo: repo.NewProxyPoolRepo(db),
-		Chat:          chat,
-		Config:        config.Config{ProxyClientMaxBodySize: "128mb"},
-		Logger:        slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		ComboRepo:      repo.NewComboRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
+		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
+		Chat:           chat,
+		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:         slog.New(slog.NewJSONHandler(io.Discard, nil)),
 	}
 }
 

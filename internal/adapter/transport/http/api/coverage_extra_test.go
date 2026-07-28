@@ -734,9 +734,9 @@ func TestAuth_OidcStartConfiguredButInvalidIssuer(t *testing.T) {
 	deps := buildDeps(t, db)
 	// Seed OIDC settings via the settings repo Update.
 	patch, _ := json.Marshal(map[string]any{
-		"oidcIssuerUrl":     "http://127.0.0.1:1/invalid",
-		"oidcClientId":      "client",
-		"oidcClientSecret":  "secret",
+		"oidcIssuerUrl":    "http://127.0.0.1:1/invalid",
+		"oidcClientId":     "client",
+		"oidcClientSecret": "secret",
 	})
 	if _, err := deps.Settings.Update(context.Background(), patch); err != nil {
 		t.Fatalf("update settings: %v", err)

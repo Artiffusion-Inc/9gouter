@@ -29,16 +29,16 @@ import (
 
 // Request is the input to Handle.
 type Request struct {
-	Ctx         context.Context
-	Body        json.RawMessage
-	Endpoint    string
-	Headers     http.Header
-	ProviderID  string
-	Model       string
-	Credentials domainProv.Credentials
-	APIKey      string
+	Ctx          context.Context
+	Body         json.RawMessage
+	Endpoint     string
+	Headers      http.Header
+	ProviderID   string
+	Model        string
+	Credentials  domainProv.Credentials
+	APIKey       string
 	ConnectionID string
-	UserAgent   string
+	UserAgent    string
 }
 
 // Result is the output of Handle.

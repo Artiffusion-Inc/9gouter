@@ -680,7 +680,7 @@ func TestNodeService_Delete_DeleteByProviderError(t *testing.T) {
 func TestNodeService_Delete_RepoDeleteError(t *testing.T) {
 	t.Parallel()
 	nrepo := &fakeNodeRepo{
-		byID:     map[string]*settings.ProviderNode{"n1": {ID: "n1"}},
+		byID:      map[string]*settings.ProviderNode{"n1": {ID: "n1"}},
 		deleteErr: errors.New("node delete fail"),
 	}
 	crepo := &fakeConnRepoForNodes{deletedCount: 0}

@@ -147,7 +147,6 @@ func (s *UsageService) chartDaily(ctx context.Context, bucketCount int) ([]map[s
 	return out, nil
 }
 
-
 // RecentLogs returns recent formatted log lines.
 func (s *UsageService) RecentLogs(ctx context.Context, limit int) ([]string, error) {
 	return s.Repo.RecentLogs(ctx, limit)

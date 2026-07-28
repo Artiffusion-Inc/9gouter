@@ -21,11 +21,10 @@ const translatorLogsDir = "logs/translator"
 //   - event message with data {"type":"line", "line": "..."} per new line
 //   - event message with data {"type":"lines","lines":[...]} for a batch
 //   - event message with data {"type":"clear"} after DELETE
-//
 var (
-	consoleLogMu    sync.Mutex
-	consoleLogBuf   []string
-	consoleLogSubs  = make(map[chan string]struct{})
+	consoleLogMu   sync.Mutex
+	consoleLogBuf  []string
+	consoleLogSubs = make(map[chan string]struct{})
 )
 
 // RegisterTranslator mounts translator debug/log routes.

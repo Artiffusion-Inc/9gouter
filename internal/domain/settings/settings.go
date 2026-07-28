@@ -47,16 +47,16 @@ type APIKey struct {
 // ProviderConnection is a single upstream account (OAuth, API key, access
 // token) along with provider-specific metadata stored in Data.
 type ProviderConnection struct {
-	ID         string          `json:"id"`
-	Provider   string          `json:"provider"`
-	AuthType   string          `json:"authType"`
-	Name       string          `json:"name,omitempty"`
-	Email      string          `json:"email,omitempty"`
-	Priority   int             `json:"priority,omitempty"`
-	IsActive   bool            `json:"isActive"`
-	Data       json.RawMessage `json:"data"`
-	CreatedAt  time.Time       `json:"createdAt"`
-	UpdatedAt  time.Time       `json:"updatedAt"`
+	ID        string          `json:"id"`
+	Provider  string          `json:"provider"`
+	AuthType  string          `json:"authType"`
+	Name      string          `json:"name,omitempty"`
+	Email     string          `json:"email,omitempty"`
+	Priority  int             `json:"priority,omitempty"`
+	IsActive  bool            `json:"isActive"`
+	Data      json.RawMessage `json:"data"`
+	CreatedAt time.Time       `json:"createdAt"`
+	UpdatedAt time.Time       `json:"updatedAt"`
 }
 
 // ProviderNode is a provider/node definition (base URLs, aliases, prefixes).

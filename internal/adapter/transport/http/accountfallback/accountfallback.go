@@ -41,10 +41,10 @@ var BackoffConfig = struct {
 // Status is non-zero/non-empty. Backoff=true means use exponential backoff
 // (rate limit); otherwise CooldownMs is a fixed cooldown.
 type ErrorRule struct {
-	Text      string
-	Status    int
+	Text       string
+	Status     int
 	CooldownMs int
-	Backoff   bool
+	Backoff    bool
 }
 
 // ErrorRules is the top-to-bottom classification table. Text rules are
@@ -72,10 +72,10 @@ var ErrorRules = []ErrorRule{
 // outage — the account itself is healthy). CooldownMs is the lock duration
 // when ShouldFallback is true. NewBackoffLevel is set on backoff rules.
 type FallbackDecision struct {
-	ShouldFallback   bool
-	CooldownMs       int
-	NewBackoffLevel  int
-	backoffChanged   bool
+	ShouldFallback  bool
+	CooldownMs      int
+	NewBackoffLevel int
+	backoffChanged  bool
 }
 
 // GetQuotaCooldown returns the exponential-backoff cooldown for a backoff
@@ -287,9 +287,9 @@ type FailureSource string
 
 const (
 	FailureSourceUnknown  FailureSource = "unknown"
-	FailureSourceProxy     FailureSource = "proxy"
-	FailureSourceRelay     FailureSource = "relay"
-	FailureSourceUpstream  FailureSource = "upstream"
+	FailureSourceProxy    FailureSource = "proxy"
+	FailureSourceRelay    FailureSource = "relay"
+	FailureSourceUpstream FailureSource = "upstream"
 )
 
 // ProxyRouteError is the typed failure a proxy/relay outage surfaces. It is

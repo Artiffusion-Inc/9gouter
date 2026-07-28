@@ -21,10 +21,10 @@ func TestResolveStream(t *testing.T) {
 	emptyAccept := http.Header{}
 
 	cases := []struct {
-		name      string
-		body      string
-		headers   http.Header
-		provider  string
+		name       string
+		body       string
+		headers    http.Header
+		provider   string
 		wantStream bool
 	}{
 		// forceStream providers: always true regardless of client/Accept/body.

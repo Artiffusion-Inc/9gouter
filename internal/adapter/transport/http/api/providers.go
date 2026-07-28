@@ -35,15 +35,15 @@ func (h *providersHandler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 type createProviderRequest struct {
-	Provider    string          `json:"provider"`
-	APIKey      string          `json:"apiKey"`
-	Name        string          `json:"name"`
-	DisplayName string          `json:"displayName"`
-	Priority    int             `json:"priority"`
-	DefaultModel string         `json:"defaultModel"`
-	TestStatus  string          `json:"testStatus"`
-	ProxyPoolID string          `json:"proxyPoolId"`
-	Data        json.RawMessage `json:"providerSpecificData"`
+	Provider     string          `json:"provider"`
+	APIKey       string          `json:"apiKey"`
+	Name         string          `json:"name"`
+	DisplayName  string          `json:"displayName"`
+	Priority     int             `json:"priority"`
+	DefaultModel string          `json:"defaultModel"`
+	TestStatus   string          `json:"testStatus"`
+	ProxyPoolID  string          `json:"proxyPoolId"`
+	Data         json.RawMessage `json:"providerSpecificData"`
 }
 
 func (h *providersHandler) create(w http.ResponseWriter, r *http.Request) {

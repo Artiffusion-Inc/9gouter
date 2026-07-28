@@ -142,8 +142,10 @@ func TestTokenCount_NoUsageField(t *testing.T) {
 // under test is the real on-disk SQLite UsageRepo.
 type ollamaStubExecutor struct{}
 
-func (ollamaStubExecutor) BuildURL(string, bool, int, provider.Credentials) string { return "http://upstream" }
-func (ollamaStubExecutor) BuildHeaders(provider.Credentials, bool) http.Header     { return http.Header{} }
+func (ollamaStubExecutor) BuildURL(string, bool, int, provider.Credentials) string {
+	return "http://upstream"
+}
+func (ollamaStubExecutor) BuildHeaders(provider.Credentials, bool) http.Header { return http.Header{} }
 func (ollamaStubExecutor) TransformRequest(string, json.RawMessage, bool, provider.Credentials) (json.RawMessage, error) {
 	return json.RawMessage(`{"model":"minimax-m3","messages":[{"role":"user","content":"hi"}]}`), nil
 }
@@ -183,8 +185,10 @@ func TestHandle_NonStreamOllamaToOpenAI_RecordsRealTokens(t *testing.T) {
 	}
 
 	h := New(Dependencies{
-		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "ollama", exec: ollamaStubExecutor{}}, nil },
-		UsageRepo: usageRepo,
+		Registry: func(id string) (DomainProvider, error) {
+			return &stubProvider{id: "ollama", exec: ollamaStubExecutor{}}, nil
+		},
+		UsageRepo:  usageRepo,
 		StreamPipe: fakeStreamPiper{},
 		JSONToSSE:  fakeJSONToSSE{},
 		Config:     configForTest(),
@@ -259,8 +263,8 @@ func TestHandle_NonStreamOpenAIPassthrough_RecordsFloat64Tokens(t *testing.T) {
 	exec := &openAIPassthroughExecutor{}
 
 	h := New(Dependencies{
-		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
-		UsageRepo: usageRepo,
+		Registry:   func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: exec}, nil },
+		UsageRepo:  usageRepo,
 		StreamPipe: fakeStreamPiper{},
 		JSONToSSE:  fakeJSONToSSE{},
 		Config:     configForTest(),
@@ -302,8 +306,12 @@ func TestHandle_NonStreamOpenAIPassthrough_RecordsFloat64Tokens(t *testing.T) {
 // stay float64 from json.Unmarshal.
 type openAIPassthroughExecutor struct{}
 
-func (openAIPassthroughExecutor) BuildURL(string, bool, int, provider.Credentials) string { return "http://upstream" }
-func (openAIPassthroughExecutor) BuildHeaders(provider.Credentials, bool) http.Header     { return http.Header{} }
+func (openAIPassthroughExecutor) BuildURL(string, bool, int, provider.Credentials) string {
+	return "http://upstream"
+}
+func (openAIPassthroughExecutor) BuildHeaders(provider.Credentials, bool) http.Header {
+	return http.Header{}
+}
 func (openAIPassthroughExecutor) TransformRequest(string, json.RawMessage, bool, provider.Credentials) (json.RawMessage, error) {
 	return json.RawMessage(`{"model":"gpt-4","messages":[]}`), nil
 }

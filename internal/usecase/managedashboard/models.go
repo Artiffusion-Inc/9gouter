@@ -9,7 +9,7 @@ import (
 
 // ModelService exposes alias, custom model, and disabled model operations.
 type ModelService struct {
-	AliasRepo    interface {
+	AliasRepo interface {
 		GetAliases(ctx context.Context) (map[string]string, error)
 		SetAlias(ctx context.Context, alias, model string) error
 		DeleteAlias(ctx context.Context, alias string) error

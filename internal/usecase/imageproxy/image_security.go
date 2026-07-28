@@ -136,12 +136,6 @@ func ssrfRejectHostText(host string) bool {
 	return false
 }
 
-// ssrfRejectHost is the package-level helper used by validateDownloadURL /
-// resolveInputImage. It routes through the production policy by default; tests
-// that inject a permissive SSRFPolicy via Dependencies bypass it through the
-// Handler method (h.deps.SSRFPolicy).
-func ssrfRejectHost(host string) bool { return defaultSSRFPolicy{}.RejectHost(host) }
-
 // === Lifecycle URL validation ===
 
 // LifecycleHostPredicate decides whether a host is an allowed destination for a

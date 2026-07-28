@@ -125,7 +125,7 @@ func TestCodexResolve_RefreshOn401(t *testing.T) {
 	withSwap(r, srv.URL)
 	persisted := false
 	res, err := r.Resolve(context.Background(), provider.Credentials{
-		AccessToken: "stale-at",
+		AccessToken:          "stale-at",
 		ProviderSpecificData: map[string]any{"refreshToken": "rt-xyz"},
 	}, ResolveOpts{
 		OnCredentialsRefreshed: func(rc RefreshedCredentials) error { persisted = true; return nil },

@@ -128,14 +128,14 @@ func fetchDeepgramVoices(ctx context.Context, pools *repo.ProxyPoolRepo, opts pr
 
 	body, status, err := doVoicesRequest(ctx, pools, opts, conn, req)
 	if err != nil {
-		return nil, fmt.Errorf("Deepgram API: %v", err)
+		return nil, fmt.Errorf("deepgram API: %v", err)
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("Deepgram API %d: %s", status, string(body))
+		return nil, fmt.Errorf("deepgram API %d: %s", status, string(body))
 	}
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, errors.New("Deepgram API: invalid response")
+		return nil, errors.New("deepgram API: invalid response")
 	}
 	ttsModels, _ := raw["tts"].([]any)
 	groups := newVoiceGroups()
@@ -220,14 +220,14 @@ func fetchInworldVoices(ctx context.Context, pools *repo.ProxyPoolRepo, opts pro
 
 	body, status, err := doVoicesRequest(ctx, pools, opts, conn, req)
 	if err != nil {
-		return nil, fmt.Errorf("Inworld API: %v", err)
+		return nil, fmt.Errorf("inworld API: %v", err)
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("Inworld API %d: %s", status, string(body))
+		return nil, fmt.Errorf("inworld API %d: %s", status, string(body))
 	}
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, errors.New("Inworld API: invalid response")
+		return nil, errors.New("inworld API: invalid response")
 	}
 	voices, _ := raw["voices"].([]any)
 	groups := newVoiceGroups()

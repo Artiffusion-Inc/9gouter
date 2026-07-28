@@ -468,15 +468,6 @@ func redactedURL(u *url.URL) string {
 	return u.Scheme + "://" + u.Host + u.Path
 }
 
-// logLifecycle emits one structured lifecycle log line carrying only the
-// spec-approved fields: provider, model, phase, status and a redacted URL.
-// It MUST NOT receive prompt, credentials, or image bytes. h.do already logs
-// per-call; this helper exists for adapter-level lifecycle boundaries (e.g.
-// "submit complete, polling started") that are not tied to a single HTTP call.
-func (h *Handler) logLifecycle(provider, model, phase, status string, u *url.URL) {
-	h.deps.Logger.Debugf("image lifecycle %s %s model=%s phase=%s status=%s url=%s", provider, redactedURL(u), model, phase, status, redactedURL(u))
-}
-
 // synthOpenAICompatible builds the OpenAI {model,prompt,n,size,quality,style,
 // response_format} body (optionally whitelisted via cfg.BodyFields), POSTs to
 // cfg.BaseURL, and returns the upstream response verbatim (OpenAI shape
@@ -891,19 +882,4 @@ func upstreamError(body []byte) error {
 		}
 	}
 	return fmt.Errorf("upstream error")
-}
-
-func decodeBase64(s string) []byte {
-	// Try standard base64 first, then URL-safe (Gemini/Codex may emit either).
-	if out, err := base64.StdEncoding.DecodeString(s); err == nil {
-		return out
-	}
-	if out, err := base64.URLEncoding.DecodeString(s); err == nil {
-		return out
-	}
-	out, err := base64.RawStdEncoding.DecodeString(s)
-	if err != nil {
-		return nil
-	}
-	return out
 }

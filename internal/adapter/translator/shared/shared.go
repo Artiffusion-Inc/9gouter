@@ -23,8 +23,8 @@ func BuildChunk(id string, created int, model string, delta map[string]any, fini
 		"model":   model,
 		"choices": []any{
 			map[string]any{
-				"index":        0,
-				"delta":        delta,
+				"index":         0,
+				"delta":         delta,
 				"finish_reason": fr,
 			},
 		},

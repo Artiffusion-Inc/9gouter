@@ -208,10 +208,10 @@ type ValidateRequest struct {
 
 // ValidateResult reports whether a base URL + API key combination is usable.
 type ValidateResult struct {
-	Valid    bool   `json:"valid"`
-	Method   string `json:"method,omitempty"`
-	Error    string `json:"error,omitempty"`
-	Dimensions *int  `json:"dimensions,omitempty"`
+	Valid      bool   `json:"valid"`
+	Method     string `json:"method,omitempty"`
+	Error      string `json:"error,omitempty"`
+	Dimensions *int   `json:"dimensions,omitempty"`
 }
 
 // Validate tests an upstream endpoint. For local callers, private/internal
@@ -300,8 +300,8 @@ func validateAnthropic(ctx context.Context, client *http.Client, baseURL, apiKey
 	}
 	if modelID != "" {
 		body := mustJSON(map[string]any{
-			"model":    modelID,
-			"messages": []map[string]any{{"role": "user", "content": "ping"}},
+			"model":      modelID,
+			"messages":   []map[string]any{{"role": "user", "content": "ping"}},
 			"max_tokens": 1,
 		})
 		u = baseURL + "/chat/completions"

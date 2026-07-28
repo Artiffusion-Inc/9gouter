@@ -40,16 +40,16 @@ var Schema = map[string]TableDef{
 	},
 	"providerConnections": {
 		Columns: map[string]string{
-			"id":         "TEXT PRIMARY KEY",
-			"provider":   "TEXT NOT NULL",
-			"authType":   "TEXT NOT NULL",
-			"name":       "TEXT",
-			"email":      "TEXT",
-			"priority":   "INTEGER",
-			"isActive":   "INTEGER DEFAULT 1",
-			"data":       "TEXT NOT NULL",
-			"createdAt":  "TEXT NOT NULL",
-			"updatedAt":  "TEXT NOT NULL",
+			"id":        "TEXT PRIMARY KEY",
+			"provider":  "TEXT NOT NULL",
+			"authType":  "TEXT NOT NULL",
+			"name":      "TEXT",
+			"email":     "TEXT",
+			"priority":  "INTEGER",
+			"isActive":  "INTEGER DEFAULT 1",
+			"data":      "TEXT NOT NULL",
+			"createdAt": "TEXT NOT NULL",
+			"updatedAt": "TEXT NOT NULL",
 		},
 		Indexes: []string{
 			"CREATE INDEX IF NOT EXISTS idx_pc_provider ON providerConnections(provider)",
@@ -242,7 +242,7 @@ func existingColumns(db *sql.DB, table string) (map[string]struct{}, error) {
 }
 
 var (
-	pkRegex    = regexp.MustCompile(`(?i)PRIMARY KEY(\s+AUTOINCREMENT)?`)
+	pkRegex     = regexp.MustCompile(`(?i)PRIMARY KEY(\s+AUTOINCREMENT)?`)
 	uniqueRegex = regexp.MustCompile(`(?i)\bUNIQUE\b`)
 )
 

@@ -37,11 +37,11 @@ var (
 )
 
 const (
-	cacheTTL    = 60 * time.Minute // projectIdCache freshness (JS CACHE_TTL_MS 1h)
-	pendingTTL  = 2 * time.Minute  // abort an inflight fetch older than this (JS PENDING_TTL_MS)
+	cacheTTL     = 60 * time.Minute // projectIdCache freshness (JS CACHE_TTL_MS 1h)
+	pendingTTL   = 2 * time.Minute  // abort an inflight fetch older than this (JS PENDING_TTL_MS)
 	cleanupEvery = 10 * time.Minute // JS CLEANUP_INTERVAL_MS
 
-	onboardMaxAttempts  = 5
+	onboardMaxAttempts    = 5
 	onboardAttemptTimeout = 30 * time.Second
 )
 
@@ -363,7 +363,7 @@ func (f *Fetcher) onboardUser(ctx context.Context, accessToken, tierID string) (
 // loadCodeAssistResponse models the loadCodeAssist response subset we read.
 type loadCodeAssistResponse struct {
 	CloudAICompanionProject cloudAIProject `json:"cloudaicompanionProject"`
-	AllowedTiers            []*allowedTier  `json:"allowedTiers"`
+	AllowedTiers            []*allowedTier `json:"allowedTiers"`
 }
 
 // onboardResponse models the onboardUser polled response.
@@ -377,9 +377,9 @@ type onboardResponse struct {
 // cloudAICompanionProject is either a string (the project id) or an object
 // with an id field — the JS extractProjectId handles both shapes.
 type cloudAIProject struct {
-	raw  json.RawMessage
-	id   string
-	str  string
+	raw json.RawMessage
+	id  string
+	str string
 }
 
 func (p *cloudAIProject) UnmarshalJSON(data []byte) error {
@@ -424,7 +424,7 @@ type allowedTier struct {
 func loadCodeAssistMetadata() map[string]any {
 	return map[string]any{
 		"ideType":    ideTypeAntigravity,
-		"platform":    platformEnum(),
+		"platform":   platformEnum(),
 		"pluginType": pluginTypeGemini,
 	}
 }
@@ -455,7 +455,7 @@ func applyLoadCodeAssistHeaders(req *http.Request, accessToken string) {
 	req.Header.Set("X-Goog-Api-Client", "google-cloud-sdk vscode_cloudshelleditor/0.1")
 	clientMeta, _ := json.Marshal(map[string]any{
 		"ideType":    ideTypeAntigravity,
-		"platform":    platformEnum(),
+		"platform":   platformEnum(),
 		"pluginType": pluginTypeGemini,
 	})
 	req.Header.Set("Client-Metadata", string(clientMeta))

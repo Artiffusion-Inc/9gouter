@@ -8,20 +8,19 @@ import (
 )
 
 // imageCapability is one row of the default-deny image capability table. It
-// matches a (provider, model) pair and lists the exact extended fields the
-// matched provider/model accepts. Fields not in the row are rejected before
-// the executor with 400 (default-deny, per the image-provider-parity spec).
+// matches a provider and lists the exact extended fields the matched
+// provider accepts (matching is per-provider today; per-model predicates are
+// not yet implemented). Fields not in the row are rejected before the executor
+// with 400 (default-deny, per the image-provider-parity spec).
 //
 // The table is evaluated by imageCapabilities(provider, model). The first
-// matching row wins; rows are ordered most-specific first. A row with an empty
-// matchModels matches every model for that provider.
+// matching row wins; rows are ordered most-specific first.
 type imageCapability struct {
 	provider    string
-	matchModels []string // exact bare-model predicates; empty = any model for this provider
-	allowImage  bool     // image/images inputs accepted
-	allowMask   bool     // one mask alias accepted (inpainting)
-	allowDims   bool     // width/height accepted
-	allowNamed6 bool     // negative_prompt/guidance/seed/num_steps/steps/strength accepted
+	allowImage  bool // image/images inputs accepted
+	allowMask   bool // one mask alias accepted (inpainting)
+	allowDims   bool // width/height accepted
+	allowNamed6 bool // negative_prompt/guidance/seed/num_steps/steps/strength accepted
 }
 
 // cloudflareMultipartModels are the three legacy FLUX.2 multipart models that

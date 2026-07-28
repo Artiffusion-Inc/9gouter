@@ -45,8 +45,8 @@ func newSearchMux(t *testing.T, stub SearchHandler) (*http.ServeMux, *sql.DB) {
 		SettingsRepo:   repo.NewSettingsRepo(db),
 		ConnectionRepo: repo.NewConnectionRepo(db),
 		ComboRepo:      repo.NewComboRepo(db),
-		AliasRepo:       repo.NewAliasRepo(db),
-		NodeRepo:        repo.NewNodeRepo(db),
+		AliasRepo:      repo.NewAliasRepo(db),
+		NodeRepo:       repo.NewNodeRepo(db),
 		ProxyPoolRepo:  repo.NewProxyPoolRepo(db),
 		Config:         config.Config{ProxyClientMaxBodySize: "128mb"},
 		Logger:         slogDiscard(),
@@ -183,12 +183,12 @@ func TestV1Search_NotWired(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	mustCreateConnection(t, db, "serper", `{"apiKey":"k"}`)
 	deps := V1Deps{
-		APIKeysRepo:    repo.NewAPIKeyRepo(db), SettingsRepo: repo.NewSettingsRepo(db),
+		APIKeysRepo: repo.NewAPIKeyRepo(db), SettingsRepo: repo.NewSettingsRepo(db),
 		ConnectionRepo: repo.NewConnectionRepo(db), ComboRepo: repo.NewComboRepo(db),
 		AliasRepo: repo.NewAliasRepo(db), NodeRepo: repo.NewNodeRepo(db),
 		ProxyPoolRepo: repo.NewProxyPoolRepo(db),
-		Config:       config.Config{ProxyClientMaxBodySize: "128mb"},
-		Logger:       slogDiscard(),
+		Config:        config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:        slogDiscard(),
 	}
 	mux := http.NewServeMux()
 	RegisterV1(mux, deps)

@@ -254,9 +254,14 @@ func TestSplitLevelSuffix(t *testing.T) {
 			t.Errorf("SplitLevelSuffix(%q) = (%q, %q), want (%q, %q)", c.in, base, suf, c.wantBase, c.wantSuf)
 		}
 		// Round-trip: re-appending the suffix to the stripped base reproduces
-		// the original model id when the suffix carried no trailing whitespace.
-		if c.wantSuf != "" && !strings.HasSuffix(c.in, c.wantSuf) {
-			// only assert exact round-trip for the clean-suffix cases
+		// the original model id for the clean-suffix cases (no trailing
+		// whitespace — TrimSpace did not alter the base). Skip cases whose
+		// input carries trailing whitespace, where base+suf intentionally
+		// diverges by the trimmed outer bytes.
+		if c.wantSuf != "" && strings.HasSuffix(c.in, c.wantSuf) && !strings.Contains(c.in[:len(c.in)-len(c.wantSuf)], " ") {
+			if got := base + suf; got != c.in {
+				t.Errorf("SplitLevelSuffix(%q) round-trip = %q, want %q", c.in, got, c.in)
+			}
 		}
 	}
 }

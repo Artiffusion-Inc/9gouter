@@ -65,7 +65,7 @@ type LiveModelResolver interface {
 // ResolveOpts carries callbacks a resolver needs to persist refreshed
 // credentials and log diagnostics — mirroring the JS options bag.
 type ResolveOpts struct {
-	Logger               Logger
+	Logger                 Logger
 	OnCredentialsRefreshed func(RefreshedCredentials) error
 	// ProxyOptions is reserved for resolvers that fetch through the proxy
 	// stack (grok-cli). Populated by the caller from the connection's
@@ -99,7 +99,7 @@ type RefreshedCredentials struct {
 	ProjectID string
 	// CopilotToken and CopilotTokenExpiresAt carry GitHub Copilot's rotated
 	// session token (the JS flow persists both via the refresh hook).
-	CopilotToken         string
+	CopilotToken          string
 	CopilotTokenExpiresAt string
 	// ProviderSpecificData carries provider-specific fields the caller must
 	// merge back into the connection (e.g. qwen resource_url, kiro

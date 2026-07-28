@@ -11,17 +11,17 @@ import (
 )
 
 const (
-	defaultMaxTimeoutMs        = 15 * 60 * 1000
-	largeItemThreshold         = 150
-	veryLargeItemThreshold     = 400
-	toolHeavyThreshold         = 15
-	largeCharThreshold         = 250_000
-	veryLargeCharThreshold     = 750_000
-	largeHistoryBumpMs         = 20_000
-	veryLargeHistoryBumpMs     = 45_000
-	toolHeavyBumpMs            = 15_000
-	largePayloadBumpMs         = 20_000
-	veryLargePayloadBumpMs     = 45_000
+	defaultMaxTimeoutMs         = 15 * 60 * 1000
+	largeItemThreshold          = 150
+	veryLargeItemThreshold      = 400
+	toolHeavyThreshold          = 15
+	largeCharThreshold          = 250_000
+	veryLargeCharThreshold      = 750_000
+	largeHistoryBumpMs          = 20_000
+	veryLargeHistoryBumpMs      = 45_000
+	toolHeavyBumpMs             = 15_000
+	largePayloadBumpMs          = 20_000
+	veryLargePayloadBumpMs      = 45_000
 	codexGpt5xHighReasoningBump = 30_000
 )
 
@@ -29,20 +29,20 @@ var gpt5xRe = regexp.MustCompile(`(?i)gpt-5(\.\d+)?`)
 
 // ReadinessResult is the resolved stream-readiness/stall timeout plus reasons.
 type ReadinessResult struct {
-	TimeoutMs    time.Duration
-	BaseTimeoutMs time.Duration
-	Reasons      []string
+	Timeout     time.Duration
+	BaseTimeout time.Duration
+	Reasons     []string
 }
 
 // ResolveStreamReadinessTimeout resolves the effective stall/readiness timeout
 // for a request. It only ever INCREASES the base timeout, never decreases, and
-// clamps the result to maxTimeoutMs. A baseTimeoutMs <= 0 disables the policy.
-func ResolveStreamReadinessTimeout(baseTimeoutMs, maxTimeoutMs time.Duration, provider, model string, body json.RawMessage) ReadinessResult {
-	base := baseTimeoutMs
+// clamps the result to maxTimeout. A baseTimeout <= 0 disables the policy.
+func ResolveStreamReadinessTimeout(baseTimeout, maxTimeout time.Duration, provider, model string, body json.RawMessage) ReadinessResult {
+	base := baseTimeout
 	if base <= 0 {
-		return ReadinessResult{TimeoutMs: base, BaseTimeoutMs: base, Reasons: []string{"disabled"}}
+		return ReadinessResult{Timeout: base, BaseTimeout: base, Reasons: []string{"disabled"}}
 	}
-	max := maxTimeoutMs
+	max := maxTimeout
 	if max <= 0 {
 		max = defaultMaxTimeoutMs * time.Millisecond
 	}
@@ -98,7 +98,7 @@ func ResolveStreamReadinessTimeout(baseTimeoutMs, maxTimeoutMs time.Duration, pr
 		reasons = append(reasons, "base")
 	}
 
-	return ReadinessResult{TimeoutMs: timeout, BaseTimeoutMs: base, Reasons: reasons}
+	return ReadinessResult{Timeout: timeout, BaseTimeout: base, Reasons: reasons}
 }
 
 func countArrayField(body map[string]any, field string) int {

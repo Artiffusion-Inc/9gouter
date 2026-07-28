@@ -14,7 +14,7 @@ import (
 
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/pricing"
 )
-//
+
 // Why a collector rather than reading one final frame: providers emit usage
 // in different places. OpenAI chat.completions carry it on the terminal
 // chunk (finish_reason set, usage object). Claude streams an initial

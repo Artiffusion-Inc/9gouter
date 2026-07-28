@@ -69,14 +69,14 @@ func Synthesize(body []byte) (string, error) {
 
 		emitDelta := func(delta map[string]any) {
 			chunk := map[string]any{
-				"id":     base["id"],
-				"object": base["object"],
+				"id":      base["id"],
+				"object":  base["object"],
 				"created": base["created"],
-				"model":  base["model"],
+				"model":   base["model"],
 				"choices": []any{
 					map[string]any{
-						"index":        index,
-						"delta":        delta,
+						"index":         index,
+						"delta":         delta,
 						"finish_reason": nil,
 					},
 				},
@@ -101,10 +101,10 @@ func Synthesize(body []byte) (string, error) {
 
 		finishReason := normalizeOpenAICompatibleFinishReasonString(choice["finish_reason"], "stop")
 		finalChunk := map[string]any{
-			"id":     base["id"],
-			"object": base["object"],
+			"id":      base["id"],
+			"object":  base["object"],
 			"created": base["created"],
-			"model":  base["model"],
+			"model":   base["model"],
 			"choices": []any{
 				map[string]any{
 					"index":         index,

@@ -34,7 +34,7 @@ func (l fakeLookup) Lookup(providerID string) (webfetch.Adapter, bool) { return 
 type captureLogger struct{ warns []string }
 
 func (l *captureLogger) Infof(format string, args ...any)  {}
-func (l *captureLogger) Warnf(format string, args ...any) { l.warns = append(l.warns, format) }
+func (l *captureLogger) Warnf(format string, args ...any)  { l.warns = append(l.warns, format) }
 func (l *captureLogger) Debugf(format string, args ...any) {}
 
 func TestHandle_UnsupportedProvider(t *testing.T) {

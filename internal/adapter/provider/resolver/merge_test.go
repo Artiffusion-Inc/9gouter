@@ -166,10 +166,10 @@ func TestMergeRefreshedCredentials_MergesProviderSpecificData(t *testing.T) {
 // TestMergeRefreshedCredentials_CopilotToken rotates the copilot session token.
 func TestMergeRefreshedCredentials_CopilotToken(t *testing.T) {
 	refreshed := &RefreshedCredentials{
-		AccessToken:          "at-new",
-		CopilotToken:         "cop-new",
+		AccessToken:           "at-new",
+		CopilotToken:          "cop-new",
 		CopilotTokenExpiresAt: "2030-01-01T00:00:00Z",
-		ExpiresIn:            3600,
+		ExpiresIn:             3600,
 	}
 	patch := MergeRefreshedCredentials("copilot", map[string]any{}, refreshed, time.Now())
 	if patch["copilotToken"] != "cop-new" {
@@ -184,9 +184,9 @@ func TestMergeRefreshedCredentials_CopilotToken(t *testing.T) {
 // Credentials.AccessToken and dumps everything else into PSD.
 func TestCredentialsForRefresh_BuildsAccessTokenAndPSD(t *testing.T) {
 	data := map[string]any{
-		"accessToken": "at",
+		"accessToken":  "at",
 		"refreshToken": "rt",
-		"clientId":    "cid",
+		"clientId":     "cid",
 	}
 	creds := CredentialsForRefresh(data)
 	if creds.AccessToken != "at" {

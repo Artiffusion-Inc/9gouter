@@ -15,11 +15,11 @@ import (
 // targets are left alone.
 func TestClampReasoningEffortForOpenAINative(t *testing.T) {
 	cases := []struct {
-		name     string
-		body     string
-		target   format.Format
-		wantEff  string // expected reasoning_effort after clamp; "" = unchanged/no field
-		changed  bool   // whether reasoning_effort was set/changed at all
+		name    string
+		body    string
+		target  format.Format
+		wantEff string // expected reasoning_effort after clamp; "" = unchanged/no field
+		changed bool   // whether reasoning_effort was set/changed at all
 	}{
 		{
 			name:    `direct reasoning_effort "max" clamped to "xhigh"`,

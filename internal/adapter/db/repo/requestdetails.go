@@ -11,19 +11,19 @@ import (
 
 // RequestDetail is the JS requestDetailsRepo record shape.
 type RequestDetail struct {
-	ID              string          `json:"id"`
-	Timestamp       string          `json:"timestamp"`
-	Provider        string          `json:"provider,omitempty"`
-	Model           string          `json:"model,omitempty"`
-	ConnectionID    string          `json:"connectionId,omitempty"`
-	Status          string          `json:"status,omitempty"`
-	Latency         json.RawMessage `json:"latency,omitempty"`
-	Tokens          json.RawMessage `json:"tokens,omitempty"`
-	Request         json.RawMessage `json:"request,omitempty"`
-	ProviderRequest json.RawMessage `json:"providerRequest,omitempty"`
+	ID               string          `json:"id"`
+	Timestamp        string          `json:"timestamp"`
+	Provider         string          `json:"provider,omitempty"`
+	Model            string          `json:"model,omitempty"`
+	ConnectionID     string          `json:"connectionId,omitempty"`
+	Status           string          `json:"status,omitempty"`
+	Latency          json.RawMessage `json:"latency,omitempty"`
+	Tokens           json.RawMessage `json:"tokens,omitempty"`
+	Request          json.RawMessage `json:"request,omitempty"`
+	ProviderRequest  json.RawMessage `json:"providerRequest,omitempty"`
 	ProviderResponse json.RawMessage `json:"providerResponse,omitempty"`
-	Response        json.RawMessage `json:"response,omitempty"`
-	Pxpipe          json.RawMessage `json:"pxpipe,omitempty"`
+	Response         json.RawMessage `json:"response,omitempty"`
+	Pxpipe           json.RawMessage `json:"pxpipe,omitempty"`
 }
 
 // RequestDetailRepo persists observability details, ported from requestDetailsRepo.js.

@@ -20,10 +20,10 @@ import (
 // the WorkOS "workos:" prefix (handled here by clamping the token the same
 // way buildClineHeaders does).
 type clinepassResolver struct {
-	cache    *Cache
-	client   *http.Client
-	baseURL  string // override for tests; empty = production endpoint
-	appVer   string // 9gouter app version for X-CLIENT-VERSION headers
+	cache   *Cache
+	client  *http.Client
+	baseURL string // override for tests; empty = production endpoint
+	appVer  string // 9gouter app version for X-CLIENT-VERSION headers
 }
 
 const (

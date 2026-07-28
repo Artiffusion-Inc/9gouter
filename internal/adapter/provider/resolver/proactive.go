@@ -28,8 +28,8 @@ import (
 // case). Unrecoverable reports that the refresh token is permanently invalid
 // and the connection must be marked for re-auth.
 type ProactiveRefreshResult struct {
-	Patch        map[string]any
-	Refreshed    bool
+	Patch         map[string]any
+	Refreshed     bool
 	Unrecoverable bool
 }
 

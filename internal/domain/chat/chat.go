@@ -55,12 +55,12 @@ type ChatRequest struct {
 // layer. For streaming responses the provider returns an io.ReadCloser of
 // SSE frames instead.
 type ChatResponse struct {
-	Model        string       `json:"model"`
-	Content      string       `json:"content"`
-	Reasoning    string       `json:"reasoning_content,omitempty"`
+	Model        string          `json:"model"`
+	Content      string          `json:"content"`
+	Reasoning    string          `json:"reasoning_content,omitempty"`
 	ToolCalls    json.RawMessage `json:"tool_calls,omitempty"`
-	Usage        Usage        `json:"usage"`
-	FinishReason FinishReason `json:"finish_reason"`
+	Usage        Usage           `json:"usage"`
+	FinishReason FinishReason    `json:"finish_reason"`
 }
 
 // StreamFrame is a single server-sent event decoded from an upstream stream.

@@ -406,7 +406,8 @@ func (h *Handler) cloudflareJSON(ctx context.Context, cfg image.Config, req Requ
 		if err != nil {
 			return nil, "", http.StatusBadRequest, err
 		}
-		if ii.Kind == "data" {
+		switch ii.Kind {
+		case "data":
 			body["image_b64"] = ii.B64
 			// image:[]byte — Go's json.Marshal encodes []byte as base64. We
 			// store the decoded bytes so the wire shape is "image":"<b64>".
@@ -415,7 +416,7 @@ func (h *Handler) cloudflareJSON(ctx context.Context, cfg image.Config, req Requ
 				return nil, "", http.StatusInternalServerError, fmt.Errorf("cloudflare-ai: image decode: %w", err)
 			}
 			body["image"] = dec
-		} else if ii.Kind == "url" {
+		case "url":
 			// The legacy urlToBase64 fetches the URL and embeds the bytes. The
 			// safe resolver already validated the host; fetch it now via h.do.
 			b, _, status, err := h.downloadImageURL(ctx, ii.URL, req.ProviderID, connectionID(req.Credentials), func(u *url.URL) (*http.Request, error) {
@@ -441,7 +442,8 @@ func (h *Handler) cloudflareJSON(ctx context.Context, cfg image.Config, req Requ
 		if err != nil {
 			return nil, "", http.StatusBadRequest, err
 		}
-		if ii.Kind == "data" {
+		switch ii.Kind {
+		case "data":
 			body["mask_b64"] = ii.B64
 			dec, err := base64.StdEncoding.DecodeString(ii.B64)
 			if err != nil {
@@ -449,7 +451,7 @@ func (h *Handler) cloudflareJSON(ctx context.Context, cfg image.Config, req Requ
 			}
 			body["mask"] = dec
 			body["mask_image"] = dec
-		} else if ii.Kind == "url" {
+		case "url":
 			b, _, status, err := h.downloadImageURL(ctx, ii.URL, req.ProviderID, connectionID(req.Credentials), func(u *url.URL) (*http.Request, error) {
 				httpReq, e := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 				if e != nil {

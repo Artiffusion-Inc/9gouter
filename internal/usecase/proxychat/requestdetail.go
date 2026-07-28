@@ -49,12 +49,12 @@ type ObservabilityGate interface {
 // re-threading every argument. The ID is generated once and reused so a
 // streaming request that updates its row (start → completion) stays one row.
 type requestDetailBuilder struct {
-	saver   RequestDetailSaver
-	gate    ObservabilityGate
-	maxRec  int
-	maxSize int
-	enabled bool
-	id      string
+	saver    RequestDetailSaver
+	gate     ObservabilityGate
+	maxRec   int
+	maxSize  int
+	enabled  bool
+	id       string
 	provider string
 	model    string
 	connID   string

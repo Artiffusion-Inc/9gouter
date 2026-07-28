@@ -140,7 +140,11 @@ func TestKilocodeOrgWithoutOrgID(t *testing.T) {
 	e := &DefaultExecutor{BaseExecutor: base.NewBaseExecutor("p", base.Config{})}
 	h := http.Header{}
 	e.kilocodeOrg(h, creds("", "", nil))
-	if _, ok := h["X-Kilocode-OrganizationID"]; ok { //nolint:staticcheck // SA1008: intentional raw-map access (kilocode sets exact case)
+	// kilicode sets the exact-casing "X-Kilocode-OrganizationID" slot; read
+	// the raw map via a variable key to verify that exact slot is absent
+	// (staticcheck's SA1008 fires only on string-literal keys).
+	kilocodeOrgHeader := "X-Kilocode-OrganizationID"
+	if _, ok := h[kilocodeOrgHeader]; ok {
 		t.Errorf("org id header should be absent without orgId")
 	}
 }

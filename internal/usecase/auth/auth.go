@@ -34,10 +34,10 @@ type LoginLimiter interface {
 // creation. It does not depend on net/http so transport adapters decide how to
 // write the cookie.
 type UseCase struct {
-	store     domainauth.Store
-	limiter   LoginLimiter
-	verifier  PasswordVerifier
-	ttl       time.Duration
+	store    domainauth.Store
+	limiter  LoginLimiter
+	verifier PasswordVerifier
+	ttl      time.Duration
 }
 
 // New returns a dashboard auth usecase. verifier may be nil if the caller only

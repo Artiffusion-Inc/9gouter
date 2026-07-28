@@ -158,7 +158,7 @@ func TestReadStrategySettings_Defaults(t *testing.T) {
 
 func TestReadStrategySettings_GlobalOverride(t *testing.T) {
 	cfg := map[string]any{
-		"fallbackStrategy":     "round-robin",
+		"fallbackStrategy":      "round-robin",
 		"stickyRoundRobinLimit": float64(5),
 	}
 	s, lim := readStrategySettings(cfg, "openai")
@@ -172,7 +172,7 @@ func TestReadStrategySettings_GlobalOverride(t *testing.T) {
 
 func TestReadStrategySettings_PerProviderOverride(t *testing.T) {
 	cfg := map[string]any{
-		"fallbackStrategy":     "fill-first",
+		"fallbackStrategy":      "fill-first",
 		"stickyRoundRobinLimit": float64(3),
 		"providerStrategies": map[string]any{
 			"anthropic": map[string]any{

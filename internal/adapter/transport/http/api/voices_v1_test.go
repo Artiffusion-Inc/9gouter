@@ -16,8 +16,8 @@ func TestHandleV1AudioVoices_EdgeTTS(t *testing.T) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"byLang": map[string]any{
 				"en": map[string]any{
-					"code":    "en",
-					"name":    "en",
+					"code": "en",
+					"name": "en",
 					"voices": []any{
 						map[string]any{"id": "en-US-AriaNeural", "name": "Aria", "lang": "en", "gender": "Female"},
 					},

@@ -85,11 +85,11 @@ func TestAliasRepo_RoundTrip(t *testing.T) {
 // symmetric regardless of which backend wrote the row.
 func TestUnquoteJSONString(t *testing.T) {
 	cases := []struct{ in, want string }{
-		{"gpt-4", "gpt-4"},              // legacy-Go raw
-		{`"gpt-4"`, "gpt-4"},            // legacy-JS JSON-encoded
-		{`"foo\"bar"`, `foo"bar`},       // escaped quote inside
-		{"", ""},                        // empty
-		{`"  "`, "  "},                  // quoted whitespace
+		{"gpt-4", "gpt-4"},        // legacy-Go raw
+		{`"gpt-4"`, "gpt-4"},      // legacy-JS JSON-encoded
+		{`"foo\"bar"`, `foo"bar`}, // escaped quote inside
+		{"", ""},                  // empty
+		{`"  "`, "  "},            // quoted whitespace
 		{"unquoted with space", "unquoted with space"},
 	}
 	for _, c := range cases {

@@ -118,7 +118,7 @@ func TestProactiveRefreshIfNeeded_RefreshError(t *testing.T) {
 // tokenRefresherWithExpiry is a stub that returns a token + expiresIn, for the
 // merge-patch test (stubRefresher returns no expiresIn).
 type tokenRefresherWithExpiry struct {
-	token    string
+	token     string
 	expiresIn int
 }
 

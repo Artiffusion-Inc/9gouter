@@ -274,42 +274,6 @@ func strField(m map[string]any, keys ...string) string {
 	return ""
 }
 
-// objField returns the first map[string]any among keys.
-func objField(m map[string]any, keys ...string) map[string]any {
-	for _, k := range keys {
-		if o, ok := m[k].(map[string]any); ok {
-			return o
-		}
-	}
-	return nil
-}
-
-// arrField returns the first []any among keys.
-func arrField(m map[string]any, keys ...string) []any {
-	for _, k := range keys {
-		if a, ok := m[k].([]any); ok {
-			return a
-		}
-	}
-	return nil
-}
-
-// numField returns the first non-zero numeric among keys as float64 (0 when
-// absent or zero — the JS handlers treat 0 as "no value").
-func numField(m map[string]any, keys ...string) float64 {
-	for _, k := range keys {
-		switch n := m[k].(type) {
-		case float64:
-			return n
-		case int:
-			return float64(n)
-		case int64:
-			return float64(n)
-		}
-	}
-	return 0
-}
-
 // clampUnit clamps a percentage to [0,100].
 func clampUnit(v float64) float64 {
 	if v < 0 {

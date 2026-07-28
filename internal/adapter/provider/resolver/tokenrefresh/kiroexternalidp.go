@@ -256,7 +256,7 @@ func NormalizeKiroExternalIDPAuth(raw any, now time.Time) (*KiroExternalIDPAuth,
 
 	authMethod := stringFromPSD(input, "authMethod", "auth_method")
 	if authMethod != "" && authMethod != "external_idp" {
-		return nil, errors.New("Only external_idp Kiro auth is supported by this importer")
+		return nil, errors.New("only external_idp Kiro auth is supported by this importer")
 	}
 
 	accessToken := stringFromPSD(input, "access_token", "accessToken")

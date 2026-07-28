@@ -19,30 +19,30 @@ type Config struct {
 	// a downstream env value like "60000" will fail ParseDuration — so Load() must
 	// accept either a bare integer (treated as ms) or a duration string. Implement a
 	// custom envconfig.Setter for the timeout fields that does ms-or-duration parsing.
-	FetchConnectTimeout          DurationMs `envconfig:"FETCH_CONNECT_TIMEOUT_MS" default:"60000"`
-	StreamStallTimeout           DurationMs `envconfig:"STREAM_STALL_TIMEOUT_MS" default:"180000"`
-	StreamStallTimeoutReasoning  DurationMs `envconfig:"STREAM_STALL_TIMEOUT_REASONING_MS" default:"600000"`
-	StreamReadinessMaxTimeout    DurationMs `envconfig:"STREAM_READINESS_MAX_TIMEOUT_MS" default:"900000"`
-	FetchHeadersTimeout          DurationMs `envconfig:"FETCH_HEADERS_TIMEOUT_MS" default:"60000"`
-	FetchBodyTimeout             DurationMs `envconfig:"FETCH_BODY_TIMEOUT_MS" default:"600000"`
-	FetchKeepaliveTimeout        DurationMs `envconfig:"FETCH_KEEPALIVE_TIMEOUT_MS" default:"4000"`
-	ProxyDispatcherConnections   int        `envconfig:"PROXY_DISPATCHER_CONNECTIONS" default:"1"`
-	ProxyFastFailTimeout         DurationMs `envconfig:"PROXY_FAST_FAIL_TIMEOUT_MS" default:"2000"`
-	ProxyHealthCacheTTL          DurationMs `envconfig:"PROXY_HEALTH_CACHE_TTL_MS" default:"30000"`
-	ProxyHealthUnhealthyTTL      DurationMs `envconfig:"PROXY_HEALTH_UNHEALTHY_CACHE_TTL_MS" default:"2000"`
-	ProxyFallbackProbeTimeout    DurationMs `envconfig:"PROXY_FALLBACK_PROBE_TIMEOUT_MS" default:"3000"`
-	ProxyAutoSelectEnabled       bool       `envconfig:"PROXY_AUTO_SELECT_ENABLED" default:"false"`
-	ProxyClientMaxBodySize       string     `envconfig:"NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE" default:"128mb"`
-	SocksHandshakeTimeout        DurationMs `envconfig:"SOCKS_HANDSHAKE_TIMEOUT_MS" default:"10000"`
+	FetchConnectTimeout         DurationMs `envconfig:"FETCH_CONNECT_TIMEOUT_MS" default:"60000"`
+	StreamStallTimeout          DurationMs `envconfig:"STREAM_STALL_TIMEOUT_MS" default:"180000"`
+	StreamStallTimeoutReasoning DurationMs `envconfig:"STREAM_STALL_TIMEOUT_REASONING_MS" default:"600000"`
+	StreamReadinessMaxTimeout   DurationMs `envconfig:"STREAM_READINESS_MAX_TIMEOUT_MS" default:"900000"`
+	FetchHeadersTimeout         DurationMs `envconfig:"FETCH_HEADERS_TIMEOUT_MS" default:"60000"`
+	FetchBodyTimeout            DurationMs `envconfig:"FETCH_BODY_TIMEOUT_MS" default:"600000"`
+	FetchKeepaliveTimeout       DurationMs `envconfig:"FETCH_KEEPALIVE_TIMEOUT_MS" default:"4000"`
+	ProxyDispatcherConnections  int        `envconfig:"PROXY_DISPATCHER_CONNECTIONS" default:"1"`
+	ProxyFastFailTimeout        DurationMs `envconfig:"PROXY_FAST_FAIL_TIMEOUT_MS" default:"2000"`
+	ProxyHealthCacheTTL         DurationMs `envconfig:"PROXY_HEALTH_CACHE_TTL_MS" default:"30000"`
+	ProxyHealthUnhealthyTTL     DurationMs `envconfig:"PROXY_HEALTH_UNHEALTHY_CACHE_TTL_MS" default:"2000"`
+	ProxyFallbackProbeTimeout   DurationMs `envconfig:"PROXY_FALLBACK_PROBE_TIMEOUT_MS" default:"3000"`
+	ProxyAutoSelectEnabled      bool       `envconfig:"PROXY_AUTO_SELECT_ENABLED" default:"false"`
+	ProxyClientMaxBodySize      string     `envconfig:"NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE" default:"128mb"`
+	SocksHandshakeTimeout       DurationMs `envconfig:"SOCKS_HANDSHAKE_TIMEOUT_MS" default:"10000"`
 
 	// Token-saver header name. Default matches open-sse/config/runtimeConfig.js.
 	TokenSaverHeader string `envconfig:"TOKEN_SAVER_HEADER" default:"x-9gouter-token-saver"`
 
 	// Auth
-	DashboardPasswordHash   string `envconfig:"DASHBOARD_PASSWORD_HASH"`
+	DashboardPasswordHash  string `envconfig:"DASHBOARD_PASSWORD_HASH"`
 	DashboardSessionSecret string `envconfig:"DASHBOARD_SESSION_SECRET" default:"change-me"`
-	SessionSecret         string `envconfig:"SESSION_SECRET" default:"change-me"`
-	Version               string `envconfig:"VERSION" default:"dev"`
+	SessionSecret          string `envconfig:"SESSION_SECRET" default:"change-me"`
+	Version                string `envconfig:"VERSION" default:"dev"`
 
 	// Add remaining ~40 env vars as the ports that need them are implemented.
 }

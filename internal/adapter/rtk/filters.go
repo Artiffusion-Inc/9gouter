@@ -95,16 +95,16 @@ func hasDuplicates(ss []string) bool {
 }
 
 var (
-	reGitDiff       = regexp.MustCompile(`(?m)^diff --git `)
-	reGitDiffHunk   = regexp.MustCompile(`(?m)^@@ `)
-	reGitStatus     = regexp.MustCompile(`(?m)^On branch |^nothing to commit|^Changes (not |to be )|^Untracked files:`)
-	reGitLog        = regexp.MustCompile(`(?m)^[|/\\ ]*commit [0-9a-f]{7,40}$`)
-	rePorcelain     = regexp.MustCompile(`^[ MADRCU?!][ MADRCU?!] \S`)
-	reBuildOutput   = regexp.MustCompile(`(?im)^(npm (warn|error|ERR!)|yarn (warn|error)|\s*Compiling\s+\S+|\s*Downloading\s+\S+|added \d+ package|\[ERROR\]|BUILD (SUCCESS|FAILED)|\s*Finished\s+|Successfully (installed|built)|ERROR:)`)
-	reTreeGlyph     = regexp.MustCompile(`[├└]──|│  `)
-	reLsRow         = regexp.MustCompile(`(?m)^[-dlbcps][rwx-]{9}`)
-	reLsTotal       = regexp.MustCompile(`(?m)^total \d+$`)
-	reReadNumbered  = regexp.MustCompile(`^\s*\d+\|`) // READ_NUMBERED_LINE_RE
+	reGitDiff          = regexp.MustCompile(`(?m)^diff --git `)
+	reGitDiffHunk      = regexp.MustCompile(`(?m)^@@ `)
+	reGitStatus        = regexp.MustCompile(`(?m)^On branch |^nothing to commit|^Changes (not |to be )|^Untracked files:`)
+	reGitLog           = regexp.MustCompile(`(?m)^[|/\\ ]*commit [0-9a-f]{7,40}$`)
+	rePorcelain        = regexp.MustCompile(`^[ MADRCU?!][ MADRCU?!] \S`)
+	reBuildOutput      = regexp.MustCompile(`(?im)^(npm (warn|error|ERR!)|yarn (warn|error)|\s*Compiling\s+\S+|\s*Downloading\s+\S+|added \d+ package|\[ERROR\]|BUILD (SUCCESS|FAILED)|\s*Finished\s+|Successfully (installed|built)|ERROR:)`)
+	reTreeGlyph        = regexp.MustCompile(`[├└]──|│  `)
+	reLsRow            = regexp.MustCompile(`(?m)^[-dlbcps][rwx-]{9}`)
+	reLsTotal          = regexp.MustCompile(`(?m)^total \d+$`)
+	reReadNumbered     = regexp.MustCompile(`^\s*\d+\|`) // READ_NUMBERED_LINE_RE
 	reSearchListHeader *regexp.Regexp
 )
 

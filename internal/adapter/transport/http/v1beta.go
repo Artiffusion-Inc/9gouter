@@ -84,12 +84,12 @@ func (h *v1Handler) handleV1BetaModels(w http.ResponseWriter, r *http.Request) {
 			methods = []string{"generateContent"}
 		}
 		models = append(models, v1betaModelEntry{
-			Name:                        name,
-			DisplayName:                 displayName,
-			Description:                 description,
-			SupportedGenerationMethods:  methods,
-			InputTokenLimit:             128000,
-			OutputTokenLimit:            8192,
+			Name:                       name,
+			DisplayName:                displayName,
+			Description:                description,
+			SupportedGenerationMethods: methods,
+			InputTokenLimit:            128000,
+			OutputTokenLimit:           8192,
 		})
 	}
 
@@ -131,13 +131,13 @@ func (h *v1Handler) handleV1BetaModels(w http.ResponseWriter, r *http.Request) {
 // the chat pipeline). Fields are optional; missing fields are omitted.
 type v1betaRequest struct {
 	SystemInstruction *v1betaContent   `json:"systemInstruction,omitempty"`
-	Contents           []v1betaContent  `json:"contents,omitempty"`
-	GenerationConfig  *v1betaGenConfig  `json:"generationConfig,omitempty"`
+	Contents          []v1betaContent  `json:"contents,omitempty"`
+	GenerationConfig  *v1betaGenConfig `json:"generationConfig,omitempty"`
 }
 
 type v1betaContent struct {
-	Role  string         `json:"role,omitempty"`
-	Parts []v1betaPart   `json:"parts,omitempty"`
+	Role  string       `json:"role,omitempty"`
+	Parts []v1betaPart `json:"parts,omitempty"`
 }
 
 type v1betaPart struct {
@@ -146,8 +146,8 @@ type v1betaPart struct {
 
 type v1betaGenConfig struct {
 	MaxOutputTokens *int     `json:"maxOutputTokens,omitempty"`
-	Temperature      *float64 `json:"temperature,omitempty"`
-	TopP             *float64 `json:"topP,omitempty"`
+	Temperature     *float64 `json:"temperature,omitempty"`
+	TopP            *float64 `json:"topP,omitempty"`
 }
 
 // handleV1BetaModelsPath implements POST /v1beta/models/{path...}. path is
@@ -247,8 +247,10 @@ func (h *v1Handler) handleV1BetaModelsPath(w http.ResponseWriter, r *http.Reques
 
 // parseV1BetaModelAction parses the {path...} value into (model, stream, ok).
 // path is one of:
-//   <provider>/<model>:<action>
-//   <model>:<action>
+//
+//	<provider>/<model>:<action>
+//	<model>:<action>
+//
 // action is :generateContent (stream=false) or :streamGenerateContent
 // (stream=true). Returns ok=false if the action suffix is missing/unknown.
 func parseV1BetaModelAction(path string) (model string, stream bool, ok bool) {

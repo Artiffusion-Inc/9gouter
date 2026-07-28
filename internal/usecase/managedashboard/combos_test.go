@@ -154,7 +154,7 @@ func TestComboService_Create(t *testing.T) {
 func TestComboService_Create_RepoError(t *testing.T) {
 	t.Parallel()
 	repo := &fakeComboRepo{
-		byID: map[string]*settings.Combo{},
+		byID:   map[string]*settings.Combo{},
 		byName: map[string]*settings.Combo{},
 	}
 	// Override Create to fail by wrapping.

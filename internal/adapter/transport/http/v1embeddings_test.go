@@ -20,11 +20,11 @@ import (
 // embedCapture is a fake EmbeddingsHandler that records the request it received
 // and returns a fixed OpenAI-shaped body.
 type embedCapture struct {
-	got      *EmbeddingsRequest
-	body     []byte
-	status   int
-	err      error
-	called   bool
+	got    *EmbeddingsRequest
+	body   []byte
+	status int
+	err    error
+	called bool
 }
 
 func (c *embedCapture) Handle(ctx context.Context, req EmbeddingsRequest) (EmbeddingsResult, error) {

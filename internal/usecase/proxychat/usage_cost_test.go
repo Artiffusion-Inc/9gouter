@@ -33,8 +33,10 @@ import (
 // MODEL_PRICING table.
 type claudeUsageExecutor struct{ body string }
 
-func (claudeUsageExecutor) BuildURL(string, bool, int, provider.Credentials) string { return "http://upstream" }
-func (claudeUsageExecutor) BuildHeaders(provider.Credentials, bool) http.Header     { return http.Header{} }
+func (claudeUsageExecutor) BuildURL(string, bool, int, provider.Credentials) string {
+	return "http://upstream"
+}
+func (claudeUsageExecutor) BuildHeaders(provider.Credentials, bool) http.Header { return http.Header{} }
 func (claudeUsageExecutor) TransformRequest(string, json.RawMessage, bool, provider.Credentials) (json.RawMessage, error) {
 	return json.RawMessage(`{"model":"claude-sonnet-4","messages":[]}`), nil
 }
@@ -58,8 +60,10 @@ func TestHandle_NonStream_RecordsCost(t *testing.T) {
 	// 30 reasoning tokens, 100 completion.
 	body := `{"id":"m-1","object":"chat.completion","model":"claude-sonnet-4","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":500,"completion_tokens":100,"total_tokens":600,"cached_tokens":80,"cache_creation_input_tokens":20,"reasoning_tokens":30}}`
 	h := New(Dependencies{
-		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "anthropic", exec: claudeUsageExecutor{body: body}}, nil },
-		UsageRepo: usageRepo,
+		Registry: func(id string) (DomainProvider, error) {
+			return &stubProvider{id: "anthropic", exec: claudeUsageExecutor{body: body}}, nil
+		},
+		UsageRepo:  usageRepo,
 		StreamPipe: fakeStreamPiper{},
 		JSONToSSE:  fakeJSONToSSE{},
 		Config:     configForTest(),
@@ -128,8 +132,10 @@ func TestHandle_NonStream_CostZeroWithoutResolver(t *testing.T) {
 	usageRepo := realUsageRepo(t)
 	body := `{"id":"m-1","object":"chat.completion","model":"gpt-4","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":25,"total_tokens":125}}`
 	h := New(Dependencies{
-		Registry:  func(id string) (DomainProvider, error) { return &stubProvider{id: "openai", exec: claudeUsageExecutor{body: body}}, nil },
-		UsageRepo: usageRepo,
+		Registry: func(id string) (DomainProvider, error) {
+			return &stubProvider{id: "openai", exec: claudeUsageExecutor{body: body}}, nil
+		},
+		UsageRepo:  usageRepo,
 		StreamPipe: fakeStreamPiper{},
 		JSONToSSE:  fakeJSONToSSE{},
 		Config:     configForTest(),

@@ -428,7 +428,7 @@ func codexUUID(seed int64) string {
 	out[23] = '-'
 	j := 0
 	for i := 0; i < 16; i++ {
-		if i == 4 || i == 6 || i == 8 || i == 10 {
+		if i == 4 || i == 6 || i == 8 || i == 10 { //nolint:staticcheck // SA9003: documents that the hyphen at these byte positions was already written; no action needed at the start of the loop body.
 			// already wrote the hyphen before this byte's position
 		}
 		out[j] = hex[b[i]>>4]

@@ -76,10 +76,10 @@ func TestProxyAwareFetchFallbackLogsDiagnostics(t *testing.T) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, upstream.URL, nil)
 	_, err := ProxyAwareFetch(req.Context(), client, req, testOptions(), ProxyFetchOptions{
-		ConnectionProxyUrl:    deadProxy,
+		ConnectionProxyUrl:     deadProxy,
 		ConnectionProxyEnabled: true,
-		StrictProxy:           false,
-		Logger:                logger,
+		StrictProxy:            false,
+		Logger:                 logger,
 	}, nil)
 	if err != nil {
 		t.Fatalf("expected fallback to direct, got error: %v", err)
@@ -109,10 +109,10 @@ func TestProxyAwareFetchStrictNoFallbackLog(t *testing.T) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, upstream.URL, nil)
 	_, err := ProxyAwareFetch(req.Context(), client, req, testOptions(), ProxyFetchOptions{
-		ConnectionProxyUrl:    deadProxy,
+		ConnectionProxyUrl:     deadProxy,
 		ConnectionProxyEnabled: true,
-		StrictProxy:           true,
-		Logger:                logger,
+		StrictProxy:            true,
+		Logger:                 logger,
 	}, nil)
 	if err == nil {
 		t.Fatal("expected strict mode to fail hard")

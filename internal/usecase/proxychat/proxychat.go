@@ -361,7 +361,7 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 		req.Model,
 		req.Body,
 	)
-	h.deps.Logger.Debugf("STALL provider=%s model=%s reasoning=%v timeout=%v reasons=%v", providerID, req.Model, isReasoning, readiness.TimeoutMs, readiness.Reasons)
+	h.deps.Logger.Debugf("STALL provider=%s model=%s reasoning=%v timeout=%v reasons=%v", providerID, req.Model, isReasoning, readiness.Timeout, readiness.Reasons)
 
 	execReq := domainProv.ExecRequest{
 		Model:       req.Model,
@@ -463,7 +463,7 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 		}
 
 		opts := httpstream.PipeOpts{
-			StallTimeout:          readiness.TimeoutMs,
+			StallTimeout:          readiness.Timeout,
 			StallTimeoutReasoning: h.deps.Config.StreamStallTimeoutReasoning.Duration(),
 			IsThinkingModel:       isReasoning,
 			Reason:                "stream_stall_timeout",

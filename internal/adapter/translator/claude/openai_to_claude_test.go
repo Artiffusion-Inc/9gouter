@@ -99,7 +99,7 @@ func TestOpenaiToClaudeResponseNormalToolCalls(t *testing.T) {
 	}
 	// arg-only chunk (no id) — still no new block.
 	c2 := chunkWithToolCalls([]map[string]any{{
-		"index": float64(0),
+		"index":    float64(0),
 		"function": map[string]any{"arguments": `{"a":1}`},
 	}})
 	r2 := openaiToClaudeResponse(c2, state)

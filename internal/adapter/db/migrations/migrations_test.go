@@ -46,7 +46,9 @@ func TestRun_Idempotent(t *testing.T) {
 	}
 }
 
-func columns(db interface{ Query(string, ...any) (*sql.Rows, error) }, table string) (map[string]bool, error) {
+func columns(db interface {
+	Query(string, ...any) (*sql.Rows, error)
+}, table string) (map[string]bool, error) {
 	rows, err := db.Query("PRAGMA table_info(" + table + ")")
 	if err != nil {
 		return nil, err

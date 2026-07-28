@@ -150,7 +150,8 @@ func TestNormalizeHaikuStripsEffort(t *testing.T) {
 	if _, has := oc["effort"]; has {
 		t.Error("effort not stripped for Haiku")
 	}
-	if mt, _ := oc["max_tokens"]; mt != 1024 {
+	mt := oc["max_tokens"]
+	if mt != 1024 {
 		t.Errorf("max_tokens lost: %v", mt)
 	}
 

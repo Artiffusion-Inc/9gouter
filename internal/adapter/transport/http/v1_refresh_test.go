@@ -21,8 +21,8 @@ import (
 // access token, so the v1 reactive/proactive refresh paths can be exercised
 // without hitting the network. It counts how many times Refresh ran.
 type stubTokenRefresher struct {
-	token  string
-	calls  int32
+	token string
+	calls int32
 }
 
 func (s *stubTokenRefresher) Refresh(_ context.Context, _ string, _ map[string]any, _ resolver.ProxyOptions, _ resolver.Logger) (*resolver.RefreshedCredentials, error) {
@@ -85,7 +85,7 @@ func TestV1_ChatCompletions_Reactive401RefreshRetries(t *testing.T) {
 		SettingsRepo:    repo.NewSettingsRepo(db),
 		ConnectionRepo:  repo.NewConnectionRepo(db),
 		ComboRepo:       repo.NewComboRepo(db),
-		AliasRepo:        repo.NewAliasRepo(db),
+		AliasRepo:       repo.NewAliasRepo(db),
 		NodeRepo:        repo.NewNodeRepo(db),
 		ProxyPoolRepo:   repo.NewProxyPoolRepo(db),
 		Chat:            chat,
@@ -149,7 +149,7 @@ func TestV1_ChatCompletions_Reactive401NoRefreshableFallsBack(t *testing.T) {
 		SettingsRepo:    repo.NewSettingsRepo(db),
 		ConnectionRepo:  repo.NewConnectionRepo(db),
 		ComboRepo:       repo.NewComboRepo(db),
-		AliasRepo:        repo.NewAliasRepo(db),
+		AliasRepo:       repo.NewAliasRepo(db),
 		NodeRepo:        repo.NewNodeRepo(db),
 		ProxyPoolRepo:   repo.NewProxyPoolRepo(db),
 		Chat:            chat,
@@ -186,8 +186,8 @@ func (*unauthorizedErr) Error() string { return "401 unauthorized" }
 // stubProjectIDFetcher is a ProjectIDResolver that returns a fixed project id
 // and records the connection ids it was asked about.
 type stubProjectIDFetcher struct {
-	pid      string
-	seen     []string
+	pid  string
+	seen []string
 }
 
 func (s *stubProjectIDFetcher) ForConnection(_ context.Context, connectionID, _ string) (string, error) {
@@ -210,16 +210,16 @@ func TestV1_ChatCompletions_AntigravityEnsuresProjectID(t *testing.T) {
 	chat := &stubChatHandler{streamed: false}
 	pidFetcher := &stubProjectIDFetcher{pid: "real-proj-99"}
 	deps := V1Deps{
-		APIKeysRepo:     repo.NewAPIKeyRepo(db),
-		SettingsRepo:    repo.NewSettingsRepo(db),
-		ConnectionRepo:  repo.NewConnectionRepo(db),
-		ComboRepo:       repo.NewComboRepo(db),
+		APIKeysRepo:      repo.NewAPIKeyRepo(db),
+		SettingsRepo:     repo.NewSettingsRepo(db),
+		ConnectionRepo:   repo.NewConnectionRepo(db),
+		ComboRepo:        repo.NewComboRepo(db),
 		AliasRepo:        repo.NewAliasRepo(db),
-		NodeRepo:        repo.NewNodeRepo(db),
-		ProxyPoolRepo:   repo.NewProxyPoolRepo(db),
-		Chat:            chat,
-		Config:          config.Config{ProxyClientMaxBodySize: "128mb"},
-		Logger:          slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		NodeRepo:         repo.NewNodeRepo(db),
+		ProxyPoolRepo:    repo.NewProxyPoolRepo(db),
+		Chat:             chat,
+		Config:           config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:           slog.New(slog.NewJSONHandler(io.Discard, nil)),
 		ProjectIDFetcher: pidFetcher,
 	}
 
@@ -266,16 +266,16 @@ func TestV1_ChatCompletions_ProjectIDSkippedForNonAntigravity(t *testing.T) {
 	chat := &stubChatHandler{streamed: false}
 	pidFetcher := &stubProjectIDFetcher{pid: "should-not-appear"}
 	deps := V1Deps{
-		APIKeysRepo:     repo.NewAPIKeyRepo(db),
-		SettingsRepo:    repo.NewSettingsRepo(db),
-		ConnectionRepo:  repo.NewConnectionRepo(db),
-		ComboRepo:       repo.NewComboRepo(db),
+		APIKeysRepo:      repo.NewAPIKeyRepo(db),
+		SettingsRepo:     repo.NewSettingsRepo(db),
+		ConnectionRepo:   repo.NewConnectionRepo(db),
+		ComboRepo:        repo.NewComboRepo(db),
 		AliasRepo:        repo.NewAliasRepo(db),
-		NodeRepo:        repo.NewNodeRepo(db),
-		ProxyPoolRepo:   repo.NewProxyPoolRepo(db),
-		Chat:            chat,
-		Config:          config.Config{ProxyClientMaxBodySize: "128mb"},
-		Logger:          slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		NodeRepo:         repo.NewNodeRepo(db),
+		ProxyPoolRepo:    repo.NewProxyPoolRepo(db),
+		Chat:             chat,
+		Config:           config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:           slog.New(slog.NewJSONHandler(io.Discard, nil)),
 		ProjectIDFetcher: pidFetcher,
 	}
 

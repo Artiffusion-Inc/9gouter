@@ -270,7 +270,7 @@ func TestNormalizeKiroExternalIDPAuth_Errors(t *testing.T) {
 		{"nil", nil, "is required"},
 		{"empty string", "", "is required"},
 		{"bad json string", "{not json", "is invalid"},
-		{"wrong authMethod", map[string]any{"auth_method": "api_key"}, "Only external_idp"},
+		{"wrong authMethod", map[string]any{"auth_method": "api_key"}, "only external_idp"},
 		{"missing access_token", func() map[string]any { v := copyMap(valid); delete(v, "access_token"); return v }(), "access_token is required"},
 		{"missing refresh_token", func() map[string]any { v := copyMap(valid); delete(v, "refresh_token"); return v }(), "refresh_token is required"},
 		{"missing client_id", func() map[string]any { v := copyMap(valid); delete(v, "client_id"); return v }(), "client_id is required"},

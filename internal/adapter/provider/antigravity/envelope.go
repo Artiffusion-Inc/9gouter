@@ -320,6 +320,3 @@ func asInt(v any) int {
 	}
 	return 0
 }
-
-// now is a tiny indirection so deterministic tests can override the clock.
-var now = time.Now

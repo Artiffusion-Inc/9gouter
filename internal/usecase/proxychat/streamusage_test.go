@@ -190,12 +190,12 @@ func TestStreamUsageCollector_ZeroDoesNotClobber(t *testing.T) {
 // TestStripSSEPrefix covers the de-framed payload trimming.
 func TestStripSSEPrefix(t *testing.T) {
 	cases := map[string]string{
-		"data: {\"a\":1}\n\n":      `{"a":1}`,
-		"{\"a\":1}\n":              `{"a":1}`, // ndjson bare line
-		"data: [DONE]\n\n":         "",
-		": comment\n\n":            "",
+		"data: {\"a\":1}\n\n":             `{"a":1}`,
+		"{\"a\":1}\n":                     `{"a":1}`, // ndjson bare line
+		"data: [DONE]\n\n":                "",
+		": comment\n\n":                   "",
 		"event: foo\ndata: {\"a\":1}\n\n": `{"a":1}`,
-		"garbage\n\n":              "",
+		"garbage\n\n":                     "",
 	}
 	for in, want := range cases {
 		got := stripSSEPrefix([]byte(in))

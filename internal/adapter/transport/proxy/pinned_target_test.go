@@ -22,8 +22,6 @@ type pipeConn struct {
 	net.Conn
 }
 
-func newPipeConn() *pipeConn { return &pipeConn{Conn: nil} }
-
 // newPipePair returns two conns representing the two ends of an in-memory
 // connection. The test keeps one end (server) to feed a response and discard
 // the request; the recording dial returns the other end (client) to net/http.

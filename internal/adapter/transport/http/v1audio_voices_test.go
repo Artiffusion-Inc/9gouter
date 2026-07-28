@@ -70,8 +70,8 @@ func TestV1AudioVoices_UnknownProvider(t *testing.T) {
 		ConnectionRepo: repo.NewConnectionRepo(db), ComboRepo: repo.NewComboRepo(db),
 		AliasRepo: repo.NewAliasRepo(db), NodeRepo: repo.NewNodeRepo(db),
 		ProxyPoolRepo: repo.NewProxyPoolRepo(db),
-		Config: config.Config{ProxyClientMaxBodySize: "128mb"},
-		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Config:        config.Config{ProxyClientMaxBodySize: "128mb"},
+		Logger:        slog.New(slog.NewJSONHandler(io.Discard, nil)),
 	}
 	mux := http.NewServeMux()
 	RegisterV1(mux, deps)

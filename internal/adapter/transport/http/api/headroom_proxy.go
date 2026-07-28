@@ -129,7 +129,7 @@ func buildHeadroomTargetURL(base, path, rawQuery string) (*url.URL, error) {
 		return nil, err
 	}
 	if baseURL.Scheme != "http" && baseURL.Scheme != "https" {
-		return nil, fmt.Errorf("Headroom URL must use http or https")
+		return nil, fmt.Errorf("headroom URL must use http or https")
 	}
 	sub := headroomProxySubPath(path)
 	target := *baseURL

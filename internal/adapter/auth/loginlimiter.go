@@ -89,7 +89,7 @@ func (l *LoginLimiter) RecordSuccess(ip string) {
 
 // LockStatus describes whether an IP is currently locked and for how long.
 type LockStatus struct {
-	Locked    bool
+	Locked     bool
 	RetryAfter time.Duration
 }
 

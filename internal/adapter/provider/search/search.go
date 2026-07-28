@@ -37,14 +37,14 @@ const (
 type AuthHeader string
 
 const (
-	AuthBearer           AuthHeader = "bearer"             // Authorization: Bearer <tok>
-	AuthXAPIKey          AuthHeader = "x-api-key"           // x-api-key: <tok> (exa)
+	AuthBearer           AuthHeader = "bearer"               // Authorization: Bearer <tok>
+	AuthXAPIKey          AuthHeader = "x-api-key"            // x-api-key: <tok> (exa)
 	AuthXSubscriptionTok AuthHeader = "x-subscription-token" // brave
-	AuthXAPIKeySerper    AuthHeader = "x-api-key-serper"    // serper X-API-Key
-	AuthKeyQuery         AuthHeader = "key-query"          // ?key=<tok> (google-pse)
-	AuthAPIKeyQuery      AuthHeader = "api_key-query"      // ?api_key=<tok> (searchapi)
-	AuthXGoogAPIKey      AuthHeader = "x-goog-api-key"     // gemini
-	AuthNone             AuthHeader = "none"               // searxng
+	AuthXAPIKeySerper    AuthHeader = "x-api-key-serper"     // serper X-API-Key
+	AuthKeyQuery         AuthHeader = "key-query"            // ?key=<tok> (google-pse)
+	AuthAPIKeyQuery      AuthHeader = "api_key-query"        // ?api_key=<tok> (searchapi)
+	AuthXGoogAPIKey      AuthHeader = "x-goog-api-key"       // gemini
+	AuthNone             AuthHeader = "none"                 // searxng
 )
 
 // Config is the static per-provider web-search configuration. Mode selects the
@@ -84,21 +84,21 @@ func LookupAlias(alias string) (string, bool) {
 }
 
 var aliases = map[string]string{
-	"serper":  "serper",
-	"brave":   "brave-search",
-	"pplx":    "perplexity",
-	"exa":     "exa",
-	"tavily":  "tavily",
-	"gpse":    "google-pse",
-	"linkup":  "linkup",
-	"searchapi": "searchapi",
-	"youcom":  "youcom",
-	"searxng": "searxng",
-	"gemini":  "gemini",
-	"openai":  "openai",
-	"xai":     "xai",
-	"kimi":    "kimi",
-	"minimax": "minimax",
+	"serper":           "serper",
+	"brave":            "brave-search",
+	"pplx":             "perplexity",
+	"exa":              "exa",
+	"tavily":           "tavily",
+	"gpse":             "google-pse",
+	"linkup":           "linkup",
+	"searchapi":        "searchapi",
+	"youcom":           "youcom",
+	"searxng":          "searxng",
+	"gemini":           "gemini",
+	"openai":           "openai",
+	"xai":              "xai",
+	"kimi":             "kimi",
+	"minimax":          "minimax",
 	"perplexity-agent": "perplexity-agent",
 }
 
@@ -193,11 +193,11 @@ var configs = map[string]Config{
 
 	// === Chat-based search (searchViaChat) ===
 	"gemini": {
-		Mode:          ModeChat,
-		AuthHeader:    AuthXGoogAPIKey,
-		BaseURL:       "https://generativelanguage.googleapis.com/v1beta/models",
-		DefaultModel:  "gemini-2.5-flash",
-		SearchTypes:   []string{"web"},
+		Mode:         ModeChat,
+		AuthHeader:   AuthXGoogAPIKey,
+		BaseURL:      "https://generativelanguage.googleapis.com/v1beta/models",
+		DefaultModel: "gemini-2.5-flash",
+		SearchTypes:  []string{"web"},
 	},
 	"openai": {
 		Mode:         ModeChat,

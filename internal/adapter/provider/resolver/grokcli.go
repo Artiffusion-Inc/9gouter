@@ -29,10 +29,10 @@ type grokCliResolver struct {
 }
 
 const (
-	grokCliBaseURL   = "https://cli-chat-proxy.grok.com/v1"
-	grokCliVersion   = "0.2.99"
-	grokCliClientID  = "grok-shell"
-	grokCliUserAgent = "grok-shell/0.2.99 (linux; x86_64)"
+	grokCliBaseURL      = "https://cli-chat-proxy.grok.com/v1"
+	grokCliVersion      = "0.2.99"
+	grokCliClientID     = "grok-shell"
+	grokCliUserAgent    = "grok-shell/0.2.99 (linux; x86_64)"
 	grokCliFetchTimeout = 20 * time.Second
 	grokCliCacheTTL     = 5 * time.Minute
 )

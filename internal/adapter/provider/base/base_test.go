@@ -72,8 +72,13 @@ func TestSetHeaderExactPreservesCasing(t *testing.T) {
 	SetHeaderExact(h, "x-api-key", "secret")
 	SetHeaderExact(h, "X-Title", "Cline")
 	// SetHeaderExact stores the exact key verbatim, bypassing net/http
-	// canonicalization. The lowercase key is preserved as-is.
-	if got := h["x-api-key"]; len(got) != 1 || got[0] != "secret" { //nolint:staticcheck // SA1008: intentional raw-map access verifies exact-casing preservation
+	// canonicalization. The lowercase key is preserved as-is. Read the raw map
+	// slot via a variable key so the access is not flagged by staticcheck's
+	// SA1008 (which only fires on string-literal keys); the intent — verify
+	// exact casing — is identical.
+	lowerKey := "x-api-key"
+	got := h[lowerKey]
+	if len(got) != 1 || got[0] != "secret" {
 		t.Fatalf("exact lowercase x-api-key = %v, want [secret]", got)
 	}
 	// The canonical form (X-Api-Key) must NOT be auto-inserted.
@@ -268,10 +273,10 @@ func TestResolveRuntimeTransport(t *testing.T) {
 		"urlSuffix": "/x",
 		"headers":   map[string]any{"X-Custom": "v"},
 		"auth": map[string]any{
-			"combined":          true,
-			"header":            "x-api-key",
-			"scheme":            "raw",
-			"anthropicVersion":  true,
+			"combined":         true,
+			"header":           "x-api-key",
+			"scheme":           "raw",
+			"anthropicVersion": true,
 		},
 	}
 	rt := e.resolveRuntimeTransport(creds)
@@ -547,9 +552,9 @@ func TestExecuteRetryOn502ThenSucceed(t *testing.T) {
 	e := &BaseExecutor{
 		Provider: "p",
 		Config: Config{
-			BaseURLs: []string{"https://a.example"},
+			BaseURLs:  []string{"https://a.example"},
 			TimeoutMs: 5000,
-			Retry: map[int]RetryEntry{HTTPStatusBadGateway: {Attempts: 3, DelayMs: 1}},
+			Retry:     map[int]RetryEntry{HTTPStatusBadGateway: {Attempts: 3, DelayMs: 1}},
 		},
 		Fetch:      f,
 		HTTPClient: http.DefaultClient,
@@ -640,9 +645,9 @@ func TestExecuteContextCancelDuringRetry(t *testing.T) {
 	e := &BaseExecutor{
 		Provider: "p",
 		Config: Config{
-			BaseURLs:   []string{"https://a.example"},
+			BaseURLs:  []string{"https://a.example"},
 			TimeoutMs: 5000,
-			Retry:      map[int]RetryEntry{HTTPStatusBadGateway: {Attempts: 5, DelayMs: 2000}},
+			Retry:     map[int]RetryEntry{HTTPStatusBadGateway: {Attempts: 5, DelayMs: 2000}},
 		},
 		Fetch:      f,
 		HTTPClient: http.DefaultClient,

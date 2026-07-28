@@ -181,12 +181,6 @@ var providerCapabilities = map[string]map[string]Capabilities{
 	},
 }
 
-// Models that cannot disable thinking. Overlay false onto the resolved caps.
-// (kiro gpt-5.6 family + codebuddy-cn onlyReasoning models + qwq/kimi-k3/etc.
-// are encoded directly in their tables with ThinkingCanDisable defaulting true;
-// the false cases below are merged at resolve time.)
-var thinkingDisabledModels = map[string]bool{}
-
 // patternEntry is a glob-pattern → caps mapping (first match wins, order matters).
 type patternEntry struct {
 	pattern string
@@ -385,20 +379,11 @@ func applyCannotDisable(c Capabilities, model, baseModel string) Capabilities {
 	return c
 }
 
-// toolsDisabledModels lists exact model ids whose Tools capability must be
-// false (overriding the Default true). Because a Go bool has no "unset" state,
-// table entries that need Tools:false cannot encode it directly; we honor
-// these overrides at merge time. Mirrors the JS entries that spell
-// `tools: false` (gpt-image-1).
-var toolsDisabledModels = map[string]bool{
-	"gpt-image-1": true,
-}
-
 // merge overlays non-zero fields of overlay onto base. Boolean true values and
 // non-zero ints/thinking-format win; a ThinkingRange pointer wins if non-nil.
 // This mirrors the JS {...DEFAULT, ...caps} spread where caps fields override
-// defaults. Tools:false overrides (rare, image-only models) are applied via
-// toolsDisabledModels since a Go bool cannot express "unset".
+// defaults. Tools:false overrides (rare, image-only models) are detected by
+// their ImageOutput-only shape below, since a Go bool cannot express "unset".
 func merge(base, overlay Capabilities) Capabilities {
 	out := base
 	if overlay.Vision {

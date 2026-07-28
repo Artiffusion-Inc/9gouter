@@ -7,11 +7,11 @@ import (
 
 func TestFromRequest(t *testing.T) {
 	cases := []struct {
-		name      string
-		remote    string
-		xff       string
-		xRealIP   string
-		want      string
+		name    string
+		remote  string
+		xff     string
+		xRealIP string
+		want    string
 	}{
 		{
 			name:   "direct socket ignores spoofed XFF",
@@ -50,10 +50,10 @@ func TestFromRequest(t *testing.T) {
 			want:    "5.6.7.8",
 		},
 		{
-			name:   "direct socket with X-Real-IP ignored",
-			remote: "1.2.3.4:56789",
+			name:    "direct socket with X-Real-IP ignored",
+			remote:  "1.2.3.4:56789",
 			xRealIP: "5.6.7.8",
-			want:   "1.2.3.4",
+			want:    "1.2.3.4",
 		},
 		{
 			name:   "XFF with multiple entries uses first",

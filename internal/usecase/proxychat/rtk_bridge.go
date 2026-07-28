@@ -40,11 +40,11 @@ func runHeadroom(body map[string]any, cfg TokenSaverConfig, providerID string, t
 		return &headroomResult{skippedReason: diag.Reason}
 	}
 	res := &headroomResult{
-		saved:       stats.TokensSaved,
-		log:         rtk.FormatHeadroomLog(stats),
-		sizeLog:     rtk.FormatHeadroomSizeLog(diag),
-		messagesLog: headroomMessagesLog(stats.Messages),
-		phantom:     rtk.IsHeadroomPhantomSavings(stats, diag, 0.05),
+		saved:        stats.TokensSaved,
+		log:          rtk.FormatHeadroomLog(stats),
+		sizeLog:      rtk.FormatHeadroomSizeLog(diag),
+		messagesLog:  headroomMessagesLog(stats.Messages),
+		phantom:      rtk.IsHeadroomPhantomSavings(stats, diag, 0.05),
 		tokensBefore: stats.TokensBefore,
 		tokensAfter:  stats.TokensAfter,
 	}

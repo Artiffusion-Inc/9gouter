@@ -82,16 +82,16 @@ func (geminiAdapter) Normalize(body []byte, model string) ([]byte, error) {
 		for idx, emb := range embeddings {
 			if m, ok := emb.(map[string]any); ok {
 				items = append(items, map[string]any{
-					"object":   "embedding",
-					"index":    idx,
+					"object":    "embedding",
+					"index":     idx,
 					"embedding": valuesOf(m),
 				})
 			}
 		}
 	} else if emb, ok := raw["embedding"].(map[string]any); ok {
 		items = []map[string]any{{
-			"object":   "embedding",
-			"index":    0,
+			"object":    "embedding",
+			"index":     0,
 			"embedding": valuesOf(emb),
 		}}
 	}

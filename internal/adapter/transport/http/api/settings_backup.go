@@ -14,16 +14,16 @@ import (
 
 // BackupPayload mirrors ExportDb()'s output / ImportDb()'s input.
 type BackupPayload struct {
-	Settings           json.RawMessage           `json:"settings"`
-	ProviderConnections []map[string]any          `json:"providerConnections"`
-	ProviderNodes      []map[string]any           `json:"providerNodes"`
-	ProxyPools         []map[string]any           `json:"proxyPools"`
-	APIKeys            []map[string]any           `json:"apiKeys"`
-	Combos             []map[string]any           `json:"combos"`
-	ModelAliases       map[string]json.RawMessage `json:"modelAliases"`
-	CustomModels       []map[string]any           `json:"customModels"`
-	MitmAlias          map[string]json.RawMessage `json:"mitmAlias"`
-	Pricing            map[string]json.RawMessage `json:"pricing"`
+	Settings            json.RawMessage            `json:"settings"`
+	ProviderConnections []map[string]any           `json:"providerConnections"`
+	ProviderNodes       []map[string]any           `json:"providerNodes"`
+	ProxyPools          []map[string]any           `json:"proxyPools"`
+	APIKeys             []map[string]any           `json:"apiKeys"`
+	Combos              []map[string]any           `json:"combos"`
+	ModelAliases        map[string]json.RawMessage `json:"modelAliases"`
+	CustomModels        []map[string]any           `json:"customModels"`
+	MitmAlias           map[string]json.RawMessage `json:"mitmAlias"`
+	Pricing             map[string]json.RawMessage `json:"pricing"`
 }
 
 // ExportDb reads every config table and assembles the legacy backup payload.

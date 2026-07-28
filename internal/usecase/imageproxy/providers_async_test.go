@@ -230,8 +230,8 @@ func TestFalAI_SubmitPollResultSequence(t *testing.T) {
 func TestFalAI_FailedStatusMapsTo502(t *testing.T) {
 	var srv *httptest.Server
 	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
+		switch r.Method {
+		case http.MethodPost:
 			_, _ = io.WriteString(w, `{"status_url":"`+srv.URL+`/status/abc","response_url":"`+srv.URL+`/result/abc"}`)
 		default:
 			_, _ = io.WriteString(w, `{"status":"FAILED","error":"boom"}`)
@@ -258,8 +258,8 @@ func TestFalAI_FailedStatusMapsTo502(t *testing.T) {
 func TestFalAI_TimeoutMapsTo504(t *testing.T) {
 	var srv *httptest.Server
 	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
+		switch r.Method {
+		case http.MethodPost:
 			_, _ = io.WriteString(w, `{"status_url":"`+srv.URL+`/status/abc","response_url":"`+srv.URL+`/result/abc"}`)
 		default:
 			_, _ = io.WriteString(w, `{"status":"IN_QUEUE"}`)
@@ -321,8 +321,7 @@ func TestFalAI_ForeignHostRejected(t *testing.T) {
 // TestFalAI_ModelTraversalRejected proves path injection in the model segment
 // is rejected with 400 before the submit call.
 func TestFalAI_ModelTraversalRejected(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("upstream must not be called for traversal model")
 	}))
 	defer srv.Close()
@@ -347,8 +346,7 @@ func TestFalAI_ModelTraversalRejected(t *testing.T) {
 // TestFalAI_MaskAndMultipleImagesRejected proves mask and >1 image inputs are
 // rejected with 400 pre-executor (fal-ai accepts exactly one image, no mask).
 func TestFalAI_MaskAndMultipleImagesRejected(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("upstream must not be called when mask/multi-image supplied")
 	}))
 	defer srv.Close()
@@ -424,8 +422,7 @@ func TestFalAI_DataImageInput(t *testing.T) {
 // TestFalAI_HTTPSImageInputSSRFRejection proves a private/loopback HTTPS image
 // URL is rejected by the SSRF guard before the submit call.
 func TestFalAI_HTTPSImageInputSSRFRejection(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("upstream must not be called when image URL is SSRF-rejected")
 	}))
 	defer srv.Close()
@@ -451,8 +448,7 @@ func TestFalAI_HTTPSImageInputSSRFRejection(t *testing.T) {
 // TestFalAI_OversizeDataImageRejection proves a data-URL image larger than the
 // 16 MiB cap is rejected before the submit call.
 func TestFalAI_OversizeDataImageRejection(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("upstream must not be called for oversize image")
 	}))
 	defer srv.Close()
@@ -476,8 +472,7 @@ func TestFalAI_OversizeDataImageRejection(t *testing.T) {
 // TestFalAI_NonImageDataURLRejection proves a data URL whose payload is not a
 // recognised image is rejected.
 func TestFalAI_NonImageDataURLRejection(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("upstream must not be called for non-image input")
 	}))
 	defer srv.Close()
@@ -499,8 +494,7 @@ func TestFalAI_NonImageDataURLRejection(t *testing.T) {
 // TestFalAI_SubmitNon2xxSurfacesUpstreamStatus proves a submit 4xx/5xx surfaces
 // the upstream status (not a flat 502).
 func TestFalAI_SubmitNon2xxSurfacesUpstreamStatus(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = io.WriteString(w, `{"error":{"message":"bad key"}}`)
 	}))
@@ -523,8 +517,7 @@ func TestFalAI_SubmitNon2xxSurfacesUpstreamStatus(t *testing.T) {
 // TestFalAI_MalformedSubmitResponse proves a submit response missing the poll
 // URLs is a 502.
 func TestFalAI_MalformedSubmitResponse(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"foo":"bar"}`)
 	}))
 	defer srv.Close()
@@ -608,8 +601,8 @@ func TestBFL_SubmitPollResultSequence(t *testing.T) {
 func TestBFL_FailedStatusMapsTo502(t *testing.T) {
 	var srv *httptest.Server
 	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
+		switch r.Method {
+		case http.MethodPost:
 			_, _ = io.WriteString(w, `{"polling_url":"`+srv.URL+`/poll/xyz"}`)
 		default:
 			_, _ = io.WriteString(w, `{"status":"Error","error":"oops"}`)
@@ -635,8 +628,8 @@ func TestBFL_FailedStatusMapsTo502(t *testing.T) {
 func TestBFL_PollNon2xxMapsTo502(t *testing.T) {
 	var srv *httptest.Server
 	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
+		switch r.Method {
+		case http.MethodPost:
 			_, _ = io.WriteString(w, `{"polling_url":"`+srv.URL+`/poll/xyz"}`)
 		default:
 			w.WriteHeader(http.StatusInternalServerError)
@@ -662,8 +655,7 @@ func TestBFL_PollNon2xxMapsTo502(t *testing.T) {
 // TestBFL_ModelTraversalRejected proves path injection in the BFL model segment
 // is rejected with 400 pre-executor.
 func TestBFL_ModelTraversalRejected(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("upstream must not be called for traversal model")
 	}))
 	defer srv.Close()
@@ -684,8 +676,7 @@ func TestBFL_ModelTraversalRejected(t *testing.T) {
 // TestBFL_MaskRejected proves mask inputs are rejected (BFL accepts one image,
 // no mask).
 func TestBFL_MaskRejected(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("upstream must not be called when mask supplied")
 	}))
 	defer srv.Close()
@@ -746,8 +737,7 @@ func TestBFL_ForeignPollHostRejected(t *testing.T) {
 		t.Errorf("foreign poll host must not be called")
 	}))
 	defer foreign.Close()
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"polling_url":"`+foreign.URL+`/poll/xyz"}`)
 	}))
 	defer srv.Close()
@@ -766,8 +756,7 @@ func TestBFL_ForeignPollHostRejected(t *testing.T) {
 // TestBFL_NoPollingURLMapsTo502 proves a submit response missing polling_url is
 // a 502.
 func TestBFL_NoPollingURLMapsTo502(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"foo":"bar"}`)
 	}))
 	defer srv.Close()
@@ -789,8 +778,7 @@ func TestBFL_NoPollingURLMapsTo502(t *testing.T) {
 // gen4_image* model, submit /text_to_image with Bearer + X-Runway-Version,
 // poll /tasks/{id} until SUCCEEDED, normalise output[].
 func TestRunwayML_SubmitPollResultSequence(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/text_to_image":
 			if got := r.Header.Get("Authorization"); got != "Bearer rw-tok" {
@@ -849,8 +837,7 @@ func TestRunwayML_SubmitPollResultSequence(t *testing.T) {
 // TestRunwayML_NonImageModelRejected proves a non-gen4_image* model is rejected
 // with 400 pre-executor, with guidance to /v1/videos/*.
 func TestRunwayML_NonImageModelRejected(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("upstream must not be called for non-image model")
 	}))
 	defer srv.Close()
@@ -874,8 +861,7 @@ func TestRunwayML_NonImageModelRejected(t *testing.T) {
 // TestRunwayML_EditInputRejected proves supplied image/images/mask are rejected
 // with 400 pre-executor (edit pass-through intentionally excluded).
 func TestRunwayML_EditInputRejected(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("upstream must not be called when edit input supplied")
 	}))
 	defer srv.Close()
@@ -907,10 +893,9 @@ func TestRunwayML_EditInputRejected(t *testing.T) {
 
 // TestRunwayML_FailedStatusMapsTo502 proves FAILED/CANCELLED → 502.
 func TestRunwayML_FailedStatusMapsTo502(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
 			_, _ = io.WriteString(w, `{"id":"task-1"}`)
 		default:
 			_, _ = io.WriteString(w, `{"status":"FAILED","failure":"nope"}`)
@@ -932,10 +917,9 @@ func TestRunwayML_FailedStatusMapsTo502(t *testing.T) {
 // TestRunwayML_MalformedPollMapsTo502 proves a poll response that does not
 // decode into a known status is a 502.
 func TestRunwayML_MalformedPollMapsTo502(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
 			_, _ = io.WriteString(w, `{"id":"task-1"}`)
 		default:
 			_, _ = io.WriteString(w, `not-json-at-all`)
@@ -957,8 +941,7 @@ func TestRunwayML_MalformedPollMapsTo502(t *testing.T) {
 // TestRunwayML_NoTaskIDMapsTo502 proves a submit response missing the task id
 // is a 502.
 func TestRunwayML_NoTaskIDMapsTo502(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"foo":"bar"}`)
 	}))
 	defer srv.Close()
@@ -979,10 +962,9 @@ func TestRunwayML_NoTaskIDMapsTo502(t *testing.T) {
 func TestRunwayML_PollInheritsSubmitConnection(t *testing.T) {
 	rec := newRecordingExecutor(nil)
 	// Use a real TLS server so the recording executor's client dials it.
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
 			_, _ = io.WriteString(w, `{"id":"task-1"}`)
 		default:
 			_, _ = io.WriteString(w, `{"status":"SUCCEEDED","output":["https://cdn/x.png"]}`)
@@ -1030,8 +1012,7 @@ func TestRunwayML_PollInheritsSubmitConnection(t *testing.T) {
 // image_size, callBackUrl:"https://localhost/callback"}, poll record-info until
 // successFlag=1, normalise resultImageUrl.
 func TestNanobanana_SubmitPollResultSequence(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/generate"):
 			if got := r.Header.Get("Authorization"); got != "Bearer nb-tok" {
@@ -1105,8 +1086,7 @@ func TestNanobanana_SubmitPollResultSequence(t *testing.T) {
 // rejected with 400 pre-executor (edit pass-through intentionally excluded,
 // type is always TEXTTOIAMGE).
 func TestNanobanana_EditInputRejected(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("upstream must not be called when edit input supplied")
 	}))
 	defer srv.Close()
@@ -1140,10 +1120,9 @@ func TestNanobanana_EditInputRejected(t *testing.T) {
 
 // TestNanobanana_FailedFlagMapsTo502 proves successFlag 2/3 → 502.
 func TestNanobanana_FailedFlagMapsTo502(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
 			_, _ = io.WriteString(w, `{"code":200,"data":{"taskId":"t-1"}}`)
 		default:
 			_, _ = io.WriteString(w, `{"data":{"successFlag":2,"errorMessage":"content policy"}}`)
@@ -1169,8 +1148,7 @@ func TestNanobanana_FailedFlagMapsTo502(t *testing.T) {
 
 // TestNanobanana_SubmitCodeNot200 proves a submit code != 200 surfaces the msg.
 func TestNanobanana_SubmitCodeNot200(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"code":400,"msg":"bad request"}`)
 	}))
 	defer srv.Close()
@@ -1194,8 +1172,7 @@ func TestNanobanana_SubmitCodeNot200(t *testing.T) {
 // TestNanobanana_NoTaskIDMapsTo502 proves a submit response missing taskId is
 // a 502.
 func TestNanobanana_NoTaskIDMapsTo502(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"code":200,"data":{}}`)
 	}))
 	defer srv.Close()
@@ -1216,10 +1193,9 @@ func TestNanobanana_NoTaskIDMapsTo502(t *testing.T) {
 // TestNanobanana_OriginImageUrlFallback proves the originImageUrl fallback when
 // resultImageUrl is absent.
 func TestNanobanana_OriginImageUrlFallback(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
 			_, _ = io.WriteString(w, `{"code":200,"data":{"taskId":"t-1"}}`)
 		default:
 			_, _ = io.WriteString(w, `{"data":{"successFlag":1,"response":{"originImageUrl":"https://cdn.nb/o.png"}}}`)

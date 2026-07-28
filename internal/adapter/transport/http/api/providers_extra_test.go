@@ -299,9 +299,9 @@ func TestProvidersExtra_ModelsEndpoint(t *testing.T) {
 		t.Fatalf("gemini models status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
 	var resp struct {
-		Provider     string              `json:"provider"`
-		ConnectionID string              `json:"connectionId"`
-		Models       []map[string]any    `json:"models"`
+		Provider     string           `json:"provider"`
+		ConnectionID string           `json:"connectionId"`
+		Models       []map[string]any `json:"models"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
@@ -364,7 +364,7 @@ func TestProvidersExtra_StaticAndBatch(t *testing.T) {
 		t.Fatalf("testBatch provider status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
 	var batchResp struct {
-		Summary map[string]int `json:"summary"`
+		Summary map[string]int   `json:"summary"`
 		Results []map[string]any `json:"results"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &batchResp); err != nil {

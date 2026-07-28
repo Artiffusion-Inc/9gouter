@@ -4,7 +4,8 @@
 // multimodal image blocks into message.images[] as raw base64. Without this
 // translator the OpenAI request body is forwarded verbatim and ollama.com
 // rejects content-arrays with HTTP 400:
-//   "json: cannot unmarshal array into Go struct field ...content of type string"
+//
+//	"json: cannot unmarshal array into Go struct field ...content of type string"
 package ollama
 
 import (

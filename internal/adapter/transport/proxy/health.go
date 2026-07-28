@@ -11,10 +11,10 @@ import (
 
 // Health tracks proxy TCP reachability with TTLs and inflight dedup.
 type Health struct {
-	mu         sync.RWMutex
-	entries    map[string]*healthEntry
-	opts       Options
-	flight     singleflight.Group
+	mu      sync.RWMutex
+	entries map[string]*healthEntry
+	opts    Options
+	flight  singleflight.Group
 }
 
 type healthEntry struct {

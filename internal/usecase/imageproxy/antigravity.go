@@ -86,7 +86,6 @@ func (h *Handler) synthAntigravity(ctx context.Context, cfg image.Config, req Re
 	if len(images) == 0 {
 		// Legacy parity: empty image + revised_prompt fallback so the client
 		// gets a well-formed OpenAI body even when upstream returned no image.
-		images = []string{""}
 		out := map[string]any{
 			"created": time.Now().Unix(),
 			"data":    []any{map[string]any{"b64_json": "", "revised_prompt": req.Prompt}},

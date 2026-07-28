@@ -19,15 +19,15 @@ const searchMaxBodyBytes int64 = 4 << 20
 // ignored. domain_filter / content_options / provider_options are accepted but
 // not forwarded in this MVP slice.
 type searchRequestBody struct {
-	Provider    string `json:"provider"`
-	Model       string `json:"model"`
-	Query       string `json:"query"`
-	MaxResults  int    `json:"max_results"`
-	SearchType   string `json:"search_type"`
-	Country     string `json:"country"`
-	Language    string `json:"language"`
-	TimeRange   string `json:"time_range"`
-	Offset      int    `json:"offset"`
+	Provider   string `json:"provider"`
+	Model      string `json:"model"`
+	Query      string `json:"query"`
+	MaxResults int    `json:"max_results"`
+	SearchType string `json:"search_type"`
+	Country    string `json:"country"`
+	Language   string `json:"language"`
+	TimeRange  string `json:"time_range"`
+	Offset     int    `json:"offset"`
 }
 
 // handleSearch implements POST /v1/search — the web-search endpoint. It ports

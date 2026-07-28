@@ -65,7 +65,7 @@ func (e *Executor) BuildHeaders(creds provider.Credentials, stream bool) http.He
 }
 
 var defaultSystem = map[string]any{
-	"role": "system",
+	"role":    "system",
 	"content": []any{map[string]any{"type": "text", "text": "", "cache_control": map[string]any{"type": "ephemeral"}}},
 }
 

@@ -35,12 +35,12 @@ type ProxyPool struct {
 
 // Fallback finds a working proxy for a target. It mirrors proxyFallback.js.
 type Fallback struct {
-	mu        sync.RWMutex
-	cache     map[string]*fallbackEntry
-	opts      Options
-	health    *Health
-	source    ProxyPoolSource
-	client    *http.Client
+	mu     sync.RWMutex
+	cache  map[string]*fallbackEntry
+	opts   Options
+	health *Health
+	source ProxyPoolSource
+	client *http.Client
 }
 
 type fallbackEntry struct {

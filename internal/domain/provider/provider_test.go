@@ -39,14 +39,14 @@ type staticProvider struct {
 	executor Executor
 }
 
-func (p staticProvider) ID() string       { return p.id }
+func (p staticProvider) ID() string         { return p.id }
 func (p staticProvider) Executor() Executor { return p.executor }
 
 func TestProviderPort(t *testing.T) {
 	creds := Credentials{
-		APIKey:      "sk-test",
-		AccessToken: "tok-test",
-		ExpiresAt:   func() *time.Time { now := time.Now(); return &now }(),
+		APIKey:               "sk-test",
+		AccessToken:          "tok-test",
+		ExpiresAt:            func() *time.Time { now := time.Now(); return &now }(),
 		ProviderSpecificData: map[string]any{"baseUrl": "https://example.com"},
 	}
 	if creds.APIKey != "sk-test" {

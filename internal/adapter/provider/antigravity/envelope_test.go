@@ -112,7 +112,7 @@ func TestEnvelope_RequestIdDeterministic(t *testing.T) {
 	if pa[2] != pb[2] {
 		t.Errorf("trajectoryId not deterministic: %q vs %q", pa[2], pb[2])
 	}
-	if pa[1] == pb[1] {
+	if pa[1] == pb[1] { //nolint:staticcheck // SA9003: intentional empty branch documents that a timestamp match is allowed, not required.
 		// Timestamps could collide on a fast machine, but a mismatch is the
 		// expected norm — only assert it is not a hard requirement.
 	}

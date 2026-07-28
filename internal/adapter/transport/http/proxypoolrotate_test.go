@@ -72,7 +72,7 @@ func TestPickProxyPoolId_RoundRobinStateIsPerProvider(t *testing.T) {
 	b1 := pickProxyPoolId(pools, "round-robin", "provider-b")
 	a2 := pickProxyPoolId(pools, "round-robin", "provider-a")
 	if a1 != "x" || b1 != "x" || a2 != "y" {
-		t.Errorf("per-provider state: a1=%q b1=%q a2=%q, want x x y", a1, b1, a2)
+		t.Errorf("per-provider state: a1=%q b1=%q a2=%q, want x x y", a1, b1, a2) //nolint:dupword // "x x" is intentional: a1 and b1 both equal x, then a2 equals y.
 	}
 }
 

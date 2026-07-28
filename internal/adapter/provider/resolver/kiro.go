@@ -220,12 +220,12 @@ func kiroFingerprintHeaders(creds provider.Credentials) map[string]string {
 	amzUA := fmt.Sprintf("aws-sdk-js/%s KiroIDE-%s-%s", kiroRuntimeSDKVersion, kiroVersion, machineID)
 
 	return map[string]string{
-		"User-Agent":                   ua,
-		"x-amz-user-agent":             amzUA,
-		"x-amzn-kiro-agent-mode":       "vibe",
-		"x-amzn-codewhisperer-optout":   "true",
-		"amz-sdk-request":              "attempt=1; max=1",
-		"amz-sdk-invocation-id":        uuid.NewString(),
+		"User-Agent":                  ua,
+		"x-amz-user-agent":            amzUA,
+		"x-amzn-kiro-agent-mode":      "vibe",
+		"x-amzn-codewhisperer-optout": "true",
+		"amz-sdk-request":             "attempt=1; max=1",
+		"amz-sdk-invocation-id":       uuid.NewString(),
 	}
 }
 

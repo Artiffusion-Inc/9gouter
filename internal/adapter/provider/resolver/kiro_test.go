@@ -13,10 +13,10 @@ import (
 
 func TestKiroRegionFromProfileArn(t *testing.T) {
 	cases := map[string]string{
-		"":                                  "us-east-1",
+		"": "us-east-1",
 		"arn:aws:codewhisperer:eu-west-1:12:profile/X": "eu-west-1",
 		"arn:aws:codewhisperer:us-east-1:12:profile/X": "us-east-1",
-		"not-an-arn":                        "us-east-1",
+		"not-an-arn": "us-east-1",
 	}
 	for in, want := range cases {
 		if got := regionFromProfileArn(in); got != want {
@@ -27,10 +27,10 @@ func TestKiroRegionFromProfileArn(t *testing.T) {
 
 func TestKiroStripSyntheticSuffixes(t *testing.T) {
 	cases := map[string]string{
-		"claude-sonnet-5":                        "claude-sonnet-5",
-		"claude-sonnet-5-thinking":               "claude-sonnet-5",
-		"claude-sonnet-5-agentic":                "claude-sonnet-5",
-		"claude-sonnet-5-thinking-agentic":       "claude-sonnet-5",
+		"claude-sonnet-5":                  "claude-sonnet-5",
+		"claude-sonnet-5-thinking":         "claude-sonnet-5",
+		"claude-sonnet-5-agentic":          "claude-sonnet-5",
+		"claude-sonnet-5-thinking-agentic": "claude-sonnet-5",
 	}
 	for in, want := range cases {
 		if got := stripSyntheticSuffixes(in); got != want {

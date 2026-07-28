@@ -96,9 +96,7 @@ func StripUnsupportedParams(provider, model string, body map[string]any) map[str
 			continue
 		}
 		for _, key := range rule.drop {
-			if _, ok := body[key]; ok {
-				delete(body, key)
-			}
+			delete(body, key)
 		}
 		if rule.flattenContent {
 			flattenMessageContent(body)

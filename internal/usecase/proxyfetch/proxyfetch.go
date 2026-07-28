@@ -158,7 +158,7 @@ func buildResponseJSON(res *webfetch.Result, responseMs, upstreamMs int64) map[s
 			"fetch_cost_usd": nullableString(res.CostUSD),
 		},
 		"metrics": map[string]any{
-			"response_time_ms":   responseMs,
+			"response_time_ms":    responseMs,
 			"upstream_latency_ms": upstreamMs,
 		},
 	}

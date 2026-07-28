@@ -15,9 +15,9 @@ type AliasRepo struct{ db *sql.DB }
 func NewAliasRepo(db *sql.DB) *AliasRepo { return &AliasRepo{db: db} }
 
 const (
-	scopeAliases     = "modelAliases"
-	scopeCustom      = "customModels"
-	scopeMitm        = "mitmAlias"
+	scopeAliases = "modelAliases"
+	scopeCustom  = "customModels"
+	scopeMitm    = "mitmAlias"
 )
 
 // Model aliases.

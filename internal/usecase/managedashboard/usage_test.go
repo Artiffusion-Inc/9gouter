@@ -46,8 +46,8 @@ func (r *fakeUsageRepo) RecentLogs(ctx context.Context, limit int) ([]string, er
 
 // fakeDetailRepo implements UsageService.DetailRepo.
 type fakeDetailRepo struct {
-	page repo.RequestDetailPage
-	err  error
+	page  repo.RequestDetailPage
+	err   error
 	calls []repo.RequestDetailFilter
 }
 

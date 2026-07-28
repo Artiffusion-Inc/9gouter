@@ -173,9 +173,9 @@ func TestModelService_CustomModels(t *testing.T) {
 func TestModelService_AddCustom_Defaults(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-	 testName                         string
-	 providerAlias, id, typ, nameVal string
-	 wantTyp, wantName                string
+		testName                        string
+		providerAlias, id, typ, nameVal string
+		wantTyp, wantName               string
 	}{
 		{"all empty", "p", "m1", "", "", "llm", "m1"},
 		{"explicit", "p", "m2", "embedding", "My Model", "embedding", "My Model"},

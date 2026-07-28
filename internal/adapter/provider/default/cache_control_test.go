@@ -159,7 +159,7 @@ func TestStripNonOpenAI_NoMessagesNoPanic(t *testing.T) {
 		{"messages": 42},
 	} {
 		out := transformBody(t, false, body)
-		if _, ok := out["messages"]; ok && out["messages"] == "not-an-array" {
+		if _, ok := out["messages"]; ok && out["messages"] == "not-an-array" { //nolint:staticcheck // SA9003: intentional empty branch documents that a non-array passthrough is left as-is.
 			// fine — left as-is
 		}
 	}

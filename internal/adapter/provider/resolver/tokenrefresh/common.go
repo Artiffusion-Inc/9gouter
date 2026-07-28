@@ -103,12 +103,12 @@ func doJSON(ctx context.Context, client *http.Client, opts resolver.ProxyOptions
 // *slog.Logger.
 func proxyFetchOptions(opts resolver.ProxyOptions) proxy.ProxyFetchOptions {
 	return proxy.ProxyFetchOptions{
-		VercelRelayUrl:        opts.VercelRelayURL,
-		ConnectionProxyUrl:    opts.ConnectionProxyURL,
+		VercelRelayUrl:         opts.VercelRelayURL,
+		ConnectionProxyUrl:     opts.ConnectionProxyURL,
 		ConnectionProxyEnabled: opts.ConnectionProxyEnabled,
-		StrictProxy:           opts.StrictProxy,
-		NoProxy:               opts.ConnectionNoProxy,
-		Logger:                slogLogger(opts.Logger),
+		StrictProxy:            opts.StrictProxy,
+		NoProxy:                opts.ConnectionNoProxy,
+		Logger:                 slogLogger(opts.Logger),
 	}
 }
 
@@ -187,10 +187,10 @@ func fromToken(tok *tokenResponse, originalRefreshToken string, includeID bool) 
 // classifyOAuthRefreshError does. Permanent means the refresh token itself is
 // bad (expired/reused/invalidated/invalid_grant) and re-auth is required.
 type OAuthError struct {
-	Status     int
-	Code       string
+	Status      int
+	Code        string
 	Description string
-	Permanent  bool
+	Permanent   bool
 }
 
 func (e *OAuthError) Error() string {

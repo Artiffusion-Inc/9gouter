@@ -213,17 +213,17 @@ func NeedsTranslation(sourceFormat, targetFormat format.Format) bool {
 // individual translators add their own fields when needed.
 func InitState(sourceFormat format.Format) map[string]any {
 	state := map[string]any{
-		"messageId":          nil,
-		"model":              nil,
-		"textBlockStarted":   false,
+		"messageId":            nil,
+		"model":                nil,
+		"textBlockStarted":     false,
 		"thinkingBlockStarted": false,
-		"inThinkingBlock":    false,
-		"currentBlockIndex":  nil,
-		"toolCalls":          map[string]any{},
-		"finishReason":       nil,
-		"finishReasonSent":   false,
-		"usage":              nil,
-		"contentBlockIndex":  -1,
+		"inThinkingBlock":      false,
+		"currentBlockIndex":    nil,
+		"toolCalls":            map[string]any{},
+		"finishReason":         nil,
+		"finishReasonSent":     false,
+		"usage":                nil,
+		"contentBlockIndex":    -1,
 	}
 	if sourceFormat == format.OpenaiResponses {
 		state["seq"] = 0

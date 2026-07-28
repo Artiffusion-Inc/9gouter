@@ -30,9 +30,9 @@ type ExecRequest struct {
 
 // Resp is the result of a successful upstream call.
 type Resp struct {
-	Response       *http.Response
-	URL            string
-	Headers        http.Header
+	Response        *http.Response
+	URL             string
+	Headers         http.Header
 	TransformedBody json.RawMessage
 
 	// Done, when non-nil, releases resources tied to the upstream call's

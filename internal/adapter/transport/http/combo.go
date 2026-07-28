@@ -96,11 +96,11 @@ func comboStickyLimit(data map[string]any) int {
 // first, then advances the cursor once the sticky-use count reaches the limit.
 // fusion is treated as fallback (not ported). A single-model combo is never
 // rotated. Mirrors open-sse/services/combo.js getRotatedModels.
-func rotateComboModels(comboName string, models []string, strat comboStrategy, stickyLimit int) []string {
+func rotateComboModels(comboName string, models []string, strategy comboStrategy, stickyLimit int) []string {
 	if len(models) <= 1 {
 		return models
 	}
-	if strat != comboStrategyRoundRobin {
+	if strategy != comboStrategyRoundRobin {
 		return models
 	}
 	comboRotationState.Lock()
@@ -165,7 +165,7 @@ func (h *v1Handler) resolveComboModels(ctx context.Context, modelStr string, dat
 	if len(models) == 0 {
 		return nil, ""
 	}
-	strat := resolveComboStrategy(data, modelStr)
+	strategy := resolveComboStrategy(data, modelStr)
 	limit := comboStickyLimit(data)
-	return rotateComboModels(modelStr, models, strat, limit), strat
+	return rotateComboModels(modelStr, models, strategy, limit), strategy
 }

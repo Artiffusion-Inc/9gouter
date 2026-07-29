@@ -106,3 +106,6 @@ tools/shadowdiff/traffic/
 
 # e2e import scratch (never commit)
 /tools/import-backup/
+
+# GoalBuddy task artifacts (never commit)
+/.task/

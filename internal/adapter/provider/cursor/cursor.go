@@ -40,7 +40,18 @@ func (e *Executor) BuildURL(model string, stream bool, urlIndex int, creds provi
 	return url
 }
 
-// BuildHeaders requires machineId and returns a deterministic Cursor header set.
+// BuildHeaders returns the Cursor ChatService header set for the legacy path
+// (tool turns, dispatched via the inherited BaseExecutor.Execute).
+//
+// Upstream 6994cd1f bumped the shared x-cursor-client-version from 3.1.0 to
+// 3.12.17 across both ChatService and AgentService and added the
+// x-cursor-client-commit fingerprint header, so the gateway stops returning
+// HTTP 429 "Update Required" for retired headers. The legacy path here only
+// needs the same two-line bump on top of the Base header set (which already
+// carries the connect-* / Content-Type / Authorization canonical headers from
+// the registry config); pulling the full AgentService proto header set in
+// would create canonical-vs-lowercase duplicates of Authorization/Content-Type.
+// The AgentService path keeps its own BuildCursorHeaders set in execute.go.
 func (e *Executor) BuildHeaders(creds provider.Credentials, stream bool) http.Header {
 	h := e.BaseExecutor.BuildHeaders(creds, stream)
 	machineID, _ := creds.ProviderSpecificData["machineId"].(string)
@@ -48,7 +59,8 @@ func (e *Executor) BuildHeaders(creds provider.Credentials, stream bool) http.He
 		panic("Machine ID is required for Cursor API")
 	}
 	base.SetHeaderExact(h, "x-machine-id", machineID)
-	base.SetHeaderExact(h, "x-cursor-client-version", "3.1.0")
+	base.SetHeaderExact(h, "x-cursor-client-version", cursorClientVersion)
+	base.SetHeaderExact(h, "x-cursor-client-commit", cursorClientCommit)
 	base.SetHeaderExact(h, "x-cursor-client-type", "ide")
 	return h
 }

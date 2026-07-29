@@ -37,9 +37,10 @@ func parseSnapBytes(data []byte) map[string]string {
 }
 
 // unescapeSnapBody reverses Vitest's snapshot escaping:
-//   \\  -> \
-//   \`  -> `
-//   \${ -> ${
+//
+//	\\  -> \
+//	\`  -> `
+//	\${ -> ${
 func unescapeSnapBody(body []byte) []byte {
 	// Vitest escapes backslashes first, then backticks, then ${ so the reverse
 	// must be careful. We do a simple state-machine scan.
@@ -72,4 +73,3 @@ func unescapeSnapBody(body []byte) []byte {
 	}
 	return b.Bytes()
 }
-

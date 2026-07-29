@@ -1,6 +1,6 @@
 // execute.go wires the Kiro EventStream integrity gate (#100–#102) into the
 // executor surface, mirroring execute() + attachIntegrityGate in
-// open-sse/executors/kiro.js (upstream v0.5.40, commit 6994cd1f):
+// open-sse/executors/kiro.js (upstream v0.5.40, commit 7c7fae39):
 //
 //	const result = await super.execute(args);          // fetch via proxy stack
 //	if (result?.response?.ok) attachIntegrityGate(result, args);  // → OpenAI SSE

@@ -1,5 +1,5 @@
 // eventstream.go ports the binary AWS EventStream codec half of
-// open-sse/executors/kiro.js (upstream v0.5.40, commit 6994cd1f). Kiro's
+// open-sse/executors/kiro.js (upstream v0.5.40, commit 7c7fae39). Kiro's
 // CodeWhisperer streaming endpoint returns binary AWS EventStream frames, NOT
 // SSE-wrapped JSON: each message is
 //

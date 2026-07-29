@@ -786,7 +786,7 @@ func openaiResponsesToOpenaiRequest(model string, raw json.RawMessage, stream bo
 		}
 		delete(result, "max_output_tokens")
 	}
-	// Port upstream c97963c4: before deleting the Responses `reasoning` object,
+	// Port upstream cef5dd4d: before deleting the Responses `reasoning` object,
 	// flatten its `effort` string into the OpenAI `reasoning_effort` field so
 	// callers that key on reasoning_effort still see it.
 	if r, ok := result["reasoning"].(map[string]any); ok {

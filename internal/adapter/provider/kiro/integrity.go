@@ -1,5 +1,5 @@
 // integrity.go ports the integrity gate + bounded retry half of
-// open-sse/executors/kiro.js (upstream v0.5.40, commit 6994cd1f): the
+// open-sse/executors/kiro.js (upstream v0.5.40, commit 7c7fae39): the
 // attachIntegrityGate / runIntegrityRecovery / readRecoverableIntegrityAttempt /
 // readIntegrityAttempt quartet plus the isEllipsisOnly / isShortFutureAction
 // heuristics and appendRepairInstruction.

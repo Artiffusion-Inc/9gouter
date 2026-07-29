@@ -747,7 +747,7 @@ func TestOpenAIToOpenAIResponsesRequestServiceTier(t *testing.T) {
 }
 
 // TestOpenAIResponsesToOpenAIRequestReasoningEffortFlatten pins upstream
-// c97963c4: the Responses `reasoning.effort` string must be flattened into the
+// cef5dd4d: the Responses `reasoning.effort` string must be flattened into the
 // OpenAI `reasoning_effort` field before `reasoning` is deleted.
 func TestOpenAIResponsesToOpenAIRequestReasoningEffortFlatten(t *testing.T) {
 	body := `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}],"reasoning":{"effort":"high","summary":"auto"}}`

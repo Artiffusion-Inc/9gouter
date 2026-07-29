@@ -1,6 +1,6 @@
 // transform.go ports the event-dispatch + terminal-state half of
 // transformEventStreamToSSE in open-sse/executors/kiro.js (upstream v0.5.40,
-// commit 6994cd1f). Where eventstream.go owns the binary codec (CRC + framing
+// commit 7c7fae39). Where eventstream.go owns the binary codec (CRC + framing
 // + header decode), this file owns the per-event translation into OpenAI SSE
 // chunks and the terminal state machine that decides finish_reason or a
 // fail-closed error SSE.

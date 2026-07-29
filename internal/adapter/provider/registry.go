@@ -421,6 +421,26 @@ var configs = map[string]base.Config{
 			Hooks:            []string{"kimiHeaders"},
 			AnthropicVersion: true,
 		},
+		// Static model catalog mirroring open-sse/providers/registry/kimi.js
+		// (upstream 68566f53). kimi has no live resolver, so /v1/models and
+		// dashboard validation fall back to this list; without it the merged
+		// dual-auth provider advertised no models at all.
+		Catalog: domain.ProviderCatalog{
+			ID:    "kimi",
+			Alias: "kimi",
+			Models: []domain.Model{
+				{ID: "kimi-k3", Name: "Kimi K3"},
+				{ID: "k3", Name: "Kimi K3 (Code)"},
+				{ID: "kimi-for-coding", Name: "Kimi for Coding"},
+				{ID: "kimi-for-coding-highspeed", Name: "Kimi for Coding Highspeed"},
+				{ID: "kimi-k2.7-code", Name: "Kimi K2.7 Code"},
+				{ID: "kimi-k2.7-code-highspeed", Name: "Kimi K2.7 Code Highspeed"},
+				{ID: "kimi-k2.6", Name: "Kimi K2.6"},
+				{ID: "kimi-k2.5", Name: "Kimi K2.5"},
+				{ID: "kimi-k2.5-thinking", Name: "Kimi K2.5 Thinking"},
+				{ID: "kimi-latest", Name: "Kimi Latest"},
+			},
+		},
 	},
 	"kiro": {
 		BaseURLs: []string{

@@ -60,6 +60,59 @@ func TestAlicodeIntlSplit(t *testing.T) {
 	}
 }
 
+// TestKimiCatalog pins the merged dual-auth kimi provider's static model list
+// (upstream 68566f53). kimi has no live resolver, so /v1/models and dashboard
+// validation rely on this catalog; without it the provider advertised no
+// models after the kimi-coding merge.
+func TestKimiCatalog(t *testing.T) {
+	if _, err := Lookup("kimi"); err != nil {
+		t.Fatalf("lookup kimi: %v", err)
+	}
+	cat, ok := Catalog("kimi")
+	if !ok {
+		t.Fatalf("Catalog(kimi) returned false; want a static catalog")
+	}
+	if cat.Alias != "kimi" {
+		t.Errorf("kimi alias = %q, want kimi", cat.Alias)
+	}
+	wantModels := map[string]string{
+		"kimi-k3":                   "Kimi K3",
+		"k3":                        "Kimi K3 (Code)",
+		"kimi-for-coding":           "Kimi for Coding",
+		"kimi-for-coding-highspeed": "Kimi for Coding Highspeed",
+		"kimi-k2.7-code":            "Kimi K2.7 Code",
+		"kimi-k2.7-code-highspeed":  "Kimi K2.7 Code Highspeed",
+		"kimi-k2.6":                 "Kimi K2.6",
+		"kimi-k2.5":                 "Kimi K2.5",
+		"kimi-k2.5-thinking":        "Kimi K2.5 Thinking",
+		"kimi-latest":               "Kimi Latest",
+	}
+	if len(cat.Models) != len(wantModels) {
+		t.Fatalf("kimi catalog has %d models, want %d", len(cat.Models), len(wantModels))
+	}
+	for _, m := range cat.Models {
+		want, ok := wantModels[m.ID]
+		if !ok {
+			t.Errorf("kimi catalog has unexpected model %q", m.ID)
+			continue
+		}
+		if m.Name != want {
+			t.Errorf("kimi model %q name = %q, want %q", m.ID, m.Name, want)
+		}
+	}
+	// kimi-coding / kmc aliases must still resolve to the merged kimi catalog.
+	for _, alias := range []string{"kimi-coding", "kmc"} {
+		ac, ok := Catalog(alias)
+		if !ok {
+			t.Errorf("Catalog(%q) returned false; want the kimi catalog via alias", alias)
+			continue
+		}
+		if len(ac.Models) != len(wantModels) {
+			t.Errorf("Catalog(%q) has %d models, want %d (kimi catalog)", alias, len(ac.Models), len(wantModels))
+		}
+	}
+}
+
 // TestNvidiaCatalog ports the ced51ed6 nvidia catalog + capabilities: the
 // registry exposes the full NIM model list (LLM + embedding + stt + tts kinds)
 // and capabilities enforce OpenAI-compatible reasoning for the LLM models.

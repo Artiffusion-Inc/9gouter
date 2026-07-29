@@ -28,6 +28,11 @@ type ResolvedModel struct {
 	Name          string
 	Kind          string
 	ContextLength int
+	// MaxOutputTokens is the upstream-reported max_output_tokens, when available.
+	// Zero means the upstream did not report it (callers fall back to a
+	// provider default). Surfaced so /v1/models can advertise the real cap for
+	// models like grok-build that do not expose it via capabilities.
+	MaxOutputTokens int
 	// Capabilities is nil for providers that do not synthesize variants.
 	Capabilities *Capabilities
 	// UpstreamModelID is the raw upstream model id before variant expansion

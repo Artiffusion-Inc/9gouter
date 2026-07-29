@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
@@ -230,14 +232,27 @@ func grokCliPeriodEnd(root, config map[string]any) string {
 	return ""
 }
 
+// grokCliNoAccessTier matches subscription tiers that convey no Grok Build
+// access (upstream: !/^(free|none|null)$/i). A non-empty, non-"free/none/null"
+// tier counts as subscription access even when hasGrokCodeAccess is absent.
+var grokCliNoAccessTier = regexp.MustCompile(`^(free|none|null)$`)
+
 func grokCliSubscriptionAccess(user, config map[string]any) bool {
+	// Unified billing on the account config grants access independent of the
+	// user profile (the user call is best-effort and may be absent).
+	if v, ok := config["isUnifiedBillingUser"].(bool); ok && v {
+		return true
+	}
 	if user == nil {
 		return false
 	}
 	if v, ok := user["hasGrokCodeAccess"].(bool); ok && v {
 		return true
 	}
-	if v, ok := config["isUnifiedBillingUser"].(bool); ok && v {
+	// Upstream 59b78282: a non-empty tier that is not free/none/null also
+	// grants subscription access (subscriptionAccess = Boolean(tier) && !noAccess).
+	tier := strField(user, "subscriptionTier", "tier", "subscription_tier")
+	if tier != "" && !grokCliNoAccessTier.MatchString(strings.ToLower(tier)) {
 		return true
 	}
 	return false
@@ -245,8 +260,8 @@ func grokCliSubscriptionAccess(user, config map[string]any) bool {
 
 func grokCliResolvePlan(user, config map[string]any) string {
 	if user != nil {
-		if t := strField(user, "subscriptionTier", "tier"); t != "" {
-			return t
+		if t := strField(user, "subscriptionTier", "tier", "subscription_tier"); t != "" {
+			return grokCliTitleCaseTier(t)
 		}
 		if v, ok := user["hasGrokCodeAccess"].(bool); ok && v {
 			return "Grok Code"
@@ -256,6 +271,19 @@ func grokCliResolvePlan(user, config map[string]any) string {
 		return "Grok Build"
 	}
 	return "Grok Build"
+}
+
+// grokCliTitleCaseTier normalizes a raw subscription tier (e.g. "grok_build",
+// "grok-build", "GROK BUILD") into the title-cased display form the dashboard
+// shows ("Grok Build"). Mirrors the JS tier.replace(/[_-]+/g, " ") + word-cap.
+func grokCliTitleCaseTier(tier string) string {
+	s := strings.ReplaceAll(tier, "_", " ")
+	s = strings.ReplaceAll(s, "-", " ")
+	words := strings.Fields(s)
+	for i, w := range words {
+		words[i] = strings.ToUpper(w[:1]) + strings.ToLower(w[1:])
+	}
+	return strings.Join(words, " ")
 }
 
 func grokCliEmptyMessage(user, config map[string]any) string {

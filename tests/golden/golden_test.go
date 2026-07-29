@@ -332,9 +332,9 @@ func TestGoldenURLHeaderDefaultProviders(t *testing.T) {
 				oauthC = domain.Credentials{}
 			}
 			gotHdr := map[string]any{
-				"apiKey":    sanitizeHeaders(exec.BuildHeaders(apiKeyC, true)),
-				"oauth":     sanitizeHeaders(exec.BuildHeaders(oauthC, true)),
-				"nonStream": sanitizeHeaders(exec.BuildHeaders(apiKeyC, false)),
+				"apiKey":    sanitizeDynamicHeaders(sanitizeHeaders(exec.BuildHeaders(apiKeyC, true))),
+				"oauth":     sanitizeDynamicHeaders(sanitizeHeaders(exec.BuildHeaders(oauthC, true))),
+				"nonStream": sanitizeDynamicHeaders(sanitizeHeaders(exec.BuildHeaders(apiKeyC, false))),
 			}
 			compareSnapshot(t, wantHdr, snapshotString(gotHdr))
 		})
@@ -757,6 +757,10 @@ func TestGoldenURLHeaderAll25Providers(t *testing.T) {
 				"Authorization":            "Bearer <TOK>",
 				"Content-Type":             "application/json",
 				"User-Agent":               "grok-shell/0.2.99 (linux; x86_64)",
+				"X-Grok-Conv-Id":           "<SESSION>",
+				"X-Grok-Req-Id":            "<REQ>",
+				"X-Grok-Session-Id":        "<SESSION>",
+				"X-Grok-Turn-Idx":          "1",
 				"x-grok-client-identifier": "grok-shell",
 				"x-grok-client-version":    "0.2.99",
 			},
@@ -1005,14 +1009,18 @@ func sanitizeDynamicHeaders(h map[string]any) map[string]any {
 			} else {
 				out[k] = "<UUID>"
 			}
-		case "x-grok-req-id", "x-xai-request-id":
+		case "x-grok-req-id", "x-xai-request-id", "X-Grok-Req-Id", "X-Xai-Request-Id":
 			out[k] = "<REQ>"
 		case "Amz-Sdk-Invocation-Id":
 			out[k] = "<UUID>"
 		case "x-request-id":
 			out[k] = "<UUID>"
-		case "x-grok-session-id", "x-grok-conv-id", "session_id":
+		case "x-grok-session-id", "x-grok-conv-id", "session_id", "X-Grok-Session-Id", "X-Grok-Conv-Id":
 			out[k] = "<SESSION>"
+		case "x-grok-turn-idx", "X-Grok-Turn-Idx":
+			// Probe-path BuildHeaders (no TransformRequest) emits a stable
+			// turn of 1; the per-session store is what makes it dynamic.
+			out[k] = "1"
 		case "x-iflow-timestamp":
 			out[k] = "<TS>"
 		case "x-iflow-signature", "X-Cosy-Signature":

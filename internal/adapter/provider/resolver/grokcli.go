@@ -154,6 +154,9 @@ func (r *grokCliResolver) fetch(ctx context.Context, token string, psd map[strin
 
 // parseGrokCliModels mirrors the JS parseGrokCliModels: normalizes id/name
 // and surfaces contextLength / maxOutputTokens when the upstream reports them.
+// grok-build (the Grok Build subscription default model) does not always report
+// a context window or output cap; the JS resolver applies defaults of 500k /
+// 64k, so the dashboard advertises a real cap instead of an empty one.
 func parseGrokCliModels(raw []map[string]any) []ResolvedModel {
 	seen := map[string]bool{}
 	var out []ResolvedModel
@@ -168,9 +171,24 @@ func parseGrokCliModels(raw []map[string]any) []ResolvedModel {
 		seen[id] = true
 		name := firstNonEmpty(asString(m["display_name"]), asString(m["displayName"]), asString(m["name"]), id)
 		ctxLen := asPositiveInt(m["context_length"], m["contextLength"], m["context_window"], m["contextWindow"])
+		maxOut := asPositiveInt(m["max_output_tokens"], m["maxOutputTokens"], m["max_output"], m["maxOutput"])
 		rm := ResolvedModel{ID: id, Name: name, Kind: "chat", UpstreamModelID: id}
 		if ctxLen > 0 {
 			rm.ContextLength = ctxLen
+		}
+		if maxOut > 0 {
+			rm.MaxOutputTokens = maxOut
+		}
+		// grok-build defaults (upstream grokCliModels.js): the model the Grok
+		// Build subscription surfaces does not report a window/cap, so apply
+		// the known 500k context / 64k output defaults.
+		if id == "grok-build" {
+			if rm.ContextLength == 0 {
+				rm.ContextLength = 500000
+			}
+			if rm.MaxOutputTokens == 0 {
+				rm.MaxOutputTokens = 64000
+			}
 		}
 		out = append(out, rm)
 	}

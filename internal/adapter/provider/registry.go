@@ -351,6 +351,23 @@ var configs = map[string]base.Config{
 			502: {Attempts: 2, DelayMs: 1500},
 			503: {Attempts: 2, DelayMs: 1500},
 		},
+		// Static model catalog mirroring open-sse/providers/registry/grok-cli.js
+		// (upstream 59b78282): the Grok Build subscription model (grok-build) +
+		// the grok-4.5 family with effort-suffix aliases. grok-cli also has a live
+		// resolver, so /v1/models merges these with the live list; the static
+		// set is the fallback when the live fetch is unavailable and the source
+		// of the effort-suffix variants the live endpoint does not enumerate.
+		Catalog: domain.ProviderCatalog{
+			ID:    "grok-cli",
+			Alias: "gcli",
+			Models: []domain.Model{
+				{ID: "grok-build", Name: "Grok Build"},
+				{ID: "grok-4.5", Name: "Grok 4.5"},
+				{ID: "grok-4.5-high", Name: "Grok 4.5 (High)", UpstreamModelID: "grok-4.5"},
+				{ID: "grok-4.5-medium", Name: "Grok 4.5 (Medium)", UpstreamModelID: "grok-4.5"},
+				{ID: "grok-4.5-low", Name: "Grok 4.5 (Low)", UpstreamModelID: "grok-4.5"},
+			},
+		},
 	},
 	"grok-web": {
 		BaseURL: "https://grok.com/rest/app-chat/conversations/new",

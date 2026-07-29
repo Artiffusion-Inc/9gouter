@@ -41,8 +41,8 @@ const (
 	grokCliScope         = "openid profile email offline_access grok-cli:access api:access conversations:read conversations:write"
 	grokCliReferrer      = "grok-build"
 	grokCliUserURL       = "https://cli-chat-proxy.grok.com/v1/user"
-	grokCliUserAgent     = "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)"
-	grokCliClientVersion = "0.2.93"
+	grokCliUserAgent     = "grok-shell/0.2.99 (linux; x86_64)"
+	grokCliClientVersion = "0.2.99"
 	// grokCliHTTPTimeout bounds the device-code request + token poll + user
 	// profile fetch. The dashboard polls the /poll endpoint from the browser,
 	// so each server call is short.

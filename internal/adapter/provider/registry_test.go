@@ -14,6 +14,53 @@ func TestLookupGrokCli(t *testing.T) {
 	}
 }
 
+// TestGrokCliCatalog pins the upstream 59b78282 static model catalog: grok-build
+// (the Grok Build subscription model) + the grok-4.5 family with effort-suffix
+// aliases that remap to the bare grok-4.5 upstream id. grok-cli also has a live
+// resolver, so this static set is the fallback when the live fetch is down +
+// the source of the effort variants the live endpoint does not enumerate.
+func TestGrokCliCatalog(t *testing.T) {
+	cat, ok := Catalog("grok-cli")
+	if !ok {
+		t.Fatalf("Catalog(grok-cli) returned false; want a static catalog")
+	}
+	if cat.Alias != "gcli" {
+		t.Errorf("grok-cli alias = %q, want gcli", cat.Alias)
+	}
+	want := map[string]string{
+		"grok-build":      "",
+		"grok-4.5":        "",
+		"grok-4.5-high":   "grok-4.5",
+		"grok-4.5-medium": "grok-4.5",
+		"grok-4.5-low":    "grok-4.5",
+	}
+	got := map[string]string{}
+	for _, m := range cat.Models {
+		got[m.ID] = m.UpstreamModelID
+	}
+	if len(cat.Models) != len(want) {
+		t.Errorf("grok-cli catalog has %d models, want %d", len(cat.Models), len(want))
+	}
+	for id, upstream := range want {
+		if g, ok := got[id]; !ok {
+			t.Errorf("grok-cli catalog missing model %q", id)
+		} else if g != upstream {
+			t.Errorf("grok-cli model %q upstreamModelId = %q, want %q", id, g, upstream)
+		}
+	}
+	// gcli + gb aliases must resolve to the grok-cli catalog.
+	for _, alias := range []string{"gcli", "gb"} {
+		ac, ok := Catalog(alias)
+		if !ok {
+			t.Errorf("Catalog(%q) returned false; want grok-cli catalog via alias", alias)
+			continue
+		}
+		if len(ac.Models) != len(want) {
+			t.Errorf("Catalog(%q) has %d models, want %d (grok-cli catalog)", alias, len(ac.Models), len(want))
+		}
+	}
+}
+
 // TestAlicodeIntlSplit pins the upstream v0.5.40 split (commit 55628eea):
 // alicode-intl reverts to the coding-intl host (Coding Plan keys sk-sp-...),
 // and alims-intl is a new sibling provider on the DashScope compatible-mode

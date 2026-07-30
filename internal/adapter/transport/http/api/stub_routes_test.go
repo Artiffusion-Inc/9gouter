@@ -197,7 +197,10 @@ func TestCliTools_SettingsPerMethod(t *testing.T) {
 	tools := []string{
 		"claude-settings", "codex-settings", "opencode-settings", "droid-settings",
 		"openclaw-settings", "hermes-settings", "copilot-settings", "cline-settings",
-		"kilo-settings", "deepseek-tui-settings", "jcode-settings", "grok-build-settings",
+		"kilo-settings", "deepseek-tui-settings", "jcode-settings",
+		// grok-build-settings is excluded: it has a real TOML-backed handler
+		// (grokbuildsettings.go) whose POST requires a valid {baseUrl, model}
+		// body and a grok install to return 200 — see grokbuildsettings_test.go.
 	}
 	for _, tool := range tools {
 		for _, method := range []string{"GET", "POST", "DELETE"} {
@@ -577,5 +580,59 @@ func TestHealth_RegisteredRoutes(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("health status = %d, want 200", rec.Code)
+	}
+}
+
+// TestCliTools_GrokBuildSettings_Smoke covers the real grok-build-settings
+// handler's GET/POST/DELETE contract (it is no longer a static stub): a temp
+// ~/.grok override keeps it off the real home, and a fake "installed" detector
+// makes GET report installed=true without shelling out to `which grok`.
+func TestCliTools_GrokBuildSettings_Smoke(t *testing.T) {
+	home := withGrokTempHome(t)
+	db := mustOpenDB(t)
+	deps := buildDeps(t, db)
+	mux := http.NewServeMux()
+	RegisterCliTools(mux, deps)
+	ck := authCookie(t, deps.SessionStore.(*adapterauth.CookieStore))
+
+	// GET with no config present -> installed=true, has9Gouter=false.
+	getReq := httptest.NewRequest("GET", "/api/cli-tools/grok-build-settings", nil)
+	getReq.Header.Set("Cookie", "auth_token="+ck)
+	getRec := httptest.NewRecorder()
+	mux.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, want 200; body=%s", getRec.Code, getRec.Body.String())
+	}
+
+	// POST with a valid body writes the config and returns success.
+	postBody := `{"baseUrl":"http://127.0.0.1:20128/v1","apiKey":"sk_9gouter","model":"grok/build-model","contextWindow":200000}`
+	postReq := httptest.NewRequest("POST", "/api/cli-tools/grok-build-settings", strings.NewReader(postBody))
+	postReq.Header.Set("Cookie", "auth_token="+ck)
+	postReq.Header.Set("Content-Type", "application/json")
+	postRec := httptest.NewRecorder()
+	mux.ServeHTTP(postRec, postReq)
+	if postRec.Code != http.StatusOK {
+		t.Fatalf("POST status = %d, want 200; body=%s", postRec.Code, postRec.Body.String())
+	}
+	var postResp map[string]any
+	if err := json.Unmarshal(postRec.Body.Bytes(), &postResp); err != nil {
+		t.Fatalf("decode POST: %v body=%s", err, postRec.Body.String())
+	}
+	if postResp["modelSlot"] != "9gouter" {
+		t.Fatalf("modelSlot = %v, want 9gouter", postResp["modelSlot"])
+	}
+
+	// DELETE resets the written config.
+	delReq := httptest.NewRequest("DELETE", "/api/cli-tools/grok-build-settings", nil)
+	delReq.Header.Set("Cookie", "auth_token="+ck)
+	delRec := httptest.NewRecorder()
+	mux.ServeHTTP(delRec, delReq)
+	if delRec.Code != http.StatusOK {
+		t.Fatalf("DELETE status = %d, want 200; body=%s", delRec.Code, delRec.Body.String())
+	}
+
+	// Sanity: the temp home was actually used (config written then reset).
+	if home == "" {
+		t.Fatal("temp home override not set")
 	}
 }

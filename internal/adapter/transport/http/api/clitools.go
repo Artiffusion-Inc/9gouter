@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 )
 
@@ -196,9 +195,9 @@ func (h *cliToolsHandler) jcodeSettings(w http.ResponseWriter, r *http.Request) 
 	h.cliToolResponse(w, r, "JCode")
 }
 
-func (h *cliToolsHandler) grokBuildSettings(w http.ResponseWriter, r *http.Request) {
-	h.cliToolResponse(w, r, "Grok Build")
-}
+// grokBuildSettings is implemented in grokbuildsettings.go (real TOML-backed
+// handler ported from the upstream route.js); the other CLI tools below still
+// use the static cliToolResponse stub.
 
 func (h *cliToolsHandler) cliToolResponse(w http.ResponseWriter, r *http.Request, name string) {
 	switch r.Method {
@@ -210,5 +209,3 @@ func (h *cliToolsHandler) cliToolResponse(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": name + " settings reset"})
 	}
 }
-
-var _ = fmt.Sprintf

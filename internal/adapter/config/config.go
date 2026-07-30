@@ -42,7 +42,16 @@ type Config struct {
 	DashboardPasswordHash  string `envconfig:"DASHBOARD_PASSWORD_HASH"`
 	DashboardSessionSecret string `envconfig:"DASHBOARD_SESSION_SECRET" default:"change-me"`
 	SessionSecret          string `envconfig:"SESSION_SECRET" default:"change-me"`
-	Version                string `envconfig:"VERSION" default:"dev"`
+	// AuthCookieSecure forces the Secure flag on the dashboard auth_token
+	// cookie, mirroring the JS dashboardSession.js AUTH_COOKIE_SECURE env. The
+	// cookie-store auto-detect (X-Forwarded-Proto: https) is unreachable from
+	// the Set() call path (no *http.Request is threaded through the store
+	// interface), so deployments behind an HTTPS-terminating proxy (traefik,
+	// Dokploy tunnel) must set AUTH_COOKIE_SECURE=true or the browser drops the
+	// non-Secure cookie on HTTPS navigation and the dashboard bounces to
+	// /login.
+	AuthCookieSecure bool   `envconfig:"AUTH_COOKIE_SECURE" default:"false"`
+	Version          string `envconfig:"VERSION" default:"dev"`
 
 	// Add remaining ~40 env vars as the ports that need them are implemented.
 }

@@ -184,3 +184,87 @@ func TestCookieStore_Expired(t *testing.T) {
 		t.Fatalf("expected ErrInvalidSession for expired session, got %v", err)
 	}
 }
+
+// findAuthCookie returns the auth_token cookie from a recorder response.
+func findAuthCookie(t *testing.T, w *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
+	for _, c := range w.Result().Cookies() {
+		if c.Name == authCookieName {
+			return c
+		}
+	}
+	t.Fatal("expected auth_token cookie to be set")
+	return nil
+}
+
+// TestCookieStore_DefaultNotSecure reproduces the bug behind the dashboard
+// bouncing to /login behind an HTTPS-terminating proxy: Set() has no
+// *http.Request (the store interface threads only the ResponseWriter), so the
+// X-Forwarded-Proto auto-detect in secureCookie is unreachable and a store
+// built without WithForceSecure emits a non-Secure cookie. Deployments must
+// opt in via AUTH_COOKIE_SECURE=true (→ WithForceSecure).
+func TestCookieStore_DefaultNotSecure(t *testing.T) {
+	store, err := NewCookieStore("a-very-long-test-secret-32bytes")
+	if err != nil {
+		t.Fatalf("NewCookieStore: %v", err)
+	}
+	w := httptest.NewRecorder()
+	if err := store.Set(w, domainauth.Session{ID: "s", Principal: domainauth.Principal{ID: "u"}, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if c := findAuthCookie(t, w); c.Secure {
+		t.Fatalf("default store cookie should NOT be Secure (got Secure=true); Set() has no request context for proto auto-detect")
+	}
+}
+
+// TestCookieStore_ForceSecure asserts the AUTH_COOKIE_SECURE=true path: with
+// WithForceSecure(true) both Set() and Clear() emit the Secure flag, and the
+// store built this way round-trips a cookie a browser would keep on HTTPS.
+func TestCookieStore_ForceSecure(t *testing.T) {
+	base, err := NewCookieStore("a-very-long-test-secret-32bytes")
+	if err != nil {
+		t.Fatalf("NewCookieStore: %v", err)
+	}
+	store := base.WithForceSecure(true)
+
+	// Set emits Secure.
+	w := httptest.NewRecorder()
+	if err := store.Set(w, domainauth.Session{ID: "s", Principal: domainauth.Principal{ID: "u"}, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if c := findAuthCookie(t, w); !c.Secure {
+		t.Fatalf("ForceSecure store cookie should be Secure (got Secure=false)")
+	}
+	// The signed cookie still round-trips through Get.
+	r := httptest.NewRequest("GET", "/", nil)
+	r.AddCookie(findAuthCookie(t, w))
+	if _, err := store.Get(r); err != nil {
+		t.Fatalf("Get after ForceSecure Set: %v", err)
+	}
+
+	// Clear also emits Secure so the invalidation cookie survives HTTPS.
+	w2 := httptest.NewRecorder()
+	if err := store.Clear(w2); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	if c := findAuthCookie(t, w2); !c.Secure {
+		t.Fatalf("ForceSecure store Clear cookie should be Secure (got Secure=false)")
+	}
+}
+
+// TestCookieStore_WithForceSecureIsIndependent confirms the option returns a
+// new store without mutating the original — so an unset AUTH_COOKIE_SECURE
+// (default false) cannot accidentally flip Secure on elsewhere.
+func TestCookieStore_WithForceSecureIsIndependent(t *testing.T) {
+	base, err := NewCookieStore("a-very-long-test-secret-32bytes")
+	if err != nil {
+		t.Fatalf("NewCookieStore: %v", err)
+	}
+	forced := base.WithForceSecure(true)
+	if base.forceSecure {
+		t.Fatal("WithForceSecure mutated the original store")
+	}
+	if !forced.forceSecure {
+		t.Fatal("WithForceSecure did not set forceSecure on the copy")
+	}
+}

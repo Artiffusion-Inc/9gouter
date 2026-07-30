@@ -72,6 +72,7 @@ DB_PATH=./data/9gouter.db
 DASHBOARD_PASSWORD_HASH=         # bcrypt hash; backup settings.password is one
 DASHBOARD_SESSION_SECRET=change-me
 SESSION_SECRET=change-me
+AUTH_COOKIE_SECURE=false          # true → Secure flag on auth_token cookie; REQUIRED behind HTTPS-terminating proxies (traefik/Dokploy) — the Set() path has no *http.Request so X-Forwarded-Proto auto-detect is unreachable
 
 # Timeouts (ms or Go duration). Defaults shown.
 FETCH_CONNECT_TIMEOUT_MS=60000

@@ -175,6 +175,7 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("session store: %w", err)
 	}
+	sessionStore = sessionStore.WithForceSecure(cfg.AuthCookieSecure)
 	apiDeps := api.Deps{
 		APIKeys:            repos.APIKeys,
 		Alias:              repos.Aliases,

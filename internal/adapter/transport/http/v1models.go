@@ -104,6 +104,30 @@ func hasCapabilitySignal(c capabilities.Capabilities) bool {
 		c.MaxOutput != capabilities.Default.MaxOutput
 }
 
+// comboCapabilities resolves the capabilities to surface for an LLM combo by
+// inheriting them from its first underlying model. A combo's Models field is a
+// JSON array of "<provider>/<model>" (or bare "<model>") ids; the first is the
+// primary member whose capabilities (context window, max output, reasoning,
+// vision) best describe what the combo can do for a client. Returns nil when
+// Models is empty, unparseable, or the primary member has no capability
+// signal — mirroring capsForModel's "no signal → omit the blob" rule so combos
+// with unknown members don't get a misleading Default blob.
+func comboCapabilities(models json.RawMessage) *capabilities.Capabilities {
+	var ids []string
+	if err := json.Unmarshal(models, &ids); err != nil || len(ids) == 0 {
+		return nil
+	}
+	primary := strings.TrimSpace(ids[0])
+	if primary == "" {
+		return nil
+	}
+	provider, modelID := primary, primary
+	if i := strings.Index(primary, "/"); i > 0 {
+		provider, modelID = primary[:i], primary[i+1:]
+	}
+	return capsForModel(provider, modelID, "llm")
+}
+
 // kindFilterFromPath returns the requested service kinds for a /v1/models
 // or /v1/models/{kind} request. Empty kind => ["llm"] (the OpenAI default —
 // chat models only). Special kind "all" returns every kind.
@@ -283,6 +307,16 @@ func (h *v1Handler) buildModelsList(ctx context.Context, kindFilter []string, sk
 				entry := oaiModel{ID: id, Object: "model", OwnedBy: "combo"}
 				if ck == "webSearch" || ck == "webFetch" {
 					entry.Kind = ck
+				}
+				// An LLM combo inherits the capabilities of its first underlying
+				// model so /v1/models clients (Claude Code, etc.) that gate model
+				// selection on the capabilities blob accept the combo id. Without
+				// this the combo entry carries no capabilities and clients report
+				// "Model not found" / "may not exist or you may not have access"
+				// even though the gateway routes it fine. Mirrors the JS
+				// getCapabilitiesForModel lookup done for combo members.
+				if ck == "llm" {
+					entry.Capabilities = comboCapabilities(c.Models)
 				}
 				out = append(out, entry)
 			}

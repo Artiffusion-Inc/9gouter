@@ -265,3 +265,126 @@ func TestBuildModelsList_CapabilitiesPopulated(t *testing.T) {
 		}
 	}
 }
+
+// findEntry returns the model entry with the given id, or nil.
+func findEntry(ms []oaiModel, id string) *oaiModel {
+	for i := range ms {
+		if ms[i].ID == id {
+			return &ms[i]
+		}
+	}
+	return nil
+}
+
+// TestBuildModelsList_ComboInheritsCapabilities reproduces the Claude Code
+// "Model not found" failure: an LLM combo whose primary underlying model is a
+// known LLM must surface capabilities on /v1/models so capability-gating
+// clients accept the combo id. Before the fix the combo entry carried no
+// capabilities at all.
+func TestBuildModelsList_ComboInheritsCapabilities(t *testing.T) {
+	h, db := newModelsHandler(t)
+	cr := repo.NewComboRepo(db)
+	// glm-5.2 resolves to a real capabilities entry (200k ctx, reasoning) in
+	// the capabilities table, so the combo "glm-5.2" should inherit it.
+	if err := cr.Create(context.Background(), settings.Combo{
+		ID:     "combo-glm",
+		Name:   "glm-5.2",
+		Kind:   "llm",
+		Models: json.RawMessage(`["ollama/glm-5.2"]`),
+	}); err != nil {
+		t.Fatalf("create combo: %v", err)
+	}
+
+	got := h.buildModelsList(context.Background(), []string{"llm"}, false)
+	entry := findEntry(got, "glm-5.2")
+	if entry == nil {
+		t.Fatalf("combo glm-5.2 not listed: %v", ids(got))
+	}
+	if entry.Capabilities == nil {
+		t.Fatalf("combo glm-5.2 should inherit capabilities from its primary member ollama/glm-5.2 (got nil) — capability-gating clients like Claude Code reject models without a capabilities blob")
+	}
+	if !entry.Capabilities.Reasoning {
+		t.Errorf("combo glm-5.2 caps = %+v, want Reasoning inherited from glm-5.2", entry.Capabilities)
+	}
+	if entry.Capabilities.ContextWindow == 0 {
+		t.Errorf("combo glm-5.2 caps = %+v, want non-zero ContextWindow", entry.Capabilities)
+	}
+}
+
+// TestBuildModelsList_ComboNoCapsForUnknownMember guards the no-signal rule:
+// a combo whose primary member is an unknown LLM id (no capabilities entry)
+// must NOT get a misleading Default blob — it stays capability-less, matching
+// capsForModel's behavior for unknown provider/catalog models.
+func TestBuildModelsList_ComboNoCapsForUnknownMember(t *testing.T) {
+	h, db := newModelsHandler(t)
+	cr := repo.NewComboRepo(db)
+	if err := cr.Create(context.Background(), settings.Combo{
+		ID:     "combo-unknown",
+		Name:   "my-mystery-combo",
+		Kind:   "llm",
+		Models: json.RawMessage(`["definitely-not-a-real-model-xyz"]`),
+	}); err != nil {
+		t.Fatalf("create combo: %v", err)
+	}
+
+	got := h.buildModelsList(context.Background(), []string{"llm"}, false)
+	entry := findEntry(got, "my-mystery-combo")
+	if entry == nil {
+		t.Fatalf("combo not listed: %v", ids(got))
+	}
+	if entry.Capabilities != nil {
+		t.Errorf("combo with unknown primary member should have nil capabilities, got %+v", entry.Capabilities)
+	}
+}
+
+// TestBuildModelsList_ComboNoCapsForEmptyModels guards against panics / junk
+// when a combo's Models array is empty or malformed.
+func TestBuildModelsList_ComboNoCapsForEmptyModels(t *testing.T) {
+	h, db := newModelsHandler(t)
+	cr := repo.NewComboRepo(db)
+	if err := cr.Create(context.Background(), settings.Combo{
+		ID:     "combo-empty",
+		Name:   "empty-combo",
+		Kind:   "llm",
+		Models: json.RawMessage(`[]`),
+	}); err != nil {
+		t.Fatalf("create combo: %v", err)
+	}
+
+	got := h.buildModelsList(context.Background(), []string{"llm"}, false)
+	entry := findEntry(got, "empty-combo")
+	if entry == nil {
+		t.Fatalf("combo not listed: %v", ids(got))
+	}
+	if entry.Capabilities != nil {
+		t.Errorf("empty combo should have nil capabilities, got %+v", entry.Capabilities)
+	}
+}
+
+// TestComboCapabilities covers the helper directly across the cases the
+// buildModelsList integration tests exercise only via the repo: known member
+// with signal, bare model id (no provider/), empty/malformed array.
+func TestComboCapabilities(t *testing.T) {
+	// Known LLM member with provider prefix → inherits capabilities.
+	c := comboCapabilities(json.RawMessage(`["ollama/glm-5.2"]`))
+	if c == nil || !c.Reasoning {
+		t.Fatalf("ollama/glm-5.2 combo caps = %+v, want non-nil with Reasoning", c)
+	}
+	// Bare model id (no provider/) → still resolved via the capabilities table.
+	c = comboCapabilities(json.RawMessage(`["glm-5.2"]`))
+	if c == nil || !c.Reasoning {
+		t.Fatalf("glm-5.2 combo caps = %+v, want non-nil with Reasoning", c)
+	}
+	// Unknown member → nil (no Default blob).
+	if got := comboCapabilities(json.RawMessage(`["no-such-model"]`)); got != nil {
+		t.Errorf("unknown member combo caps = %+v, want nil", got)
+	}
+	// Empty array → nil.
+	if got := comboCapabilities(json.RawMessage(`[]`)); got != nil {
+		t.Errorf("empty combo caps = %+v, want nil", got)
+	}
+	// Malformed JSON → nil, no panic.
+	if got := comboCapabilities(json.RawMessage(`not-json`)); got != nil {
+		t.Errorf("malformed combo caps = %+v, want nil", got)
+	}
+}

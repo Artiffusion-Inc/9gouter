@@ -31,6 +31,8 @@ import (
 	httptransport "github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/http/api"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/tunnel"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/mitm"
 	domainprov "github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 
 	// Side-effect import: triggers RegisterRequest/RegisterResponse in every
@@ -193,6 +195,9 @@ func Wire(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Logger:             logger,
 		DB:                 db,
 		Version:            cfg.Version,
+		CloudflareTunnel:    tunnel.NewCloudflareManager(),
+		TailscaleTunnel:    tunnel.NewTailscaleManager(),
+		MITMManager:        mitm.NewManager(filepath.Join(filepath.Dir(cfg.DBPath), "mitm"), fmt.Sprintf("http://localhost:%d", cfg.Port), "", logger),
 		ProxyOpts:          proxyOpts,
 		ResetComboRotation: httptransport.ResetComboRotation,
 	}

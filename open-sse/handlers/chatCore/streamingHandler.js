@@ -3,13 +3,11 @@ import { needsTranslation } from "../../translator/index.js";
 import { createSSETransformStreamWithLogger, createPassthroughStreamWithLogger } from "../../utils/stream.js";
 import { pipeWithDisconnect } from "../../utils/streamHandler.js";
 import { PROVIDERS } from "../../config/providers.js";
-import { STREAM_STALL_TIMEOUT_MS, STREAM_READINESS_MAX_TIMEOUT_MS } from "../../config/runtimeConfig.js";
+import { STREAM_STALL_TIMEOUT_MS } from "../../config/runtimeConfig.js";
 import { buildAbortedResponsesTerminalBytes } from "../../utils/responsesStreamHelpers.js";
 import { buildRequestDetail, extractRequestConfig, saveUsageStats, formatDoneLine } from "./requestDetail.js";
 import { saveRequestDetail } from "@/lib/usageDb.js";
 import { SSE_HEADERS_CORS as SSE_HEADERS } from "../../utils/sseConstants.js";
-import { resolveStreamReadinessTimeout } from "../../utils/streamReadinessPolicy.js";
-import { synthesizeOpenAiSseFromJson } from "../../utils/jsonToSse.js";
 
 // Codex returns Responses API SSE → which client format to translate INTO, by request sourceFormat.
 // Gemini-family all map to ANTIGRAVITY decoder; unknown sources fall back to OPENAI.
@@ -45,7 +43,7 @@ function buildTransformStream({ provider, sourceFormat, targetFormat, userAgent,
 /**
  * Handle streaming response — pipe provider SSE through transform stream to client.
  */
-export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId, pxpipe, reqTag, log, stallTimeoutMs }) {
+export async function handleStreamingResponse({ providerResponse, provider, model, sourceFormat, targetFormat, userAgent, body, stream, translatedBody, finalBody, requestStartTime, connectionId, apiKey, clientRawRequest, onRequestSuccess, reqLogger, toolNameMap, streamController, onStreamComplete, streamDetailId, pxpipe, reqTag, log }) {
   if (onRequestSuccess) {
     Promise.resolve()
       .then(onRequestSuccess)
@@ -62,36 +60,6 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // and clamped so untrusted upstream text never reaches the client verbatim
   // (the UI may render error.message as HTML).
   const upstreamContentType = (providerResponse.headers.get('content-type') || '').toLowerCase();
-
-  // Some OpenAI-compatible "reasoning" upstreams ignore stream:true and reply
-  // with a single application/json chat-completion body instead of an SSE
-  // stream. The streaming pipeline only recognizes SSE `data:` frames, so this
-  // would otherwise surface as a spurious STREAM_EARLY_EOF / 502. Synthesize an
-  // OpenAI SSE stream from the JSON, preserving content + reasoning_content.
-  // Only applies when the client actually requested an OpenAI-shaped stream
-  // (targetFormat OPENAI / OPENAI_RESPONSES); other formats keep their existing
-  // non-SSE handling below.
-  if (stream && upstreamContentType.includes('application/json')
-      && (targetFormat === FORMATS.OPENAI || targetFormat === FORMATS.OPENAI_RESPONSES)) {
-    const jsonText = await providerResponse.text().catch(() => '');
-    const synthesized = synthesizeOpenAiSseFromJson(jsonText);
-    if (synthesized) {
-      streamController?.handleComplete?.();
-      saveRequestDetail(buildRequestDetail({
-        provider, model, connectionId,
-        latency: { ttft: 0, total: Date.now() - requestStartTime },
-        tokens: { prompt_tokens: 0, completion_tokens: 0 },
-        request: extractRequestConfig(body, stream),
-        providerRequest: finalBody || translatedBody || null,
-        providerResponse: jsonText.slice(0, 4096),
-        response: { content: "[Synthesized SSE from JSON]", thinking: null, type: "streaming" },
-        status: "success"
-      }, { id: streamDetailId })).catch(() => { });
-      return { success: true, response: new Response(synthesized, { headers: SSE_HEADERS }) };
-    }
-    // Not a parseable chat-completion — fall through to existing non-SSE handling.
-  }
-
   if (upstreamContentType && !upstreamContentType.includes('text/event-stream') && !upstreamContentType.includes('application/json')) {
     const bodyText = await providerResponse.text().catch(() => '');
     const titleMatch = bodyText.match(/<title>([^<]+)<\/title>/i);
@@ -116,16 +84,8 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
   // Responses passthrough: synthesize response.failed + [DONE] if the stream aborts/stalls before a terminal event
   const isResponsesPassthrough = sourceFormat === FORMATS.OPENAI_RESPONSES && targetFormat === FORMATS.OPENAI_RESPONSES;
   const onAbortTerminal = isResponsesPassthrough ? buildAbortedResponsesTerminalBytes : null;
-  // Reasoning-aware stall timeout passed from chatCore (Artiffusion patch) wins; fall back to
-  // per-provider schema, then the global default.
-  const baseStallTimeoutMs = stallTimeoutMs || PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
-  // Adaptive readiness/stall bump: large history / tool-heavy / large payload / Codex GPT-5.x
-  // high-reasoning cold-start need a longer TTFT budget. resolveStreamReadinessTimeout only
-  // INCREASES the base (capped at maxTimeoutMs), never decreases, so the existing reasoning
-  // base (STREAM_STALL_TIMEOUT_REASONING_MS) is preserved.
-  const readinessPolicy = resolveStreamReadinessTimeout({ baseTimeoutMs: baseStallTimeoutMs, provider, model, body, maxTimeoutMs: STREAM_READINESS_MAX_TIMEOUT_MS });
-  const effectiveStallTimeoutMs = readinessPolicy.timeoutMs;
-  const transformedBody = pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal, effectiveStallTimeoutMs);
+  const stallTimeoutMs = PROVIDERS[provider]?.stallTimeoutMs || STREAM_STALL_TIMEOUT_MS;
+  const transformedBody = pipeWithDisconnect(providerResponse, transformStream, streamController, onAbortTerminal, stallTimeoutMs);
 
   saveRequestDetail(buildRequestDetail({
     provider, model, connectionId,
@@ -153,18 +113,11 @@ export async function handleStreamingResponse({ providerResponse, provider, mode
 export function buildOnStreamComplete({ provider, model, connectionId, apiKey, requestStartTime, body, stream, finalBody, translatedBody, clientRawRequest, pxpipe, reqTag, log }) {
   const streamDetailId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
-  const onStreamComplete = (contentObj, usage, ttftAt, streamEndAt) => {
-    const now = Date.now();
-    const ttft = ttftAt ? ttftAt - requestStartTime : now - requestStartTime;
-    const total = now - requestStartTime;
-    const streamMs = (streamEndAt && ttftAt && streamEndAt > ttftAt)
-      ? streamEndAt - ttftAt
-      : null;
-    const completionTokens = usage?.completion_tokens || usage?.output_tokens || 0;
-    const tps = (streamMs && streamMs > 0 && completionTokens > 0)
-      ? completionTokens / (streamMs / 1000)
-      : null;
-    const latency = { ttft, total, streamMs, tps };
+  const onStreamComplete = (contentObj, usage, ttftAt) => {
+    const latency = {
+      ttft: ttftAt ? ttftAt - requestStartTime : Date.now() - requestStartTime,
+      total: Date.now() - requestStartTime
+    };
     const safeContent = contentObj?.content || "[Empty streaming response]";
     const safeThinking = contentObj?.thinking || null;
 
@@ -183,7 +136,7 @@ export function buildOnStreamComplete({ provider, model, connectionId, apiKey, r
     });
 
     // Persist stream usage to DB (no console line; the "📊 done" line below is authoritative)
-    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE", streamMs, tps, silent: true });
+    saveUsageStats({ provider, model, tokens: usage, connectionId, apiKey, endpoint: clientRawRequest?.endpoint, label: "STREAM USAGE", silent: true });
     if (log?.line) log.line(reqTag, "📊", formatDoneLine({ usage, latency }));
   };
 

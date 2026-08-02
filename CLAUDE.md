@@ -1,232 +1,91 @@
 # CLAUDE.md
 
-> **Fork of [decolua/9gouter](https://github.com/decolua/9gouter)** with custom patches. Sync upstream periodically.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current State: Go Rewrite (branch `main`)
+## What this is
 
-The `main` branch is the **Go rewrite** — a single static binary serving the OpenAI-compatible `/v1/*` API, the dashboard `/api/*` management surface, and the embedded Next.js static-export UI. The legacy Node.js / Next.js / `open-sse` backend lives on branch `legacy/js-backend` and is kept only for rollback; do not edit it on `main`.
+9Router (`9router-app`) — a local AI routing gateway + Next.js dashboard. It exposes one OpenAI-compatible endpoint (`/v1/*`) and routes traffic across 40+ upstream providers with format translation, model-combo fallback, multi-account fallback, OAuth/API-key credential management, token refresh, quota/usage tracking, and optional cloud sync.
 
-> **Legacy tree still tracked on `main` (pending cutover deletion):** the old JS
-> directories — `open-sse/`, `src/`, `tests/`, `public/`, `gitbook/`, `cli/`,
-> `i18n/`, `skills/`, `images/` — are **still committed on `main`** (≈1167
-> files). They are NOT active code; the runtime is the Go binary only. Do not
-> edit them — they are slated for deletion at cutover (T021). The *working*
-> tree on `main` is just: `cmd/`, `internal/`, `tools/`, `docs/`, `scripts/`,
-> `.github/`. `src/app/**` (dashboard UI) is the one legacy path still built
-> into the binary via `scripts/build-dashboard.sh`; the rest of `src/` is
-> dead legacy pending deletion.
+Two published artifacts live in this one repo:
+- The **dashboard + gateway** (root `package.json`, `9router-app`) — the Next.js server that does the actual routing.
+- The **CLI launcher** (`cli/`, published to npm as `9router`) — a separate package that installs/starts the server and manages the tray. It has its own `package.json`, version, and build.
 
-- **Single binary**: `cmd/9gouter` → listens on `:20127`
-- **Storage**: SQLite via `modernc.org/sqlite` (pure Go, CGO_ENABLED=0), default `./data/9gouter.db` (`DB_PATH`)
-- **Dashboard**: Next.js `output:export` static build, embedded into the binary via `//go:embed all:dashboard_assets` and served by `internal/adapter/transport/http/static.go` with SPA fallback
-- **Clean architecture**: `internal/{domain, usecase, adapter}` + composition root `internal/app/wire.go`
+The code lives in `src/` (Next.js app + dashboard/compat APIs), `open-sse/` (the provider-agnostic routing/translation engine), `cli/` (the launcher package), and `tests/`.
 
-### Architecture
+## Commands
 
-```
-cmd/9gouter/                      ← entrypoint: config.Load → app.Wire → http.Server
-internal/
-  adapter/
-    config/                      ← envconfig Config + DurationMs setter (timeouts)
-    auth/                        ← session cookie store (HMAC), OIDC
-    db/                          ← sqlite.Open, migrations.Run, SyncSchema, repo/*
-    provider/                    ← per-provider adapters (ollama, codex, gemini, qwen, grok-web, cursor, kiro, ...)
-    translator/                  ← request/response format translation (openai, claude, gemini, codex, ollama, ...)
-    transport/
-      http/                      ← /v1 routes, static dashboard serving, api/* handlers
-        api/                      ← dashboard /api handlers (auth, keys, combos, models, settings, backup, ...)
-      proxy/                     ← proxy stack (SOCKS5, fast-fail, fallback, round-robin)
-    rtk/                         ← runtime kit helpers
-  domain/                        ← domain types (auth, chat, format, provider, settings, usage)
-  usecase/                       ← proxychat, auth, managedashboard
-  app/                           ← composition root (Wire, repos, handler adapters)
-```
-
-### Key Files to Edit
-
-| What | Where |
-|------|-------|
-| Config / env vars / timeouts | `internal/adapter/config/config.go` |
-| Composition root / wiring | `internal/app/wire.go` |
-| Entrypoint | `cmd/9gouter/main.go` |
-| DB schema / migrations | `internal/adapter/db/migrations/`, `internal/adapter/db/schema.go` |
-| Repositories | `internal/adapter/db/repo/*.go` |
-| Provider adapters | `internal/adapter/provider/<name>/` |
-| Translators | `internal/adapter/translator/<name>/` |
-| /v1 chat routing | `internal/adapter/transport/http/` + `internal/usecase/proxychat/` |
-| Account fallback / per-model locks | `internal/adapter/transport/http/accountfallback/` |
-| Dashboard /api handlers | `internal/adapter/transport/http/api/*.go` |
-| Static dashboard serving | `internal/adapter/transport/http/static.go` (`//go:embed all:dashboard_assets`) |
-| Proxy stack | `internal/adapter/transport/proxy/*.go` |
-| Backup import/export | `internal/adapter/transport/http/api/settings_backup.go`, `settings_extra.go` |
-| Dashboard UI source | `src/app/**` (Next.js, `output:export`; rest of `src/` is legacy pending deletion) |
-| Dashboard build script | `scripts/build-dashboard.sh` |
-
-### Configuration (env vars)
-
-Defined in `internal/adapter/config/config.go` via `envconfig`. Timeout fields use the `DurationMs` setter, which accepts either a bare integer (milliseconds, matching the JS `*_MS` env names) or a Go duration string (`"60s"`). Defaults match the legacy compose values.
-
-```
-PORT=20127
-DB_PATH=./data/9gouter.db
-DASHBOARD_PASSWORD_HASH=         # bcrypt hash; backup settings.password is one
-DASHBOARD_SESSION_SECRET=change-me
-SESSION_SECRET=change-me
-AUTH_COOKIE_SECURE=false          # true → Secure flag on auth_token cookie; REQUIRED behind HTTPS-terminating proxies (traefik/Dokploy) — the Set() path has no *http.Request so X-Forwarded-Proto auto-detect is unreachable
-
-# Timeouts (ms or Go duration). Defaults shown.
-FETCH_CONNECT_TIMEOUT_MS=60000
-STREAM_STALL_TIMEOUT_MS=180000
-STREAM_STALL_TIMEOUT_REASONING_MS=600000
-STREAM_READINESS_MAX_TIMEOUT_MS=900000
-FETCH_HEADERS_TIMEOUT_MS=60000
-FETCH_BODY_TIMEOUT_MS=600000
-FETCH_KEEPALIVE_TIMEOUT_MS=4000
-SOCKS_HANDSHAKE_TIMEOUT_MS=10000
-PROXY_DISPATCHER_CONNECTIONS=1          # >1 = round-robin fan-out
-PROXY_FAST_FAIL_TIMEOUT_MS=2000
-PROXY_HEALTH_CACHE_TTL_MS=30000
-PROXY_HEALTH_UNHEALTHY_CACHE_TTL_MS=2000
-PROXY_FALLBACK_PROBE_TIMEOUT_MS=3000
-PROXY_AUTO_SELECT_ENABLED=false
-```
-
-Reasoning/thinking models get `STREAM_STALL_TIMEOUT_REASONING_MS` instead of `STREAM_STALL_TIMEOUT_MS` (detection mirrors the JS `isThinkingEnabled()`).
-
-### Backup / Restore (Go API)
-
-Backup import/export is implemented in the Go API, mirroring the legacy JS `exportDb()`/`importDb()` 1:1:
-
-- `GET /api/settings/database` → `ExportDb` (full config payload)
-- `POST /api/settings/database` → `ImportDb` (wipes + inserts; session-auth protected)
-
-Payload shape (`api.BackupPayload`): `settings, providerConnections, providerNodes, proxyPools, apiKeys, combos, modelAliases, customModels, mitmAlias, pricing` — identical to the JS dashboard "Download backup" / "Restore" buttons, so a JS-era backup JSON imports directly.
-
-### #2703 Fix Status (route-aware proxy + account selection)
-
-The `decolua/9gouter` #2703 fix series ports the JS account-selection + proxy
-pipeline into Go. Fix 1 (strictProxy propagation) landed earlier.
-
-| Fix | What | Status |
-|-----|------|--------|
-| 1 | strictProxy propagation through the proxy stack | DONE (earlier) |
-| 5 | Route diagnostics — typed `FailureSource` on `proxy.FetchError`, structured "route selected" / "proxy fallback to direct" logs | DONE (`2e035f2`) |
-| 4 | Sticky round-robin selection — stay-vs-rotate, `lastUsedAt`/`consecutiveUseCount` persisted, `ErrNoActiveCredentials` → 503 | DONE (`8d57c09`) |
-| 3 | Structured failure types + account fallback loop — `accountfallback` package (ErrorRules, ModelLock\*, typed ProxyRouteError), `ConnectionRepo.ApplyConnectionPatch`, `v1.handleChat` while(true) loop; proxy/relay outage fails hard WITHOUT locking the account | DONE (`3354986`) |
-| 2a | Route-aware `TokenRefresher.Refresh` (proxy opts → `ProxyAwareFetch`) | DONE (`67c6ba0`) |
-| 2b | Refresh dedup + per-connection refresh mutex (`SharedRefreshDedup`, singleflight + 10s TTL) | DONE (`121b22e`) |
-| 2c | Proactive `ShouldRefreshCredentials` + `MergeRefreshedCredentials` (per-provider policy: codex 5d lead/8d maxAge/trackRefreshAt, kimi-coding 5m, default 5m) + wire in `resolveCredentialsWithOpts` | DONE (`f9f901c`) |
-| 2d | Reactive 401/403 refresh-retry in the chat path (refresh once, retry same connection, then fallback); `V1Deps.TokenRefreshers` injection | DONE (`89209b7`) |
-| 2e | `getProjectIdForConnection` (antigravity/gemini-cli) — `projectid.Fetcher` (loadCodeAssist → onboardUser poll, 1h cache, inflight dedup) wired via `V1Deps.ProjectIDFetcher` | DONE (`daf6bf2`) |
-
-### Cutover Tooling
-
-- `tools/shadowdiff/` — reverse-proxy shadow-diff harness (fans out to the Go backend, diffs status/headers/normalized SSE/usage). Mismatches logged to `tools/shadowdiff/mismatches.jsonl`.
-- `docs/cutover-runbook.md` — pre-flight, go-live, rollback, monitoring, deletion criteria.
-- `Containerfile` — multi-stage: Bun static export → Go `CGO_ENABLED=0` static build → distroless. Image is published to GHCR only (`ghcr.io/artiffusion/9gouter`) by `.github/workflows/container-publish.yml`; Dockerfile/Docker Hub are not used.
-
-## Legacy JS Backend (branch `legacy/js-backend`)
-
-The Node.js 22 / Next.js / `open-sse` backend is preserved on `legacy/js-backend` for rollback reference. The custom patches below were ported into the Go rewrite where noted; the rest remain JS-side only. When syncing upstream, conflicts land here.
-
-### Our Patches (JS)
-
-| Patch | File | Upstream Status |
-|-------|------|-----------------|
-| Env-overridable timeouts (defaults 120s) | `open-sse/config/runtimeConfig.js` | PRs #1680, #1688 closed without merge |
-| Error SSE on stream stall/abort | `open-sse/utils/streamHandler.js` | Not submitted — our fix |
-| Reasoning model stall timeout extension | `open-sse/handlers/chatCore.js`, `streamHandler.js` | Not submitted — our fix |
-| Adaptive stream-readiness timeout (body-size/reasoning-aware) | `open-sse/utils/streamReadinessPolicy.js`, `handlers/chatCore/streamingHandler.js` | Ported from OmniRoute (#3825) |
-| JSON→SSE synthesis for non-streaming upstreams | `open-sse/utils/jsonToSse.js`, `finishReason.js`, `reasoningFields.js`, `handlers/chatCore/streamingHandler.js` | Ported from OmniRoute (#3089) |
-| Upstream response header strip helper (future-use guard) | `open-sse/utils/upstreamResponseHeaders.js` | Ported from OmniRoute — unmounted |
-| Proxy stack: SOCKS5, timeout config, fast-fail, fallback, round-robin | `open-sse/utils/proxy*.js`, `socksConnector.js`, `fetchCause.js`, `proxyFetch.js` | Ported from OmniRoute → Go `internal/adapter/transport/proxy/` |
-
-### Proxy Stack (JS, ported to Go)
-
-`open-sse/utils/proxyFetch.js` orchestrated a layered proxy pipeline; the Go rewrite reproduces the same layers in `internal/adapter/transport/proxy/`:
-
-1. **Vercel relay** — `x-relay-target`/`x-relay-path` headers.
-2. **Connection proxy** — per-connection `connectionProxyUrl` / `connectionProxyEnabled`, else env `HTTP(S)_PROXY`/`ALL_PROXY` (honouring `NO_PROXY`).
-3. **Dispatcher** — HTTP/HTTPS (`ProxyAgent`) or SOCKS5 (family pinning) with undici timeout config so upstream `Keep-Alive:` cannot clamp keepAlive up to 600s.
-4. **Fast-fail** — TCP check (<2s) skips dispatcher creation for dead proxies; cached (healthy 30s, unhealthy 2s), inflight dedup.
-5. **Fallback** — on proxy failure (non-strict), collect candidates from active proxy pools + env, test in parallel, return first working; cached per target 5 min. `strictProxy=true` fails hard.
-6. **MITM DNS bypass** — for `MITM_BYPASS_HOSTS`, resolve real IP via Google DNS.
-7. **Round-robin direct** — `PROXY_DISPATCHER_CONNECTIONS>1` fans out across N one-connection agents.
-8. **Diagnostics** — flatten `TypeError: fetch failed` `.cause` chain into `code/syscall/errno/address:port`.
-
-### JSON→SSE Synthesis
-
-OpenAI-compatible "reasoning" upstreams that ignore `stream:true` and reply with a single `application/json` body are converted into an OpenAI SSE stream, preserving `content` + `reasoning_content` + `tool_calls` + `usage`. In Go this lives in `internal/adapter/translator/`; in JS it was `open-sse/utils/jsonToSse.js`.
-
-### Stream Error SSE
-
-On stream stall/abort, chat/completions clients receive a structured error SSE event + `[DONE]` instead of an empty HTTP 200. Ported to the Go proxychat usecase.
-
-## Build & Run
-
+Dashboard/gateway (run from repo root):
 ```bash
-# Go binary (dashboard assets must be present for embed — see .gitkeep fallback)
-CGO_ENABLED=0 go build -o /tmp/9gouter ./cmd/9gouter
-DB_PATH=./data/9gouter.db /tmp/9gouter
-
-# Dashboard static export → internal/adapter/transport/http/dashboard_assets/
-scripts/build-dashboard.sh      # bun build → cp out/ into dashboard_assets
-
-# Tests
-go test -race ./...
+cp .env.example .env
+npm install
+PORT=20128 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run dev   # dev (webpack, port 20127 by default via next dev)
+npm run build && PORT=20128 HOSTNAME=0.0.0.0 npm run start           # production
 ```
+- Bun variants: `npm run dev:bun` / `build:bun` / `start:bun`.
+- Default runtime port is **20128** (dashboard at `/dashboard`, API at `/v1`).
+- Lint: `npx eslint .` (config `eslint.config.mjs`, extends `eslint-config-next`).
 
-`internal/adapter/transport/http/dashboard_assets/.gitkeep` is committed so a clean clone compiles; the real export is gitignored and produced by `scripts/build-dashboard.sh` (or the Containerfile's first stage).
-
-## Upstream Sync
-
+CLI package (`cli/`):
 ```bash
-cd ~/Github/9gouter
-git fetch upstream
-git merge upstream/main --no-edit
-# Resolve conflicts, then:
-git push origin main
-git tag v0.4.XX-artiffusion.N
-git push --tags
+npm run cli:pack       # build + npm pack from root
+cd cli && npm run dev  # nodemon watch
 ```
 
-Legacy JS conflicts land on `legacy/js-backend` in `runtimeConfig.js` (env-var patch) and `streamHandler.js` (error SSE patch).
+Tests (vitest, in `tests/`, an **independent** ESM package — not wired into root `npm test`):
+```bash
+npm install                             # ROOT deps first — tests import from src/ which needs `open`, `undici`, etc.
+cd tests && npm install                 # then tests' own deps (vitest) → tests/node_modules (allowed by tests/.gitignore)
+npx vitest run                          # all tests; auto-discovers tests/vitest.config.js
+npx vitest run unit/capabilities.test.js   # single file (path relative to tests/)
+```
+> The committed `tests/package.json` `test` script hardcodes Unix paths (`NODE_PATH=/tmp/node_modules …`) — a shared-install workaround from upstream. On Windows (or anywhere), ignore it and use the `npx vitest` form above; `vitest.config.js` resolves the `open-sse`/`@/` aliases from the repo root regardless of where vitest lives.
+>
+> **The suite is NOT expected to be all-green on a plain checkout.** ~938 pass, ~64 fail. Judge regressions with `tests/__baseline__/verify-no-regression.mjs`, not a raw run. Expected red:
+> - 26 catalogued in `tests/__baseline__/known-fails.txt` (rtk, oauth-cursor-auto-import, translator-request-normalization, …).
+> - `unit/embeddings.cloud.test.js` imports `cloud/src/handlers/embeddings.js` — the `cloud/` worker dir is **not in this repo**, so it always fails here.
+> - `unit/xai-oauth-service.test.js` times out (5s) when the xAI endpoint-discovery fetch isn't reachable/mocked.
+> - `real/*.real.test.js` make live provider calls — need credentials, skip otherwise.
+- `*.real.test.js` under `tests/translator/real/` make live provider calls — skip unless credentials are set.
+- Regression baselines: `tests/__baseline__/verify-*.mjs` compare against committed snapshots (providers, aliases, OAuth URLs). Run these after touching provider registry / alias logic.
 
-## Container Build
+## Architecture
 
-- **Build file**: `Containerfile` (no `Dockerfile`; podman/docker both work)
-- **Ignore**: `.containerignore` (no `.dockerignore`)
-- **Compose**: `container-compose.yml` → port 20127, volume `9gouter-data`, `.env` file
-- **CI workflow**: `.github/workflows/container-publish.yml`
-- **Trigger**: push tag `v*` or manual `workflow_dispatch`
-- **Registry**: GHCR only — `ghcr.io/artiffusion/9gouter:<version>` + `:latest`. No Docker Hub.
-- **Platforms**: linux/amd64, linux/arm64
-- **Auth**: GHCR uses `GITHUB_TOKEN` (no extra secrets needed)
+Two authoritative docs already exist — read them before working in these areas rather than re-deriving:
+- `docs/ARCHITECTURE.md` — full system: request lifecycle, combo/account fallback, OAuth + token refresh, cloud sync, data model.
+- `open-sse/AGENTS.md` — the routing/translation engine's own conventions and "how to add a provider/executor/translator". **Read this before editing anything under `open-sse/`.**
 
-## Tech Stack
+### Request flow (the thing to understand first)
+`src/app/api/v1/*` route (Next rewrite maps `/v1/*` → `/api/v1/*` in `next.config.mjs`)
+→ `src/sse/handlers/chat.js` (parse, combo expansion, account-selection loop)
+→ `open-sse/handlers/chatCore.js` (detect source format, translate request, dispatch to executor, retry/refresh, stream setup)
+→ `open-sse/executors/*` (per-provider upstream call; `default.js` handles any OpenAI-compatible provider)
+→ `open-sse/translator/*` (client format ↔ provider format)
+→ SSE back to client.
 
-- **Backend**: Go 1.26, `net/http` + SSE, `modernc.org/sqlite` (pure Go, CGO=0)
-- **Dashboard**: Next.js (`output:export`), built with `bun`, embedded via `//go:embed`
-- **Auth**: session cookie (HMAC `auth_token`), bcrypt password hash, OIDC
-- **Config**: `kelseyhightower/envconfig` with `DurationMs` ms-or-duration setter
+`src/sse/` is the app-side entry glue; `open-sse/` is the provider-agnostic engine (also usable standalone). Cross that boundary consciously.
 
-## Lint Policy
+### Translator engine (`open-sse/translator/`)
+- Pivots through **OpenAI as the intermediate format**. A translator registered on an exact `source:target` pair (e.g. `claude:kiro`) runs as a **direct route**, skipping the lossy double-hop. Prefer a direct route for fragile pairs (thinking blocks, tool ids, non-base64 images, `is_error`).
+- Translators **self-register** via `register(from, to, reqFn, resFn)` as an import side effect — a new translator file MUST be imported in `open-sse/translator/index.js` or it never runs.
+- Never hardcode role/block/model strings — use `open-sse/translator/schema/` and `open-sse/config/` constants. Config-driven and DRY is enforced by convention here.
 
-**Pre-existing findings are in scope.** When debugging or finishing work, run
-`staticcheck ./internal/... ./cmd/...` and `golangci-lint run ./internal/... ./cmd/...`
-and resolve ALL reported findings, including ones in files the current task did
-not touch. "Not my diff" is not an excuse — the repo must stay lint-clean.
+### Provider registry (`open-sse/providers/registry/*`)
+- One file per provider. `providers/registry/index.js` is an **auto-generated** static import list — regenerate it with `scripts/migrate-registry.mjs` / `injectDisplayToRegistry.mjs`, don't hand-edit.
+- Add a provider: copy `providers/REGISTRY_TEMPLATE.js`, add models to `config/providerModels.js`. Only add an executor for non-OpenAI-compatible upstreams.
 
-Severity ordering for fixes:
-1. **Real bugs first** — SA-class (ineffassign, dead branches, ignored return
-   values, canonicalized header keys), nil-deref/race, correctness regressions.
-2. **Style / dead code** — ST1005 (capitalized error strings), U1000 (unused),
-   S1021/S1005/S1033 (style), misspell, dupword.
-3. **Tests** — same linters apply; `//nolint:staticcheck // <reason>` is the
-   established convention for *intentional* violations (e.g. raw-map header
-   access that verifies exact-casing preservation in `base_test.go`). Add a
-   nolint only when the violation is deliberate and documented; otherwise fix it.
+### Persistence — IMPORTANT (ARCHITECTURE.md is stale here)
+State is **no longer `db.json`**. It's a SQLite layer under `src/lib/db/` with an adapter fallback chain (`driver.js`): `bun:sqlite` → `better-sqlite3` (optional native dep) → `node:sqlite` (Node ≥22.5) → `sql.js` (pure-JS fallback, always works). `better-sqlite3` is deliberately in `optionalDependencies` so install never fails without build tools.
+- `src/lib/localDb.js` is a **backward-compat shim** re-exporting `src/lib/db/index.js`. New code should import from `@/lib/db/index.js`; per-entity logic lives in `src/lib/db/repos/*`. Schema/migrations in `src/lib/db/migrations/`.
+- DB file location resolves via `src/lib/db/paths.js` (`DATA_DIR`, else `~/.9router/`).
+- Usage/logs (`src/lib/usageDb.js`, `usage.json` + `log.txt`) still live under `~/.9router` and do **not** follow `DATA_DIR`.
 
-Guard: after any lint cleanup, `go build ./...`, `go vet ./...`, `gofmt -l`,
-`go test ./...` must all be clean. Commit lint fixes separately from feature
-work so a revert never loses a real bug fix.
+### RTK token saver (`open-sse/rtk/`)
+Pre-translate hooks that compress `tool_result` content in-place to cut tokens. **Fail-open**: any error returns null and leaves the body untouched — never throw out of them. Skips `is_error`/`status:"error"` results to preserve traces.
+
+## Conventions & gotchas
+
+- Plain JavaScript (ESM), no TypeScript. `@/*` path alias → `src/*` (`jsconfig.json`).
+- `custom-server.js` wraps the Next standalone server to derive client IP from the TCP socket and strip attacker-controlled `X-Forwarded-For` — trusting forwarding headers only from a loopback reverse proxy. Preserve this when touching request/IP/rate-limit code.
+- Security-sensitive env: `JWT_SECRET` (session cookie), `INITIAL_PASSWORD` (default `123456` — must override), `API_KEY_SECRET`, `MACHINE_ID_SALT`. Full env contract in `.env.example` and ARCHITECTURE.md's env matrix.
+- Binary/protobuf upstreams (kiro EventStream, cursor protobuf, commandcode NDJSON) don't round-trip through OpenAI — they're handled inside their own executor, not the translator.
+- Versioning: root and `cli/` are versioned independently; changes are logged in `CHANGELOG.md`. Commit style is Conventional Commits (`fix(translator): …`, `feat(...)`).

@@ -2,15 +2,12 @@
 // from open-sse/services/tokenRefresh/providers.js. Each provider has its own
 // refresh protocol; this package implements them one at a time.
 //
-// kiro is ported (kiro.go). This file ports the shared machinery used by the
-// remaining providers: the HTTP helpers, the OAuth2 form-encoded generic
-// refresh (mirroring JS refreshAccessToken), and classifyOAuthRefreshError.
+// kiro is ported (kiro.go). vertex is ported (vertex.go, RS256 JWT via
+// go-jose). This file ports the shared machinery used by the remaining
+// providers: the HTTP helpers, the OAuth2 form-encoded generic refresh
+// (mirroring JS refreshAccessToken), and classifyOAuthRefreshError.
 // Per-provider refreshers that diverge from the generic flow live in their
-// own files (claude.go, google.go, codex.go, ...).
-//
-// NOT YET PORTED: vertex (RS256 service-account JWT — needs go-jose). It
-// returns ErrVertexNotPorted so callers fall back to the static catalog
-// instead of silently doing the wrong thing.
+// own files (claude.go, google.go, codex.go, vertex.go, ...).
 package tokenrefresh
 
 import (
@@ -29,8 +26,6 @@ import (
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/transport/proxy"
 )
 
-// ErrVertexNotPorted signals vertex refresh (RS256 JWT) is not yet ported.
-var ErrVertexNotPorted = fmt.Errorf("vertex token refresh not yet ported (T027 follow-up: needs RS256 JWT)")
 
 // defaultRefreshTimeout bounds every refresh HTTP call, mirroring the JS
 // fetch defaults (no explicit timeout there, but the proxy stack applies one).

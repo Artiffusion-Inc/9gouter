@@ -195,19 +195,19 @@ func TestAuth_OidcTestBadIssuer(t *testing.T) {
 	}
 }
 
-// TestAuth_OidcCallback verifies the stubbed OIDC callback returns 200.
+// TestAuth_OidcCallback verifies the OIDC callback redirects to /login when
+// no state cookies or OIDC config are present (the real flow, not a stub).
 func TestAuth_OidcCallback(t *testing.T) {
 	db := mustOpenDB(t)
 	deps := buildDeps(t, db)
 	mux := http.NewServeMux()
 	RegisterAuth(mux, deps, config.Config{})
 
-	req := httptest.NewRequest("POST", "/api/auth/oidc/callback", strings.NewReader(`{}`))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest("GET", "/api/auth/oidc/callback?code=x&state=y", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("oidcCallback status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusFound {
+		t.Fatalf("oidcCallback status = %d, want 302; body=%s", rec.Code, rec.Body.String())
 	}
 }
 

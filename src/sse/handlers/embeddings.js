@@ -9,10 +9,19 @@ import { getSettings } from "@/lib/localDb";
 import { getModelInfo } from "../services/model.js";
 import { handleEmbeddingsCore } from "open-sse/handlers/embeddingsCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
-import { isOllamaSubscriptionError } from "open-sse/utils/ollamaSubscriptionError.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
 import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
+import { saveRequestUsage } from "@/lib/usageDb.js";
+
+function exactEmbeddingUsage(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || raw.estimated === true) return null;
+  const promptTokens = raw.prompt_tokens ?? raw.input_tokens;
+  const completionTokens = raw.completion_tokens ?? raw.output_tokens ?? 0;
+  const totalTokens = raw.total_tokens;
+  if (!Number.isSafeInteger(promptTokens) || promptTokens <= 0 || completionTokens !== 0 || totalTokens !== promptTokens) return null;
+  return { prompt_tokens: promptTokens, completion_tokens: 0, total_tokens: totalTokens };
+}
 
 /**
  * Handle embeddings request for the SSE/Next.js server.
@@ -125,18 +134,20 @@ export async function handleEmbeddings(request) {
       }
     });
 
-    if (result.success) return result.response;
-
-    // Bypass: Ollama Cloud rejects premium models on no-subscription
-    // accounts with 403 "this model requires a subscription". Skip the
-    // global markAccountUnavailable lock — the account may still work
-    // for free-tier models in a parallel request.
-    if (isOllamaSubscriptionError(result.status, result.error)) {
-      log.warn("AUTH", `Account ${credentials.connectionName} lacks subscription for ${model} — trying next`);
-      excludeConnectionIds.add(credentials.connectionId);
-      lastError = result.error;
-      lastStatus = result.status;
-      continue;
+    if (result.success) {
+      const usage = exactEmbeddingUsage(result.usage);
+      if (usage) {
+        saveRequestUsage({
+          provider,
+          model,
+          connectionId: credentials.connectionId,
+          apiKey,
+          endpoint: url.pathname,
+          tokens: usage,
+          status: "success",
+        }).catch(() => {});
+      }
+      return result.response;
     }
 
     const { shouldFallback } = await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model);

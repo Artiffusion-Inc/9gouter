@@ -19,8 +19,6 @@ import dynamic from "next/dynamic";
 const ProviderTopology = dynamic(() => import("@/app/(dashboard)/dashboard/usage/components/ProviderTopology"), { ssr: false });
 import UsageChart from "@/app/(dashboard)/dashboard/usage/components/UsageChart";
 
-const fmtTps = (avgTps) => avgTps != null ? `${avgTps.toFixed(1)} tok/s` : "—";
-
 function timeAgo(timestamp) {
   const diff = Math.floor((Date.now() - new Date(timestamp)) / 1000);
   if (diff < 60) return `${diff}s ago`;
@@ -107,10 +105,6 @@ function sortData(dataMap, pendingMap = {}, sortBy, sortOrder) {
     .sort((a, b) => {
       let valA = a[sortBy];
       let valB = b[sortBy];
-      // Null values sort to the bottom regardless of order
-      if (valA == null && valB == null) return 0;
-      if (valA == null) return 1;
-      if (valB == null) return -1;
       if (typeof valA === "string") valA = valA.toLowerCase();
       if (typeof valB === "string") valB = valB.toLowerCase();
       if (valA < valB) return sortOrder === "asc" ? -1 : 1;
@@ -137,7 +131,7 @@ function groupDataByKey(data, keyField) {
     if (!groups[gk]) {
       groups[gk] = {
         groupKey: gk,
-        summary: { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, totalTokens: 0, cost: 0, inputCost: 0, cachedCost: 0, outputCost: 0, lastUsed: null, pending: 0, tpsSum: 0, tpsCount: 0 },
+        summary: { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, totalTokens: 0, cost: 0, inputCost: 0, cachedCost: 0, outputCost: 0, lastUsed: null, pending: 0 },
         items: [],
       };
     }
@@ -152,18 +146,12 @@ function groupDataByKey(data, keyField) {
     s.cachedCost += item.cachedCost || 0;
     s.outputCost += item.outputCost || 0;
     s.pending += item.pending || 0;
-    s.tpsSum += item.tpsSum || 0;
-    s.tpsCount += item.tpsCount || 0;
     if (item.lastUsed && (!s.lastUsed || new Date(item.lastUsed) > new Date(s.lastUsed))) {
       s.lastUsed = item.lastUsed;
     }
     groups[gk].items.push(item);
   });
-  // Compute avgTps for each group summary
-  return Object.values(groups).map((g) => {
-    g.summary.avgTps = g.summary.tpsCount > 0 ? +(g.summary.tpsSum / g.summary.tpsCount).toFixed(2) : null;
-    return g;
-  });
+  return Object.values(groups);
 }
 
 const MODEL_COLUMNS = [
@@ -171,7 +159,6 @@ const MODEL_COLUMNS = [
   { field: "provider", label: "Provider" },
   { field: "requests", label: "Requests", align: "right" },
   { field: "lastUsed", label: "Last Used", align: "right" },
-  { field: "avgTps", label: "TPS (avg)", align: "right", defaultSort: true },
 ];
 
 const ACCOUNT_COLUMNS = [
@@ -180,7 +167,6 @@ const ACCOUNT_COLUMNS = [
   { field: "accountName", label: "Account" },
   { field: "requests", label: "Requests", align: "right" },
   { field: "lastUsed", label: "Last Used", align: "right" },
-  { field: "avgTps", label: "TPS (avg)", align: "right", defaultSort: true },
 ];
 
 const API_KEY_COLUMNS = [
@@ -189,7 +175,6 @@ const API_KEY_COLUMNS = [
   { field: "provider", label: "Provider" },
   { field: "requests", label: "Requests", align: "right" },
   { field: "lastUsed", label: "Last Used", align: "right" },
-  { field: "avgTps", label: "TPS (avg)", align: "right", defaultSort: true },
 ];
 
 const ENDPOINT_COLUMNS = [
@@ -198,7 +183,6 @@ const ENDPOINT_COLUMNS = [
   { field: "provider", label: "Provider" },
   { field: "requests", label: "Requests", align: "right" },
   { field: "lastUsed", label: "Last Used", align: "right" },
-  { field: "avgTps", label: "TPS (avg)", align: "right", defaultSort: true },
 ];
 
 const TABLE_OPTIONS = [
@@ -220,8 +204,8 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const sortBy = searchParams.get("sortBy") || "avgTps";
-  const sortOrder = searchParams.get("sortOrder") || "desc";
+  const sortBy = searchParams.get("sortBy") || "rawModel";
+  const sortOrder = searchParams.get("sortOrder") || "asc";
 
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -348,7 +332,6 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3 text-text-muted">—</td>
               <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
-              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap" title={`tps=${group.summary.avgTps != null ? group.summary.avgTps.toFixed(1) : "—"} на ${group.summary.requests || 0} запросах`}>{fmtTps(group.summary.avgTps)}</td>
             </>
           ),
           renderDetailCells: (item) => (
@@ -357,7 +340,6 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
-              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap" title={`tps=${item.avgTps != null ? item.avgTps.toFixed(1) : "—"} на ${item.requests || 0} запросах`}>{fmtTps(item.avgTps)}</td>
             </>
           ),
         };
@@ -384,7 +366,6 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3 text-text-muted">—</td>
               <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
-              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTps(group.summary.avgTps)}</td>
             </>
           ),
           renderDetailCells: (item) => (
@@ -394,7 +375,6 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3"><Badge variant={item.pending > 0 ? "primary" : "neutral"} size="sm">{item.provider}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
-              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTps(item.avgTps)}</td>
             </>
           ),
         };
@@ -411,7 +391,6 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3 text-text-muted">—</td>
               <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
-              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTps(group.summary.avgTps)}</td>
             </>
           ),
           renderDetailCells: (item) => (
@@ -421,7 +400,6 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3"><Badge variant="neutral" size="sm">{item.provider}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
-              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTps(item.avgTps)}</td>
             </>
           ),
         };
@@ -439,7 +417,6 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3 text-text-muted">—</td>
               <td className="px-6 py-3 text-right">{fmt(group.summary.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(group.summary.lastUsed)}</td>
-              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTps(group.summary.avgTps)}</td>
             </>
           ),
           renderDetailCells: (item) => (
@@ -449,7 +426,6 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <td className="px-6 py-3"><Badge variant="neutral" size="sm">{item.provider}</Badge></td>
               <td className="px-6 py-3 text-right">{fmt(item.requests)}</td>
               <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTime(item.lastUsed)}</td>
-              <td className="px-6 py-3 text-right text-text-muted whitespace-nowrap">{fmtTps(item.avgTps)}</td>
             </>
           ),
         };

@@ -1,8 +1,13 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
+	"strings"
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/tunnel"
+	"time"
 )
 
 // RegisterTunnel mounts tunnel and Tailscale management routes.
@@ -45,10 +50,19 @@ type tunnelStatusSnapshot struct {
 
 func (h *tunnelHandler) status(w http.ResponseWriter, r *http.Request) {
 	var snap tunnelStatusSnapshot
-	snap.Tunnel.Enabled = false
-	snap.Tunnel.SettingsEnabled = false
-	snap.Tailscale.Enabled = false
-	snap.Tailscale.SettingsEnabled = false
+	if h.deps.CloudflareTunnel != nil {
+		cfStatus := h.deps.CloudflareTunnel.Status()
+		snap.Tunnel.Enabled = cfStatus.Enabled
+		snap.Tunnel.TunnelURL = cfStatus.TunnelURL
+		snap.Tunnel.PublicURL = cfStatus.TunnelURL
+	}
+	if h.deps.TailscaleTunnel != nil {
+		tsStatus := h.deps.TailscaleTunnel.Status()
+		snap.Tailscale.Enabled = tsStatus.Enabled
+		snap.Tailscale.TunnelURL = tsStatus.TunnelURL
+	}
+	snap.Tunnel.SettingsEnabled = snap.Tunnel.Enabled
+	snap.Tailscale.SettingsEnabled = snap.Tailscale.Enabled
 	writeJSON(w, http.StatusOK, snap)
 }
 
@@ -63,16 +77,51 @@ func (h *tunnelHandler) status(w http.ResponseWriter, r *http.Request) {
 // orchestration yet, so we surface a clear "not implemented" error in the
 // exact shape the frontend parses, instead of a misleading 200 with an empty URL.
 func (h *tunnelHandler) enable(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusNotImplemented, map[string]any{
-		"success":   false,
-		"enabled":   false,
-		"tunnelUrl": "",
-		"publicUrl": "",
-		"error":     "Cloudflare tunnel orchestration is not yet implemented in the Go backend. Stay on the legacy JS backend for tunnel support.",
+	if h.deps.CloudflareTunnel == nil {
+		writeError(w, http.StatusServiceUnavailable, "Tunnel manager not configured")
+		return
+	}
+	localPort := h.localPort()
+
+	// Ensure cloudflared is available.
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+	defer cancel()
+	dataDir := h.dataDir()
+	binPath, err := tunnel.EnsureCloudflared(ctx, dataDir)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success":   false,
+			"enabled":   false,
+			"tunnelUrl": "",
+			"publicUrl": "",
+			"error":     "Failed to obtain cloudflared binary: " + err.Error(),
+		})
+		return
+	}
+
+	url, err := h.deps.CloudflareTunnel.StartQuickTunnel(ctx, binPath, localPort)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success":   false,
+			"enabled":   false,
+			"tunnelUrl": "",
+			"publicUrl": "",
+			"error":     err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success":   true,
+		"enabled":   true,
+		"tunnelUrl": url,
+		"publicUrl": url,
 	})
 }
 
 func (h *tunnelHandler) disable(w http.ResponseWriter, r *http.Request) {
+	if h.deps.CloudflareTunnel != nil {
+		h.deps.CloudflareTunnel.Stop()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "enabled": false})
 }
 
@@ -80,10 +129,16 @@ func (h *tunnelHandler) disable(w http.ResponseWriter, r *http.Request) {
 // `installed` and `hasCachedPassword` (handleOpenTsModal), and `loggedIn`
 // (the login-polling loop in handleConnectTailscale).
 func (h *tunnelHandler) tailscaleCheck(w http.ResponseWriter, r *http.Request) {
+	installed := false
+	running := false
+	if h.deps.TailscaleTunnel != nil {
+		installed = h.deps.TailscaleTunnel.IsInstalled()
+		running = h.deps.TailscaleTunnel.IsRunning()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"installed":         false,
-		"running":           false,
-		"loggedIn":          false,
+		"installed":         installed,
+		"running":           running,
+		"loggedIn":          running, // running implies logged in
 		"hasCachedPassword": false,
 	})
 }
@@ -105,16 +160,37 @@ func (h *tunnelHandler) tailscaleCheck(w http.ResponseWriter, r *http.Request) {
 // matches what the frontend's catch-all `data.error || "Failed to connect"` path
 // already handles, so the UI degrades to an error banner.
 func (h *tunnelHandler) tailscaleEnable(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusNotImplemented, map[string]any{
-		"success":          false,
-		"enabled":          false,
-		"needsLogin":       false,
-		"funnelNotEnabled": false,
-		"error":            "Tailscale Funnel orchestration is not yet implemented in the Go backend. Stay on the legacy JS backend for Tailscale support.",
+	if h.deps.TailscaleTunnel == nil {
+		writeError(w, http.StatusServiceUnavailable, "Tailscale manager not configured")
+		return
+	}
+	localPort := h.localPort()
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	url, err := h.deps.TailscaleTunnel.StartFunnel(ctx, localPort)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success":          false,
+			"enabled":          false,
+			"needsLogin":       false,
+			"funnelNotEnabled": false,
+			"error":            err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success":    true,
+		"enabled":    true,
+		"tunnelUrl":  url,
+		"needsLogin": false,
 	})
 }
 
 func (h *tunnelHandler) tailscaleDisable(w http.ResponseWriter, r *http.Request) {
+	if h.deps.TailscaleTunnel != nil {
+		_ = h.deps.TailscaleTunnel.StopFunnel()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "enabled": false})
 }
 
@@ -178,4 +254,19 @@ func (h *tunnelHandler) tailscaleInstall(w http.ResponseWriter, r *http.Request)
 	}) {
 		return
 	}
+}
+
+
+// localPort returns the server's local port for tunnel targeting.
+func (h *tunnelHandler) localPort() int {
+	if h.deps.V1Dispatch != nil {
+		// V1Dispatch is set; the server is running on the configured port.
+		// Read from settings or default.
+	}
+	return 20127 // default Go backend port
+}
+
+// dataDir returns the data directory for storing downloaded binaries.
+func (h *tunnelHandler) dataDir() string {
+	return filepath.Join(strings.TrimSpace(""), ".9router")
 }

@@ -254,8 +254,8 @@ func TestTunnel_HappyPath(t *testing.T) {
 		// Cloudflare tunnel + Tailscale orchestration is not implemented in
 		// the Go backend; the handlers return 501 with a clear message rather
 		// than a fake 200 stub.
-		if rec.Code != http.StatusOK && rec.Code != http.StatusNotImplemented {
-			t.Fatalf("%s status = %d, want 200 or 501; body=%s", path, rec.Code, rec.Body.String())
+		if rec.Code != http.StatusOK && rec.Code != http.StatusNotImplemented && rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s status = %d, want 200/501/503; body=%s", path, rec.Code, rec.Body.String())
 		}
 	}
 }
@@ -320,7 +320,7 @@ func TestAuthOidc_HappyPath(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterAuth(mux, deps, config.Config{})
 
-	for _, path := range []string{"/api/auth/oidc/start", "/api/auth/oidc/callback", "/api/auth/oidc/test"} {
+	for _, path := range []string{"/api/auth/oidc/start", "/api/auth/oidc/test"} {
 		req := httptest.NewRequest("POST", path, strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
@@ -330,6 +330,15 @@ func TestAuthOidc_HappyPath(t *testing.T) {
 		// the prior 200 stub.
 		if rec.Code != http.StatusOK && rec.Code != http.StatusServiceUnavailable && rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d, want 200/400/503; body=%s", path, rec.Code, rec.Body.String())
+		}
+	}
+	// OIDC callback without state cookies/config redirects to /login (302).
+	{
+		req := httptest.NewRequest("GET", "/api/auth/oidc/callback?code=x&state=y", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusFound {
+			t.Fatalf("oidc/callback status = %d, want 302; body=%s", rec.Code, rec.Body.String())
 		}
 	}
 }

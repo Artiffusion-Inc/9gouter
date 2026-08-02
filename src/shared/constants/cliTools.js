@@ -8,8 +8,11 @@ export const MITM_TOOLS = {
     description: "Google Antigravity IDE with MITM",
     configType: "mitm",
     mitmDomain: "daily-cloudcode-pa.googleapis.com",
-    modelAliases: ["gemini-3.5-flash-low", "gemini-3-flash-agent", "gemini-3.5-flash-extra-low", "gemini-3.1-pro-low", "gemini-pro-agent", "claude-sonnet-4-6", "claude-opus-4-6-thinking", "gpt-oss-120b-medium", "gemini-3-flash"],
+    modelAliases: ["gemini-3.6-flash-high", "gemini-3.6-flash-medium", "gemini-3.6-flash-low", "gemini-3.5-flash-low", "gemini-3-flash-agent", "gemini-3.5-flash-extra-low", "gemini-3.1-pro-low", "gemini-pro-agent", "claude-sonnet-4-6", "claude-opus-4-6-thinking", "gpt-oss-120b-medium", "gemini-3-flash"],
     defaultModels: [
+      { id: "gemini-3.6-flash-high", name: "Gemini 3.6 Flash (High)", alias: "gemini-3.6-flash-high" },
+      { id: "gemini-3.6-flash-medium", name: "Gemini 3.6 Flash (Medium)", alias: "gemini-3.6-flash-medium" },
+      { id: "gemini-3.6-flash-low", name: "Gemini 3.6 Flash (Low)", alias: "gemini-3.6-flash-low" },
       { id: "gemini-3.5-flash-low", name: "Gemini 3.5 Flash (Medium) / Default", alias: "gemini-3.5-flash-low", mandatory: true },
       { id: "gemini-3-flash-agent", name: "Gemini 3.5 Flash (High)", alias: "gemini-3-flash-agent" },
       { id: "gemini-3.5-flash-extra-low", name: "Gemini 3.5 Flash (Low)", alias: "gemini-3.5-flash-extra-low" },
@@ -56,7 +59,6 @@ export const MITM_TOOLS = {
     configType: "mitm",
     mitmDomain: "q.us-east-1.amazonaws.com",
     defaultModels: [
-      { id: "auto", name: "Auto", alias: "auto" },
       { id: "claude-sonnet-5", name: "Claude Sonnet 5", alias: "claude-sonnet-5" },
       { id: "claude-sonnet-4.5", name: "Claude Sonnet 4.5", alias: "claude-sonnet-4.5" },
       { id: "claude-sonnet-4", name: "Claude Sonnet 4", alias: "claude-sonnet-4" },
@@ -106,7 +108,7 @@ export const CLI_TOOLS = {
     settingsFile: "~/.claude/settings.json",
     defaultModels: [
       { id: "fable", name: "Claude Fable", alias: "fable", envKey: "ANTHROPIC_DEFAULT_FABLE_MODEL", defaultValue: "cc/claude-fable-5" },
-      { id: "opus", name: "Claude Opus", alias: "opus", envKey: "ANTHROPIC_DEFAULT_OPUS_MODEL", defaultValue: "cc/claude-opus-4-8" },
+      { id: "opus", name: "Claude Opus", alias: "opus", envKey: "ANTHROPIC_DEFAULT_OPUS_MODEL", defaultValue: "cc/claude-opus-5" },
       { id: "sonnet", name: "Claude Sonnet", alias: "sonnet", envKey: "ANTHROPIC_DEFAULT_SONNET_MODEL", defaultValue: "cc/claude-sonnet-5" },
       { id: "haiku", name: "Claude Haiku", alias: "haiku", envKey: "ANTHROPIC_DEFAULT_HAIKU_MODEL", defaultValue: "cc/claude-haiku-4-5-20251001" },
     ],
@@ -246,7 +248,7 @@ export const CLI_TOOLS = {
     defaultCommand: "amp",
     modelAliases: ["g25p", "g25f", "cs45", "g54"],
     notes: [
-      { type: "info", text: "Use 9Gouter model aliases to keep Amp shorthand mappings stable across provider updates." },
+      { type: "info", text: "Use 9Router model aliases to keep Amp shorthand mappings stable across provider updates." },
       { type: "warning", text: "Suggested shorthand examples: g25p → gemini/gemini-2.5-pro, g25f → gemini/gemini-2.5-flash, cs45 → cc/claude-sonnet-4-5-20250929." },
     ],
     guideSteps: [
@@ -254,7 +256,7 @@ export const CLI_TOOLS = {
       { step: 2, title: "API Key", type: "apiKeySelector" },
       { step: 3, title: "Base URL", value: "{{baseUrl}}", copyable: true },
       { step: 4, title: "Select Model", type: "modelSelector" },
-      { step: 5, title: "Add Shorthands", desc: "Map Amp shorthand names such as g25p or cs45 to 9Gouter aliases in your local config." },
+      { step: 5, title: "Add Shorthands", desc: "Map Amp shorthand names such as g25p or cs45 to 9Router aliases in your local config." },
     ],
     codeBlock: {
       language: "bash",
@@ -271,15 +273,15 @@ amp --model "{{model}}"
     name: "Qwen Code",
     image: "/providers/qwen.png",
     color: "#10B981",
-    description: "Alibaba Qwen Code CLI — supports OpenAI, Anthropic & Gemini providers via 9Gouter",
+    description: "Alibaba Qwen Code CLI — supports OpenAI, Anthropic & Gemini providers via 9Router",
     docsUrl: "https://qwenlm.github.io/qwen-code-docs/en/users/configuration/model-providers/",
     configType: "guide",
     defaultCommand: "qwen",
     notes: [
-      { type: "info", text: "Qwen Code supports multiple provider types (openai, anthropic, gemini) via modelProviders in settings.json. 9Gouter works as an OpenAI-compatible endpoint." },
-      { type: "info", text: "Any model available in 9Gouter can be used — not just Qwen models. Select from Qwen, Claude, Gemini, GPT, and more." },
+      { type: "info", text: "Qwen Code supports multiple provider types (openai, anthropic, gemini) via modelProviders in settings.json. 9Router works as an OpenAI-compatible endpoint." },
+      { type: "info", text: "Any model available in 9Router can be used — not just Qwen models. Select from Qwen, Claude, Gemini, GPT, and more." },
       { type: "warning", text: "Config path: Linux/macOS ~/.qwen/settings.json • Windows %USERPROFILE%\\.qwen\\settings.json" },
-      { type: "error", text: "Qwen OAuth free tier was discontinued on 2026-04-15. Use 9Gouter with alicode/openrouter/anthropic/gemini providers instead." },
+      { type: "error", text: "Qwen OAuth free tier was discontinued on 2026-04-15. Use 9Router with alicode/openrouter/anthropic/gemini providers instead." },
     ],
     modelAliases: ["coder-model", "qwen3-coder-plus", "qwen3-coder-flash", "vision-model", "claude-sonnet-4-6", "claude-opus-4-6-thinking", "gemini-3-flash", "gemini-3.1-pro-high"],
     defaultModels: [
@@ -331,7 +333,7 @@ amp --model "{{model}}"
       { id: "deepseek-chat", name: "DeepSeek V3 Chat", alias: "deepseek-chat" },
     ],
     notes: [
-      { type: "info", text: "DeepSeek TUI uses ~/.deepseek/config.toml for configuration. 9Gouter will update the provider to 'openai' mode with your base_url, api_key, and model." },
+      { type: "info", text: "DeepSeek TUI uses ~/.deepseek/config.toml for configuration. 9Router will update the provider to 'openai' mode with your base_url, api_key, and model." },
       { type: "warning", text: "Config path: Linux/macOS ~/.deepseek/config.toml • Windows %USERPROFILE%\\.deepseek\\config.toml" },
     ],
   },
@@ -350,7 +352,7 @@ amp --model "{{model}}"
       },
       {
         type: "info",
-        text: "Configure 9gouter as an OpenAI-compatible provider to route all jcode requests through 9gouter's optimization layer."
+        text: "Configure 9router as an OpenAI-compatible provider to route all jcode requests through 9router's optimization layer."
       },
       {
         type: "warning",
@@ -358,7 +360,7 @@ amp --model "{{model}}"
       },
     ],
     defaultModels: [
-      { id: "claude-opus-4-7", name: "Claude Opus 4.7", alias: "opus", defaultValue: "cc/claude-opus-4-7" },
+      { id: "claude-opus-5", name: "Claude Opus 5", alias: "opus", defaultValue: "cc/claude-opus-5" },
       { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", alias: "sonnet", defaultValue: "cc/claude-sonnet-4-6" },
       { id: "gpt-5.5", name: "GPT 5.5", alias: "gpt5", defaultValue: "cx/gpt-5.5" },
       { id: "gemini-3.1-pro", name: "Gemini 3.1 Pro", alias: "gemini", defaultValue: "gemini/gemini-3.1-pro" },
@@ -376,17 +378,43 @@ amp --model "{{model}}"
     notes: [
       {
         type: "info",
-        text: "Grok Build uses ~/.grok/config.toml. 9Gouter writes a [model.9gouter] custom model and sets it as the default.",
+        text: "Grok Build uses ~/.grok/config.toml. 9Router writes a [model.9router] custom model and sets it as the default.",
       },
       {
         type: "info",
-        text: "After Apply, run grok (or /model 9gouter) to use the routed model. Switch back anytime with /model grok-build.",
+        text: "After Apply, run grok (or /model 9router) to use the routed model. Switch back anytime with /model grok-build.",
       },
       {
         type: "warning",
         text: "Config path: Linux/macOS ~/.grok/config.toml • Windows %USERPROFILE%\\.grok\\config.toml",
       },
     ],
+  },
+  devin: {
+    id: "devin",
+    name: "Devin CLI",
+    image: "/providers/devin-cli.png",
+    color: "#6366F1",
+    description: "Cognition Devin CLI — local binary called by the Devin CLI provider via ACP/stdio",
+    configType: "guide",
+    installUrl: "https://cli.devin.ai",
+    notes: [
+      { type: "info", text: "This is a local dependency, not a routed CLI. The Devin CLI provider spawns `devin acp --agent-type summarizer` and relays its output." },
+      { type: "warning", text: "Install the Devin CLI and run `devin auth login` — without it, the provider returns a spawn error on first request." },
+    ],
+    guideSteps: [
+      { step: 1, title: "Install Devin CLI", desc: "Install via the official installer at cli.devin.ai.", docsUrl: "https://cli.devin.ai" },
+      { step: 2, title: "Authenticate", desc: "Log in once so the binary stores its own credentials." },
+      { step: 3, title: "Use the provider", desc: "Pick any Devin CLI model under the Providers tab — no API key field needed." },
+    ],
+    codeBlock: {
+      language: "bash",
+      code: `# Install Devin CLI (see https://cli.devin.ai for options)
+devin auth login
+
+# Verify detection (optional)
+devin --version`,
+    },
   },
   // HIDDEN: gemini-cli
   // "gemini-cli": {

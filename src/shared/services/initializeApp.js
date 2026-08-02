@@ -106,6 +106,17 @@ async function runHeavyStartup() {
   }
 
   configureTunnelMonitoring(settings);
+
+  if (hasQuotaAutoPingEnabled(settings)) {
+    import("@/shared/services/quotaAutoPing")
+      .then(({ startQuotaAutoPing }) => startQuotaAutoPing())
+      .catch((e) => console.log("[AutoPing] scheduler start failed:", e.message));
+  }
+}
+
+function hasQuotaAutoPingEnabled(settings) {
+  return [settings?.claudeAutoPing, settings?.codexAutoPing]
+    .some((config) => Object.values(config?.connections || {}).some(Boolean));
 }
 
 async function autoStartMitm(settings) {
@@ -126,7 +137,7 @@ async function autoStartMitm(settings) {
     const activeKey = keys.find(k => k.isActive !== false);
 
     console.log("[InitApp] MITM was enabled, auto-starting...");
-    await startMitm(activeKey?.key || "sk_9gouter", password);
+    await startMitm(activeKey?.key || "sk_9router", password);
     console.log("[InitApp] MITM auto-started");
     try {
       await restoreToolDNS(password);

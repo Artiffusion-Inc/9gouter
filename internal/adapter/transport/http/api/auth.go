@@ -31,7 +31,7 @@ func RegisterAuth(mux *http.ServeMux, deps Deps, cfg config.Config) {
 	// server logs show a real redirect rather than 405.
 	mux.HandleFunc("GET /api/auth/oidc/start", h.oidcStart)
 	mux.HandleFunc("POST /api/auth/oidc/start", h.oidcStart)
-	mux.HandleFunc("POST /api/auth/oidc/callback", h.oidcCallback)
+	mux.HandleFunc("GET /api/auth/oidc/callback", h.oidcCallback)
 	mux.HandleFunc("POST /api/auth/oidc/test", h.oidcTest)
 }
 
@@ -262,10 +262,108 @@ func (h *authHandler) oidcStart(w http.ResponseWriter, r *http.Request) {
 // redirects the user back here with ?code=...&state=...; we exchange
 // the code, verify the ID token, and start a dashboard session.
 func (h *authHandler) oidcCallback(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{
-		"success": true,
-		"message": "OIDC callback stubbed in Go build",
+	origin := adapterauth.ParsePublicOrigin(headerRequestAdapter{Request: r}, "")
+	clearOIDCCookies(w)
+
+	// Check for error from IdP.
+	if e := r.URL.Query().Get("error"); e != "" {
+		redirectLogin(w, r, origin, "oidc_error:"+e)
+		return
+	}
+
+	code := r.URL.Query().Get("code")
+	stateParam := r.URL.Query().Get("state")
+	if code == "" || stateParam == "" {
+		redirectLogin(w, r, origin, "oidc_missing_code")
+		return
+	}
+
+	// Read PKCE/state/nonce from cookies set by the start handler.
+	storedState, _ := r.Cookie("oidc_state")
+	storedNonce, _ := r.Cookie("oidc_nonce")
+	codeVerifier, _ := r.Cookie("oidc_verifier")
+	if storedState == nil || storedNonce == nil || codeVerifier == nil {
+		redirectLogin(w, r, origin, "oidc_missing_state")
+		return
+	}
+	if storedState.Value != stateParam {
+		redirectLogin(w, r, origin, "oidc_invalid_state")
+		return
+	}
+
+	// Read OIDC config from settings.
+	s, err := h.deps.Settings.Get(r.Context())
+	if err != nil {
+		redirectLogin(w, r, origin, "oidc_not_configured")
+		return
+	}
+	var m map[string]any
+	_ = json.Unmarshal(s.Data, &m)
+	issuer, _ := m["oidcIssuerUrl"].(string)
+	clientID, _ := m["oidcClientId"].(string)
+	secret, _ := m["oidcClientSecret"].(string)
+	scopes, _ := m["oidcScopes"].(string)
+	if issuer == "" || clientID == "" || secret == "" {
+		redirectLogin(w, r, origin, "oidc_not_configured")
+		return
+	}
+	if scopes == "" {
+		scopes = "openid profile email"
+	}
+
+	redirectURI := origin + "/api/auth/oidc/callback"
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	provider, err := adapterauth.NewOIDC(ctx, adapterauth.OIDCConfig{
+		IssuerURL:    issuer,
+		ClientID:     clientID,
+		ClientSecret: secret,
+		RedirectURI:  redirectURI,
+		Scopes:       strings.Fields(scopes),
 	})
+	if err != nil {
+		redirectLogin(w, r, origin, "oidc_discovery_failed")
+		return
+	}
+
+	principal, err := provider.Exchange(ctx, code, redirectURI, codeVerifier.Value)
+	if err != nil {
+		redirectLogin(w, r, origin, "oidc_exchange_failed")
+		return
+	}
+
+	// Create dashboard session.
+	sess := h.uc.LoginOIDC(principal)
+	if err := h.deps.SessionStore.Set(w, sess); err != nil {
+		redirectLogin(w, r, origin, "oidc_session_failed")
+		return
+	}
+
+	http.Redirect(w, r, origin+"/dashboard", http.StatusFound)
+}
+
+// redirectLogin redirects to /login?error=... on the given origin.
+func redirectLogin(w http.ResponseWriter, r *http.Request, origin, errorcode string) {
+	if origin == "" {
+		origin = ""
+	}
+	http.Redirect(w, r, origin+"/login?error="+url.QueryEscape(errorcode), http.StatusFound)
+}
+
+// clearOIDCCookies removes the short-lived OIDC state/nonce/verifier cookies.
+func clearOIDCCookies(w http.ResponseWriter) {
+	for _, name := range []string{"oidc_state", "oidc_nonce", "oidc_verifier"} {
+		http.SetCookie(w, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   -1,
+		})
+	}
 }
 
 // oidcTest reports whether the configured OIDC provider is reachable and

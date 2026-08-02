@@ -407,14 +407,6 @@ func TestGenericRefresh_NoRefreshURL(t *testing.T) {
 	}
 }
 
-// TestVertexRefresh_NotPorted verifies the stub returns ErrVertexNotPorted.
-func TestVertexRefresh_NotPorted(t *testing.T) {
-	r := NewVertexRefresher()
-	_, err := r.Refresh(context.Background(), "rt", nil, resolver.ProxyOptions{}, resolver.NopLogger())
-	if err != ErrVertexNotPorted {
-		t.Fatalf("expected ErrVertexNotPorted, got %v", err)
-	}
-}
 
 // TestNon200IsError verifies a non-2xx upstream response is an error (caller
 // falls back), not a silent success.

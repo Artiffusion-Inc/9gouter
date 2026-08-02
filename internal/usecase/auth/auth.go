@@ -135,3 +135,15 @@ func FormatError(err error) string {
 		return fmt.Sprintf("Login failed: %v", err)
 	}
 }
+
+// LoginOIDC creates a session for an authenticated OIDC principal. Unlike
+// Login, it bypasses password verification and rate limiting — the IdP has
+// already authenticated the user. Mirrors the JS setDashboardAuthCookie path
+// in src/app/api/auth/oidc/callback/route.js.
+func (uc *UseCase) LoginOIDC(principal domainauth.Principal) domainauth.Session {
+	return domainauth.Session{
+		ID:        "",
+		Principal: principal,
+		ExpiresAt: time.Now().Add(uc.ttl),
+	}
+}

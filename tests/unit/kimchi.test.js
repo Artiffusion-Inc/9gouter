@@ -1,4 +1,4 @@
-import { describe, it, beforeAll as before } from "vitest";
+import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
 
 // Load the registry entry once for the suite so a load failure is reported

@@ -56,23 +56,6 @@ export async function getProxyPoolById(id) {
   return rowToPool(db.get(`SELECT * FROM proxyPools WHERE id = ?`, [id]));
 }
 
-/**
- * Find the most recently updated proxy pool matching a name + type (for relay
- * redeploy: the worker name is the pool name, type pins the provider). Used to
- * decide create-vs-update on re-deploy of an existing relay.
- * @param {string} name
- * @param {string} type
- * @returns {Promise<object|null>}
- */
-export async function findProxyPoolByNameAndType(name, type) {
-  const db = await getAdapter();
-  const rows = db.all(
-    `SELECT * FROM proxyPools WHERE name = ? AND type = ? ORDER BY updatedAt DESC LIMIT 1`,
-    [name, type]
-  );
-  return rows.length ? rowToPool(rows[0]) : null;
-}
-
 export async function createProxyPool(data) {
   const db = await getAdapter();
   const now = new Date().toISOString();
@@ -97,24 +80,24 @@ export async function createProxyPool(data) {
 export async function updateProxyPool(id, data) {
   const db = await getAdapter();
   let result = null;
-  const __tx = db.transaction(() => {
+  db.transaction(() => {
     const row = db.get(`SELECT * FROM proxyPools WHERE id = ?`, [id]);
     if (!row) return;
     const merged = { ...rowToPool(row), ...data, updatedAt: new Date().toISOString() };
     upsert(db, merged);
     result = merged;
-  }); __tx();
+  });
   return result;
 }
 
 export async function deleteProxyPool(id) {
   const db = await getAdapter();
   let removed = null;
-  const __tx = db.transaction(() => {
+  db.transaction(() => {
     const row = db.get(`SELECT * FROM proxyPools WHERE id = ?`, [id]);
     if (!row) return;
     removed = rowToPool(row);
     db.run(`DELETE FROM proxyPools WHERE id = ?`, [id]);
-  }); __tx();
+  });
   return removed;
 }

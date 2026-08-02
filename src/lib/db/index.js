@@ -25,7 +25,6 @@ export {
 export {
   getProxyPools, getProxyPoolById,
   createProxyPool, updateProxyPool, deleteProxyPool,
-  findProxyPoolByNameAndType,
 } from "./repos/proxyPoolsRepo.js";
 
 // API keys
@@ -100,7 +99,7 @@ export async function importDb(payload) {
   }
   const db = await getAdapter();
 
-  const __tx = db.transaction(() => {
+  db.transaction(() => {
     // Wipe all tables (keep _meta)
     db.run(`DELETE FROM settings`);
     db.run(`DELETE FROM providerConnections`);
@@ -161,7 +160,7 @@ export async function importDb(payload) {
     for (const [provider, models] of Object.entries(payload.pricing || {})) {
       db.run(`INSERT OR REPLACE INTO kv(scope, key, value) VALUES('pricing', ?, ?)`, [provider, stringifyJson(models || {})]);
     }
-  }); __tx();
+  });
 
   return await exportDb();
 }

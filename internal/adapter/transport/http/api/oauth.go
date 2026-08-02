@@ -2,14 +2,17 @@ package api
 
 import (
 	"encoding/json"
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/oauth"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/provider/resolver/tokenrefresh"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
+
 
 // RegisterOAuth mounts all OAuth helper routes.
 func RegisterOAuth(mux *http.ServeMux, deps Deps) {
@@ -41,12 +44,157 @@ type oauthHandler struct {
 func (h *oauthHandler) providerAction(w http.ResponseWriter, r *http.Request) {
 	provider := r.PathValue("provider")
 	action := r.PathValue("action")
+
+	switch action {
+	case "authorize":
+		h.oauthAuthorize(w, r, provider)
+	case "exchange":
+		h.oauthExchange(w, r, provider)
+	case "device-code":
+		h.oauthDeviceCode(w, r, provider)
+	case "poll":
+		h.oauthPoll(w, r, provider)
+	default:
+		writeError(w, http.StatusBadRequest, "Unknown OAuth action: "+action)
+	}
+}
+
+// oauthAuthorize generates the authorization URL + PKCE state for a provider.
+func (h *oauthHandler) oauthAuthorize(w http.ResponseWriter, r *http.Request, provider string) {
+	redirectURI := r.URL.Query().Get("redirect_uri")
+	if redirectURI == "" {
+		redirectURI = "http://localhost:8080/callback"
+	}
+
+	authData, err := oauth.Authorize(r.Context(), provider, redirectURI)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, authData)
+}
+
+// oauthExchange trades an authorization code for tokens.
+func (h *oauthHandler) oauthExchange(w http.ResponseWriter, r *http.Request, provider string) {
+	var req struct {
+		Code         string `json:"code"`
+		RedirectURI  string `json:"redirectUri"`
+		CodeVerifier string `json:"codeVerifier"`
+	}
+	if err := parseJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.Code == "" || req.RedirectURI == "" {
+		writeError(w, http.StatusBadRequest, "Missing code or redirectUri")
+		return
+	}
+
+	tokens, err := oauth.Exchange(r.Context(), provider, req.Code, req.RedirectURI, req.CodeVerifier)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	// Save connection.
+	conn, err := h.saveOAuthConnection(provider, tokens)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"success":  false,
-		"message":  "OAuth provider flow stubbed in Go build",
-		"provider": provider,
-		"action":   action,
+		"success":    true,
+		"connection": conn,
 	})
+}
+
+// oauthDeviceCode requests a device code from the provider.
+func (h *oauthHandler) oauthDeviceCode(w http.ResponseWriter, r *http.Request, provider string) {
+	data, err := oauth.RequestDeviceCode(r.Context(), provider)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, data)
+}
+
+// oauthPoll polls for a device code token.
+func (h *oauthHandler) oauthPoll(w http.ResponseWriter, r *http.Request, provider string) {
+	var req struct {
+		DeviceCode   string `json:"deviceCode"`
+		CodeVerifier string `json:"codeVerifier"`
+	}
+	if err := parseJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if req.DeviceCode == "" {
+		writeError(w, http.StatusBadRequest, "Missing deviceCode")
+		return
+	}
+
+	result, err := oauth.PollDeviceCode(r.Context(), provider, req.DeviceCode, req.CodeVerifier)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	if result.Success && result.Tokens != nil {
+		conn, err := h.saveOAuthConnection(provider, result.Tokens)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success":    true,
+			"connection": conn,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// saveOAuthConnection creates a connection record from OAuth tokens.
+func (h *oauthHandler) saveOAuthConnection(provider string, tokens *oauth.TokenData) (map[string]any, error) {
+	data := map[string]any{
+		"provider":   provider,
+		"authType":   "oauth",
+		"isActive":   true,
+	}
+	if tokens.AccessToken != "" {
+		data["accessToken"] = tokens.AccessToken
+	}
+	if tokens.RefreshToken != "" {
+		data["refreshToken"] = tokens.RefreshToken
+	}
+	if tokens.IDToken != "" {
+		data["idToken"] = tokens.IDToken
+	}
+	if tokens.ExpiresIn > 0 {
+		data["expiresAt"] = time.Now().Add(time.Duration(tokens.ExpiresIn) * time.Second).UTC().Format(time.RFC3339Nano)
+	}
+	if tokens.Email != "" {
+		data["email"] = tokens.Email
+	}
+	dataJSON, _ := json.Marshal(data)
+	now := time.Now().UTC()
+	conn := settings.ProviderConnection{
+		Provider:  provider,
+		IsActive:  true,
+		Data:      dataJSON,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	resolved, err := h.deps.Connections.Create(context.TODO(), conn)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"id":       resolved.ID,
+		"provider": resolved.Provider,
+		"email":    tokens.Email,
+	}, nil
 }
 
 func (h *oauthHandler) codexBulkImport(w http.ResponseWriter, r *http.Request) {

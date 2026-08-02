@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"os"
 	"net/http"
 )
 
@@ -87,25 +88,53 @@ func (h *cliToolsHandler) allStatuses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *cliToolsHandler) mitmStatus(w http.ResponseWriter, r *http.Request) {
+	running := false
+	certPath := ""
+	routerBase := "http://localhost:20128"
+	if h.deps.MITMManager != nil {
+		status := h.deps.MITMManager.Status()
+		running = status.Enabled
+		certPath = status.CertPath
+		routerBase = status.RouterBase
+	}
+	certExists := certPath != ""
+	if certPath != "" {
+		if _, err := os.Stat(certPath); err == nil {
+			certExists = true
+		} else {
+			certExists = false
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"running":           false,
+		"running":           running,
 		"pid":               nil,
-		"certExists":        false,
-		"certTrusted":       false,
-		"dnsConfigured":     false,
+		"certExists":        certExists,
+		"certTrusted":       certExists,
+		"dnsConfigured":     running,
 		"dnsStatus":         map[string]any{},
 		"hasCachedPassword": false,
 		"needsSudoPassword": false,
 		"isAdmin":           false,
-		"mitmRouterBaseUrl": "http://localhost:20128",
+		"mitmRouterBaseUrl": routerBase,
 	})
 }
 
 func (h *cliToolsHandler) mitmStart(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "running": false, "pid": nil})
+	if h.deps.MITMManager == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"success": false, "error": "MITM manager not configured"})
+		return
+	}
+	if err := h.deps.MITMManager.Enable(r.Context()); err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "running": true, "pid": nil})
 }
 
 func (h *cliToolsHandler) mitmStop(w http.ResponseWriter, r *http.Request) {
+	if h.deps.MITMManager != nil {
+		h.deps.MITMManager.Disable()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "running": false})
 }
 

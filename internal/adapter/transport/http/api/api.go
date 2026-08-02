@@ -9,6 +9,10 @@ package api
 import (
 	"bytes"
 	"database/sql"
+
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/tunnel"
+
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/mitm"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -107,6 +111,14 @@ type Deps struct {
 
 	// Version is injected by the composition root; defaults to "dev" if empty.
 	Version string
+
+	// CloudflareTunnel manages the cloudflared quick-tunnel subprocess.
+	CloudflareTunnel *tunnel.CloudflareManager
+	// TailscaleTunnel manages the Tailscale funnel subprocess.
+	TailscaleTunnel *tunnel.TailscaleManager
+
+	// MITMManager manages the MITM TLS interception proxy.
+	MITMManager *mitm.Manager
 
 	// V1Dispatch, when set, dispatches a request whose URL.Path has been
 	// rewritten to a /v1/* path through the real client-facing v1 handler

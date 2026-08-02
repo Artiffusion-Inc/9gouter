@@ -327,10 +327,7 @@ describe("proxyAwareFetch — api.anthropic.com routing", () => {
     vi.restoreAllMocks();
   });
 
-  // NOTE: requires `got-scraping` package which may not be installed in
-  // every test environment, and the test makes a real outbound call to
-  // api.anthropic.com. Skipping for sandbox/offline runs.
-  it.skip("routes api.anthropic.com to gotScraping (non-streaming) and returns ok response", async () => {
+  it("routes api.anthropic.com to gotScraping (non-streaming) and returns ok response", async () => {
     // Mock got-scraping before module load
     vi.doMock("got-scraping", () => {
       const mockGotScraping = vi.fn().mockResolvedValue({

@@ -1,7 +1,6 @@
 // Stream handler with disconnect detection - shared for all providers
 import { STREAM_STALL_TIMEOUT_MS } from "../config/runtimeConfig.js";
 import { dbg, isDebugEnabled } from "./debugLog.js";
-import { formatSSE } from "./streamHelpers.js";
 
 // Get HH:MM:SS timestamp
 function getTimeString() {
@@ -102,29 +101,19 @@ export function createDisconnectAwareStream(transformStream, streamController, o
   let terminalEmitted = false;
 
   // Emit a synthesized terminal payload (e.g. Responses response.failed + [DONE]) once
-  // For Responses API: use onAbortTerminal callback (response.failed + [DONE])
-  // For regular chat/completions: emit OpenAI-compatible error SSE + [DONE]
-  const emitTerminal = (controller, reason = "stream_disconnected") => {
-    if (terminalEmitted) return;
+  const emitTerminal = (controller) => {
+    if (terminalEmitted || !onAbortTerminal) return;
     terminalEmitted = true;
     try {
-      if (onAbortTerminal) {
-        const bytes = onAbortTerminal();
-        if (bytes) controller.enqueue(bytes);
-      } else {
-        // Synthesize error SSE for regular chat/completions streams
-        const errorSSE = formatSSE({ error: { message: `Stream aborted: ${reason}`, type: "stream_error", code: reason } });
-        const doneSSE = "data: [DONE]\n\n";
-        const encoder = new TextEncoder();
-        controller.enqueue(encoder.encode(errorSSE + doneSSE));
-      }
+      const bytes = onAbortTerminal();
+      if (bytes) controller.enqueue(bytes);
     } catch { /* best-effort terminal */ }
   };
 
   return new ReadableStream({
     async pull(controller) {
       if (!streamController.isConnected()) {
-        emitTerminal(controller, "client_disconnect");
+        emitTerminal(controller);
         controller.close();
         return;
       }
@@ -166,7 +155,7 @@ export function createDisconnectAwareStream(transformStream, streamController, o
         // (Responses passthrough prefers response.failed + [DONE] over a raw transport error)
         try {
           if (!wasConnected || isNetworkClose || onAbortTerminal) {
-            emitTerminal(controller, error?.message || "stream_error");
+            emitTerminal(controller);
             controller.close();
           } else {
             controller.error(error);

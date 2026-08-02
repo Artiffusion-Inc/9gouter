@@ -2,6 +2,7 @@ package resolver
 
 import (
 	"time"
+	"strings"
 
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/provider"
 )
@@ -96,6 +97,22 @@ func isRefreshStaleBeyond(data map[string]any, maxAge time.Duration, now time.Ti
 // path. now allows tests to inject a clock; production passes time.Now().
 func ShouldRefreshCredentials(providerID string, data map[string]any, now time.Time) bool {
 	if data == nil {
+		return false
+	}
+	// Vertex (and vertex-partner) store a GCP service account JSON key in
+	// apiKey, not a refresh_token. The refresher mints an access token from
+	// the SA key. Trigger proactively when accessToken is empty or near
+	// expiry — the SA key itself does not expire.
+	if providerID == "vertex" || providerID == "vertex-partner" {
+		if ak, _ := data["apiKey"].(string); ak != "" && isVertexSAKey(ak) {
+			at, _ := data["accessToken"].(string)
+			if at == "" {
+				return true
+			}
+			if exp := expiryMsFromCreds(data); exp != nil && exp.Sub(now) < refreshLeadMs(providerID) {
+				return true
+			}
+		}
 		return false
 	}
 	if rt, _ := data["refreshToken"].(string); rt == "" {
@@ -239,4 +256,16 @@ func CredentialsForRefresh(data map[string]any) provider.Credentials {
 		creds.ExpiresAt = exp
 	}
 	return creds
+}
+
+// isVertexSAKey reports whether the apiKey field contains a GCP service
+// account JSON key (type=service_account). This is a lightweight check —
+// the full parse happens in the VertexRefresher. Mirrors the JS
+// parseVertexSaJson guard.
+func isVertexSAKey(ak string) bool {
+	ak = strings.TrimSpace(ak)
+	if ak == "" || ak[0] != '{' {
+		return false
+	}
+	return strings.Contains(ak, "service_account")
 }

@@ -86,21 +86,17 @@ export async function createSqlJsAdapter(filePath) {
   }
 
   function transaction(fn) {
-    // ponytail: return callable wrapper (better-sqlite3 convention). Eager
-    // execution here breaks callers that capture `const tx = db.txn(fn); tx();`.
     const sp = `sp_${Math.random().toString(36).slice(2)}`;
-    return () => {
-      db.exec(`SAVEPOINT ${sp}`);
-      try {
-        const result = fn();
-        db.exec(`RELEASE ${sp}`);
-        scheduleSave();
-        return result;
-      } catch (e) {
-        try { db.exec(`ROLLBACK TO ${sp}`); db.exec(`RELEASE ${sp}`); } catch {}
-        throw e;
-      }
-    };
+    db.exec(`SAVEPOINT ${sp}`);
+    try {
+      const result = fn();
+      db.exec(`RELEASE ${sp}`);
+      scheduleSave();
+      return result;
+    } catch (e) {
+      try { db.exec(`ROLLBACK TO ${sp}`); db.exec(`RELEASE ${sp}`); } catch {}
+      throw e;
+    }
   }
 
   function close() {

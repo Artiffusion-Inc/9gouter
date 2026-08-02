@@ -16,19 +16,6 @@ export default function LoginPage() {
   const [mustChange, setMustChange] = useState(false);
   const [newPassword, setNewPassword] = useState("");
 
-  // Resolve a safe post-login destination from the ?redirect= query param.
-  // Only allow same-origin absolute paths (must start with "/"), reject any
-  // scheme-relative or absolute URL to prevent open-redirect.
-  function safeRedirect() {
-    if (typeof window === "undefined") return "/dashboard";
-    const params = new URLSearchParams(window.location.search);
-    const target = params.get("redirect");
-    if (target && target.startsWith("/") && !target.startsWith("//")) {
-      return target;
-    }
-    return "/dashboard";
-  }
-
   // Countdown for rate-limit
   useEffect(() => {
     if (retryAfter <= 0) return;
@@ -50,9 +37,8 @@ export default function LoginPage() {
 
         if (res.ok) {
           const data = await res.json();
-          if (data.requireLogin === false || data.authenticated === true) {
-            const next = safeRedirect();
-            window.location.assign(next);
+          if (data.requireLogin === false) {
+            window.location.assign("/dashboard");
             return;
           }
           setHasPassword(!!data.hasPassword);
@@ -90,8 +76,7 @@ export default function LoginPage() {
           setMustChange(true);
           return;
         }
-        const next = safeRedirect();
-        window.location.assign(next);
+        window.location.assign("/dashboard");
       } else {
         const data = await res.json();
         setError(data.error || "Invalid password");
@@ -117,7 +102,7 @@ export default function LoginPage() {
         body: JSON.stringify({ currentPassword: password, newPassword }),
       });
       if (res.ok) {
-        window.location.assign(safeRedirect());
+        window.location.assign("/dashboard");
       } else {
         const data = await res.json();
         setError(data.error || "Failed to set password");
@@ -154,7 +139,7 @@ export default function LoginPage() {
       <div className="landing-grid absolute inset-0 pointer-events-none" aria-hidden="true" />
       <div className="relative z-10 w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary mb-2">9Gouter</h1>
+          <h1 className="text-3xl font-bold text-primary mb-2">9Router</h1>
           <p className="text-text-muted">
             {authMode === "oidc" && oidcConfigured
               ? "Sign in with your OIDC provider to access the dashboard"
@@ -226,7 +211,7 @@ export default function LoginPage() {
                   )}
                   {resetHint && (
                     <p className="text-xs text-text-muted">
-                      Forgot password? Open <code className="bg-sidebar px-1 rounded">9gouter</code> CLI on the host → <b>Settings</b> → <b>Reset Password to Default</b>.
+                      Forgot password? Open <code className="bg-sidebar px-1 rounded">9router</code> CLI on the host → <b>Settings</b> → <b>Reset Password to Default</b>.
                     </p>
                   )}
                 </div>

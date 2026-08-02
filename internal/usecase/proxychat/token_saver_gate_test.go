@@ -58,8 +58,8 @@ func TestTokenSaverGate_DefaultsWhenMissing(t *testing.T) {
 	if cfg.PxpipeMinChars != 25000 || cfg.PxpipeTimeoutMs != 15000 {
 		t.Fatalf("pxpipe defaults wrong: %d/%d", cfg.PxpipeMinChars, cfg.PxpipeTimeoutMs)
 	}
-	if cfg.PxpipeTransform != nil {
-		t.Fatalf("PxpipeTransform must be nil (no loader ported)")
+	if cfg.PxpipeTransform == nil {
+		t.Fatalf("PxpipeTransform must be non-nil (subprocess bridge wired)")
 	}
 }
 

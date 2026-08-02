@@ -396,16 +396,6 @@ func (r *GenericRefresher) Refresh(ctx context.Context, refreshToken string, psd
 	return fromToken(tok, refreshToken, false), nil
 }
 
-// VertexRefresher is stubbed: vertex needs an RS256-signed service-account JWT
-// (go-jose). It returns ErrVertexNotPorted so callers fall back to the static
-// catalog. Real implementation is a T027 follow-up.
-type VertexRefresher struct{}
-
-func NewVertexRefresher() *VertexRefresher { return &VertexRefresher{} }
-
-func (*VertexRefresher) Refresh(_ context.Context, _ string, _ map[string]any, _ resolver.ProxyOptions, _ resolver.Logger) (*resolver.RefreshedCredentials, error) {
-	return nil, ErrVertexNotPorted
-}
 
 // Lookup returns the TokenRefresher for a provider id, mirroring the JS
 // REFRESH_HANDLERS map. Returns nil for providers with no refresh handler

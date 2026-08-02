@@ -14,12 +14,6 @@ describe("Kiro MITM model slots", () => {
     expect(Array.isArray(kiro.defaultModels)).toBe(true);
   });
 
-  it("offers a mappable slot for the agent default model id 'auto'", () => {
-    const auto = kiro.defaultModels.find((m) => m.id === "auto");
-    expect(auto).toBeTruthy();
-    expect(auto.alias).toBe("auto");
-  });
-
   it("offers a mappable slot for Claude Sonnet 5", () => {
     const sonnet5 = kiro.defaultModels.find((m) => m.id === "claude-sonnet-5");
     expect(sonnet5).toBeTruthy();

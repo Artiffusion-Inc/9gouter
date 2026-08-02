@@ -51,9 +51,7 @@ describe("Responses abort terminal synthesis", () => {
     expect(text).toContain("data: [DONE]");
   });
 
-  it("synthesizes OpenAI-compatible error SSE + [DONE] for non-Responses streams (callback null)", async () => {
-    // Artiffusion patch: regular chat/completions clients receive a structured
-    // error SSE event + [DONE] on stall/abort (upstream only emits terminals for Responses API).
+  it("does not synthesize terminal for non-Responses streams (callback null)", async () => {
     const upstream = new ReadableStream({
       start(controller) {
         controller.enqueue(new TextEncoder().encode("data: hi\n\n"));
@@ -68,10 +66,7 @@ describe("Responses abort terminal synthesis", () => {
     );
 
     const text = await readAll(out);
-    // Not Responses → no response.failed event, but our error-SSE terminal is synthesized
     expect(text).not.toContain("response.failed");
-    expect(text).toContain("data: [DONE]");
-    expect(text).toContain("stream_error");
-    expect(text).toContain("Stream aborted: socket hang up");
+    expect(text).not.toContain("[DONE]");
   });
 });

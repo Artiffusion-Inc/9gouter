@@ -49,46 +49,14 @@ function envUrl(name, def) {
 export const SEARXNG_URL = envUrl("SEARXNG_URL", "http://localhost:8888/search");
 
 // Inter-chunk stall timeout (once tokens are flowing). Generous headroom so
-// slow reasoning models aren't aborted mid-stream. glm-5.2 reasoning-by-request
-// (not flagged as a reasoning model in the registry) needs the same huge window
-// whether or not the request asks for reasoning, so base == reasoning base.
-// Env: STREAM_STALL_TIMEOUT_MS.
-export const STREAM_STALL_TIMEOUT_MS = envMs("STREAM_STALL_TIMEOUT_MS", 15 * 60 * 1000);
+// slow reasoning models aren't aborted mid-stream. Env: STREAM_STALL_TIMEOUT_MS.
+export const STREAM_STALL_TIMEOUT_MS = envMs("STREAM_STALL_TIMEOUT_MS", 360 * 1000);
 
 // Time-to-first-token timeout (prompt prefill). Env: STREAM_FIRST_CHUNK_TIMEOUT_MS.
 export const STREAM_FIRST_CHUNK_TIMEOUT_MS = envMs("STREAM_FIRST_CHUNK_TIMEOUT_MS", 200 * 1000);
 
-// Reasoning/thinking models get an extended stall timeout. Kept at parity with the
-// base so the detector (isThinkingEnabled) no longer gates the window — glm-5.2 et al.
-// that reason on demand but aren't flagged get the same 15min budget.
-// Env: STREAM_STALL_TIMEOUT_REASONING_MS. Artiffusion patch — not upstream.
-export const STREAM_STALL_TIMEOUT_REASONING_MS = envMs("STREAM_STALL_TIMEOUT_REASONING_MS", 15 * 60 * 1000);
-
-// Hard cap for the adaptive stream-readiness/stall timeout (resolveStreamReadinessTimeout).
-// Bumps for large history / tool-heavy / large payload / Codex GPT-5.x high-reasoning are
-// added to the base and clamped to this cap. Without a cap above the reasoning base
-// (600s) the bumps would be silently clipped. Env: STREAM_READINESS_MAX_TIMEOUT_MS.
-// Artiffusion patch — not upstream.
-export const STREAM_READINESS_MAX_TIMEOUT_MS = envMs("STREAM_READINESS_MAX_TIMEOUT_MS", 15 * 60 * 1000);
-
 // Fetch connect timeout: abort if upstream doesn't return response headers within this duration
 export const FETCH_CONNECT_TIMEOUT_MS = envMs("FETCH_CONNECT_TIMEOUT_MS", 60 * 1000);
-
-// Proxy/dispatcher timeouts (undici Agent). Without these, undici clamps keepAliveTimeout
-// UP to its default keepAliveMaxTimeout (600s) per upstream Keep-Alive: header → zombie
-// sockets leak under sustained proxied load. Artiffusion patch — ported from OmniRoute.
-export const FETCH_HEADERS_TIMEOUT_MS = envMs("FETCH_HEADERS_TIMEOUT_MS", 60 * 1000);
-export const FETCH_BODY_TIMEOUT_MS = envMs("FETCH_BODY_TIMEOUT_MS", 600 * 1000);
-export const FETCH_KEEPALIVE_TIMEOUT_MS = envMs("FETCH_KEEPALIVE_TIMEOUT_MS", 4 * 1000);
-
-// Round-robin proxy dispatcher: number of one-connection Agents to fan out across.
-// Mitigates Node 24 undici same-origin SSE serialization. 0/1 = single Agent (legacy).
-export const PROXY_DISPATCHER_CONNECTIONS = (() => {
-  const raw = process.env.PROXY_DISPATCHER_CONNECTIONS;
-  if (raw == null || raw === "") return 1;
-  const n = parseInt(raw, 10);
-  return Number.isFinite(n) && n >= 0 ? Math.min(n, 256) : 1;
-})();
 
 // Gemini native TTS fetch timeout: abort if Google does not return response headers in time.
 export const GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS = envMs("GEMINI_NATIVE_TTS_FETCH_TIMEOUT_MS", 45 * 1000);

@@ -1,6 +1,6 @@
 # Docker
 
-Run 9Gouter in a container. Published image (GHCR only): [`ghcr.io/artiffusion/9gouter`](https://github.com/Artiffusion-Inc/9gouter/pkgs/container/9gouter) — multi-platform `linux/amd64` + `linux/arm64`.
+Run 9Router in a container. Published image: [`decolua/9router`](https://hub.docker.com/r/decolua/9router) — multi-platform `linux/amd64` + `linux/arm64`.
 
 ---
 
@@ -11,10 +11,10 @@ Run 9Gouter in a container. Published image (GHCR only): [`ghcr.io/artiffusion/9
 ```bash
 docker run -d \
   -p 20128:20128 \
-  -v "$HOME/.9gouter:/app/data" \
+  -v "$HOME/.9router:/app/data" \
   -e DATA_DIR=/app/data \
-  --name 9gouter \
-  ghcr.io/artiffusion/9gouter:latest
+  --name 9router \
+  decolua/9router:latest
 ```
 
 App listens on port `20128`. Open: http://localhost:20128
@@ -22,20 +22,20 @@ App listens on port `20128`. Open: http://localhost:20128
 ## Manage container
 
 ```bash
-docker logs -f 9gouter        # view logs
-docker stop 9gouter           # stop
-docker start 9gouter          # start again
-docker rm -f 9gouter          # remove
+docker logs -f 9router        # view logs
+docker stop 9router           # stop
+docker start 9router          # start again
+docker rm -f 9router          # remove
 ```
 
 ## Data persistence
 
 ```bash
--v "$HOME/.9gouter:/app/data" \
+-v "$HOME/.9router:/app/data" \
 -e DATA_DIR=/app/data
 ```
 
-Without `DATA_DIR`, the app falls back to `~/.9gouter/` (macOS/Linux) or `%APPDATA%\9gouter\` (Windows). In the container, `DATA_DIR=/app/data` makes the bind mount work.
+Without `DATA_DIR`, the app falls back to `~/.9router/` (macOS/Linux) or `%APPDATA%\9router\` (Windows). In the container, `DATA_DIR=/app/data` makes the bind mount work.
 
 Data layout under `$DATA_DIR/`:
 
@@ -47,7 +47,7 @@ $DATA_DIR/
 └── ...                   # certs, logs, runtime configs
 ```
 
-Host path: `$HOME/.9gouter/db/data.sqlite`
+Host path: `$HOME/.9router/db/data.sqlite`
 Container path: `/app/data/db/data.sqlite`
 
 ## Optional env vars
@@ -55,27 +55,27 @@ Container path: `/app/data/db/data.sqlite`
 ```bash
 docker run -d \
   -p 20128:20128 \
-  -v "$HOME/.9gouter:/app/data" \
+  -v "$HOME/.9router:/app/data" \
   -e DATA_DIR=/app/data \
   -e PORT=20128 \
   -e HOSTNAME=0.0.0.0 \
   -e DEBUG=true \
-  --name 9gouter \
-  ghcr.io/artiffusion/9gouter:latest
+  --name 9router \
+  decolua/9router:latest
 ```
 
 ## Optional Headroom sidecar
 
-The 9Gouter image does not bundle Python or Headroom. To use Headroom in Docker, run it as a separate service and point 9Gouter at that proxy:
+The 9Router image does not bundle Python or Headroom. To use Headroom in Docker, run it as a separate service and point 9Router at that proxy:
 
 ```yaml
 services:
-  9gouter:
-    image: ghcr.io/artiffusion/9gouter:latest
+  9router:
+    image: decolua/9router:latest
     ports:
       - "20128:20128"
     volumes:
-      - "$HOME/.9gouter:/app/data"
+      - "$HOME/.9router:/app/data"
     environment:
       DATA_DIR: /app/data
       HEADROOM_URL: http://headroom:8787
@@ -95,8 +95,8 @@ If Headroom runs on the Docker host instead of as a sidecar, use `http://host.do
 ## Update to latest
 
 ```bash
-docker pull ghcr.io/artiffusion/9gouter:latest
-docker rm -f 9gouter
+docker pull decolua/9router:latest
+docker rm -f 9router
 # re-run the quick start command
 ```
 
@@ -107,18 +107,19 @@ docker rm -f 9gouter
 ## Build image locally (test)
 
 ```bash
-podman build -t 9gouter -f Containerfile .
+cd app && docker build -t 9router .
 
-podman run --rm -p 20128:20128 \
-  -v "$HOME/.9gouter:/app/data" \
+docker run --rm -p 20128:20128 \
+  -v "$HOME/.9router:/app/data" \
   -e DATA_DIR=/app/data \
-  9gouter
+  9router
 ```
 
 ## Publish (automatic via CI)
 
 Push a git tag `v*` → GitHub Actions builds multi-platform (amd64+arm64) and pushes to:
-- `ghcr.io/artiffusion/9gouter:v{version}` + `:latest`
+- `ghcr.io/decolua/9router:v{version}` + `:latest`
+- `decolua/9router:v{version}` + `:latest`
 
 ```bash
 # Use scripts/release.js (recommended)
@@ -128,4 +129,4 @@ node scripts/release.js "Release title" "Notes"
 git tag v0.4.x && git push origin v0.4.x
 ```
 
-Workflow: `.github/workflows/container-publish.yml`
+Workflow: `app/.github/workflows/docker-publish.yml`

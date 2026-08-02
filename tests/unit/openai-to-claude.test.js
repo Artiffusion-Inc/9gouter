@@ -175,7 +175,6 @@ describe("openaiToClaudeResponse", () => {
       id: "chatcmpl-test",
       model: "gpt-test",
       choices: [{
-        finish_reason: "tool_calls",
         delta: {
           tool_calls: [{
             index: 0,

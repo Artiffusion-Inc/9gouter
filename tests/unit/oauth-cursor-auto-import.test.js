@@ -71,28 +71,23 @@ describe("GET /api/oauth/cursor/auto-import", () => {
     const response = await GET();
 
     expect(response.body.found).toBe(false);
-    expect(response.body.error).toContain("Cursor database not found");
-    expect(response.body.error).toContain("Checked locations:");
+    expect(response.body.error).toContain("Cursor database not found in known macOS locations");
   });
 
-  // NOTE: aspirational spec — current route swallows SQLITE_CANTOPEN and falls
-  // through to the CLI/windowManual path. Skipped for now; would need a route
-  // change to propagate the error.
-  it.skip("returns descriptive error if macOS db file exists but cannot be opened", async () => {
+  it("returns descriptive error if macOS db file exists but cannot be opened", async () => {
     vi.mocked(fsPromises.access).mockResolvedValue();
     mockDbInstance.__throwOnConstruct = true;
 
     const response = await GET();
 
     expect(response.body.found).toBe(false);
+    expect(response.body.error).toContain("could not open it");
     expect(response.body.error).toContain("SQLITE_CANTOPEN");
   });
 
   // ── Token extraction ──────────────────────────────────────────────────
 
-  // NOTE: aspirational spec — current route lacks fuzzy fallback and exact-key
-  // extraction. Skipping to keep test green; behaviour not implemented yet.
-  it.skip("extracts tokens using exact keys", async () => {
+  it("extracts tokens using exact keys", async () => {
     vi.mocked(fsPromises.access).mockResolvedValue();
     mockDbInstance.prepare.mockReturnValue({
       all: vi.fn().mockReturnValue([
@@ -109,8 +104,7 @@ describe("GET /api/oauth/cursor/auto-import", () => {
     expect(mockDbInstance.close).toHaveBeenCalled();
   });
 
-  // NOTE: aspirational spec.
-  it.skip("unwraps JSON-encoded string values", async () => {
+  it("unwraps JSON-encoded string values", async () => {
     vi.mocked(fsPromises.access).mockResolvedValue();
     mockDbInstance.prepare.mockReturnValue({
       all: vi.fn().mockReturnValue([
@@ -128,8 +122,7 @@ describe("GET /api/oauth/cursor/auto-import", () => {
 
   // ── Fuzzy fallback (macOS only) ───────────────────────────────────────
 
-  // NOTE: aspirational spec.
-  it.skip("falls back to fuzzy key matching on macOS when exact keys are missing", async () => {
+  it("falls back to fuzzy key matching on macOS when exact keys are missing", async () => {
     vi.mocked(fsPromises.access).mockResolvedValue();
     mockDbInstance.prepare.mockImplementation((query) => {
       if (query.includes("IN (")) {
@@ -151,8 +144,7 @@ describe("GET /api/oauth/cursor/auto-import", () => {
     expect(response.body.machineId).toBe("fallback-machine");
   });
 
-  // NOTE: aspirational spec — current route returns `windowsManual: true` here.
-  it.skip("returns login-prompt error when tokens are missing even after fallback", async () => {
+  it("returns login-prompt error when tokens are missing even after fallback", async () => {
     vi.mocked(fsPromises.access).mockResolvedValue();
     mockDbInstance.prepare.mockReturnValue({
       all: vi.fn().mockReturnValue([]),
@@ -166,9 +158,7 @@ describe("GET /api/oauth/cursor/auto-import", () => {
 
   // ── Backwards-compatible: linux/win32 keep original single-path logic ─
 
-  // NOTE: aspirational spec — current route uses multi-path probing on Linux
-  // and returns a different error message.
-  it.skip("linux uses single hardcoded path and original error message", async () => {
+  it("linux uses single hardcoded path and original error message", async () => {
     Object.defineProperty(process, "platform", { value: "linux", writable: true });
     vi.mocked(fsPromises.access).mockRejectedValue(new Error("ENOENT"));
     mockDbInstance.__throwOnConstruct = true;
@@ -183,9 +173,7 @@ describe("GET /api/oauth/cursor/auto-import", () => {
     expect(fsPromises.access).not.toHaveBeenCalled();
   });
 
-  // NOTE: aspirational spec — current route falls through to linux defaults
-  // for unsupported platforms, no 400 status.
-  it.skip("unsupported platform returns 400", async () => {
+  it("unsupported platform returns 400", async () => {
     Object.defineProperty(process, "platform", { value: "freebsd", writable: true });
 
     const response = await GET();

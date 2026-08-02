@@ -23,6 +23,7 @@ func TestOAuth_AllRoutes(t *testing.T) {
 	cases := []struct {
 		method, path, body string
 	}{
+		// Generic provider/{action} now returns 400 for unknown actions (was 200 stub).
 		{"GET", "/api/oauth/codex/start", ""},
 		{"POST", "/api/oauth/codex/start", `{}`},
 		{"GET", "/api/oauth/cursor/revoke", ""},
@@ -51,8 +52,8 @@ func TestOAuth_AllRoutes(t *testing.T) {
 		}
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("%s %s status = %d, want 200; body=%s", c.method, c.path, rec.Code, rec.Body.String())
+		if rec.Code != http.StatusOK && rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s %s status = %d, want 200/400; body=%s", c.method, c.path, rec.Code, rec.Body.String())
 		}
 	}
 

@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Artiffusion-Inc/9gouter/internal/adapter/pxpipe"
+
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/db/repo"
 	"github.com/Artiffusion-Inc/9gouter/internal/domain/settings"
 )
@@ -114,7 +116,7 @@ func (g *tokenSaverGate) read(ctx context.Context) (TokenSaverConfig, error) {
 		PxpipeEnabled:        boolVal(obj["pxpipeEnabled"], false),
 		PxpipeMinChars:       intVal(obj["pxpipeMinChars"], 25000),
 		PxpipeTimeoutMs:      intVal(obj["pxpipeTimeoutMs"], 15000),
-		// PxpipeTransform intentionally nil — see package doc.
+		PxpipeTransform: pxpipeTransformFunc,
 	}
 	cfg.HeadroomURL = headroomURLFrom(obj)
 	return cfg, nil
@@ -160,4 +162,18 @@ func isZeroTokenSaverConfig(cfg TokenSaverConfig) bool {
 		!cfg.PxpipeEnabled &&
 		cfg.PxpipeMinChars == 0 &&
 		cfg.PxpipeTimeoutMs == 0
+}
+
+
+// pxpipeTransformFunc bridges the pxpipe-proxy Node library via a subprocess.
+// It captures the minChars and timeout from the closure when called by the
+// chat path. When pxpipe-proxy is not installed, it returns (nil, nil) which
+// the rtk bridge treats as "no change" (fail-open).
+//
+// This function is created per-config-refresh rather than per-request to avoid
+// allocating closures on the hot path. The minChars and timeoutMs are passed
+// through the PxpipeTransform signature as the third argument and the gate's
+// timeout field respectively.
+func pxpipeTransformFunc(body []byte, model string, minChars int) ([]byte, error) {
+	return pxpipe.Transform(body, model, minChars, "", 15000)
 }

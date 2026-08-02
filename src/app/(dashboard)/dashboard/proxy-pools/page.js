@@ -367,22 +367,6 @@ export default function ProxyPoolsPage() {
     setShowDenoModal(true);
   };
 
-  // Redeploy an existing relay pool in place. Reuses the deploy modals with the
-  // pool name pre-filled; the user re-enters the deploy token (tokens are never
-  // stored). Route upserts the pool entry instead of creating a duplicate.
-  const openRedeployModal = (pool) => {
-    if (pool.type === "vercel") {
-      setVercelForm({ vercelToken: "", projectName: pool.name });
-      setShowVercelModal(true);
-    } else if (pool.type === "cloudflare") {
-      setCloudflareForm({ accountId: "", apiToken: "", projectName: pool.name });
-      setShowCloudflareModal(true);
-    } else if (pool.type === "deno") {
-      setDenoForm({ denoToken: "", orgDomain: "", projectName: pool.name });
-      setShowDenoModal(true);
-    }
-  };
-
   const closeDenoModal = () => {
     if (deploying) return;
     setShowDenoModal(false);
@@ -401,7 +385,7 @@ export default function ProxyPoolsPage() {
       if (res.ok) {
         await fetchProxyPools();
         closeVercelModal();
-        notify.success(`${data.redeployed ? "Redeployed" : "Deployed"}: ${data.deployUrl}`);
+        notify.success(`Deployed: ${data.deployUrl}`);
       } else {
         notify.error(data.error || "Deploy failed");
       }
@@ -426,7 +410,7 @@ export default function ProxyPoolsPage() {
       if (res.ok) {
         await fetchProxyPools();
         closeCloudflareModal();
-        notify.success(`${data.redeployed ? "Redeployed" : "Deployed"}: ${data.deployUrl}`);
+        notify.success(`Deployed: ${data.deployUrl}`);
       } else {
         notify.error(data.error || "Deploy failed");
       }
@@ -451,7 +435,7 @@ export default function ProxyPoolsPage() {
       if (res.ok) {
         await fetchProxyPools();
         closeDenoModal();
-        notify.success(`${data.redeployed ? "Redeployed" : "Deployed"}: ${data.deployUrl}`);
+        notify.success(`Deployed: ${data.deployUrl}`);
       } else {
         notify.error(data.error || "Deploy failed");
       }
@@ -780,15 +764,6 @@ export default function ProxyPoolsPage() {
                   >
                     <span className="material-symbols-outlined text-[18px]">edit</span>
                   </button>
-                  {(pool.type === "vercel" || pool.type === "cloudflare" || pool.type === "deno") && (
-                    <button
-                      onClick={() => openRedeployModal(pool)}
-                      className="p-2 rounded hover:bg-black/5 dark:hover:bg-white/5 text-text-muted hover:text-primary"
-                      title="Redeploy relay worker"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">restart_alt</span>
-                    </button>
-                  )}
                   <button
                     onClick={() => handleDelete(pool)}
                     className="p-2 rounded hover:bg-red-500/10 text-red-500"

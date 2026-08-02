@@ -104,7 +104,7 @@ export async function createProviderConnection(data) {
   const now = new Date().toISOString();
   let result;
 
-  const __tx = db.transaction(() => {
+  db.transaction(() => {
     const all = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [data.provider]).map(rowToConn);
 
     let existing = null;
@@ -183,7 +183,7 @@ export async function createProviderConnection(data) {
     upsert(db, conn);
     reorderInTx(db, data.provider);
     result = conn;
-  }); __tx();
+  });
 
   return result;
 }
@@ -192,7 +192,7 @@ export async function createProviderConnection(data) {
 export async function updateProviderConnection(id, data) {
   const db = await getAdapter();
   let result;
-  const __tx = db.transaction(() => {
+  db.transaction(() => {
     const row = db.get(`SELECT * FROM providerConnections WHERE id = ?`, [id]);
     if (!row) { result = null; return; }
     const existing = rowToConn(row);
@@ -200,20 +200,20 @@ export async function updateProviderConnection(id, data) {
     upsert(db, merged);
     if (data.priority !== undefined) reorderInTx(db, existing.provider);
     result = merged;
-  }); __tx();
+  });
   return result;
 }
 
 export async function deleteProviderConnection(id) {
   const db = await getAdapter();
   let ok = false;
-  const __tx = db.transaction(() => {
+  db.transaction(() => {
     const row = db.get(`SELECT provider FROM providerConnections WHERE id = ?`, [id]);
     if (!row) return;
     db.run(`DELETE FROM providerConnections WHERE id = ?`, [id]);
     reorderInTx(db, row.provider);
     ok = true;
-  }); __tx();
+  });
   return ok;
 }
 
@@ -239,7 +239,7 @@ export async function cleanupProviderConnections() {
     "consecutiveUseCount",
   ];
   let cleaned = 0;
-  const __tx = db.transaction(() => {
+  db.transaction(() => {
     const rows = db.all(`SELECT * FROM providerConnections`);
     for (const row of rows) {
       const conn = rowToConn(row);
@@ -256,6 +256,6 @@ export async function cleanupProviderConnections() {
       }
       if (dirty) upsert(db, conn);
     }
-  }); __tx();
+  });
   return cleaned;
 }

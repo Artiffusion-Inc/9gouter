@@ -90,11 +90,11 @@ func TestResponsesCompact_OverwritesExistingFlag(t *testing.T) {
 	}
 }
 
-// TestResponsesGet_501NotImplemented verifies GET /v1/responses/{id} returns
-// an honest 501 (the RetrieveResponse poll pipeline is not implemented — no
-// upstream provider returns Responses-API LRO state) rather than a 404 that
-// would read as "route does not exist".
-func TestResponsesGet_501NotImplemented(t *testing.T) {
+// TestResponsesGet_404NotFound verifies GET /v1/responses/{id} returns a
+// 404 in the OpenAI error shape (response_not_found) — matching the real
+// OpenAI API behaviour when retrieving a response created with store=false.
+// 9router always sends store=false, so no response is ever stored upstream.
+func TestResponsesGet_404NotFound(t *testing.T) {
 	stub := &stubChatHandler{}
 	_, mux := newResponsesHandler(t, stub)
 
@@ -103,8 +103,8 @@ func TestResponsesGet_501NotImplemented(t *testing.T) {
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want 501", rec.Code)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 	if stub.got != nil {
 		t.Errorf("chat handler must not be invoked for GET poll")
@@ -116,5 +116,8 @@ func TestResponsesGet_501NotImplemented(t *testing.T) {
 	errObj, _ := errBody["error"].(map[string]any)
 	if msg, _ := errObj["message"].(string); !strings.Contains(msg, "resp_abc123") {
 		t.Errorf("error message does not echo the id: %q", msg)
+	}
+	if code, _ := errObj["code"].(string); code != "response_not_found" {
+		t.Errorf("error code = %q, want response_not_found", code)
 	}
 }

@@ -58,18 +58,26 @@ func (h *v1Handler) dispatchResponsesCompact(w http.ResponseWriter, r *http.Requ
 }
 
 // handleResponsesGet implements GET /v1/responses/{id} — the OpenAI Responses
-// API RetrieveResponse endpoint used to poll a long-running response. The
-// legacy JS build never implemented it (route.js only exported POST), and the
-// Go rewrite has no upstream provider that returns Responses-API LRO state
-// (status in_progress/completed/incomplete): Codex and grok-cli pass through
-// previous_response_id but are handled synchronously through the chat pipeline.
+// API RetrieveResponse endpoint. 9router always sends store=false to upstream
+// providers (codex, grok-cli), so no response is ever stored upstream. The
+// correct behaviour is to return a 404 in the OpenAI error shape — matching
+// what the real OpenAI API returns when you retrieve a response that was
+// created with store=false (or never existed).
 //
-// The endpoint is registered so the route is no longer MISSING (T025/T033 P2)
-// and clients polling an in-progress response get an honest 501 instead of a
-// 404 that looks like the route does not exist. When an upstream provider that
-// emits LRO Responses state is wired, this becomes a passthrough to that
-// provider's retrieve endpoint.
+// Clients that received a streaming response already have the full output;
+// they should not poll. This endpoint exists so the route surface is complete
+// and clients that mistakenly poll get a clean 404 instead of a 404 that
+// looks like the route is missing.
 func (h *v1Handler) handleResponsesGet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	h.writeError(w, http.StatusNotImplemented, "Responses API polling (GET /v1/responses/{id}) not implemented; no upstream provider returns long-running Responses state (id="+id+")")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"message": "Response not found (id=" + id + "). 9router sends store=false to all upstream providers, so responses are not stored and cannot be polled. The full response was delivered in the initial streaming or non-streaming POST.",
+			"type":    "invalid_request_error",
+			"code":    "response_not_found",
+			"param":   "id",
+		},
+	})
 }

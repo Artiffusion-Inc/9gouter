@@ -1,6 +1,13 @@
 package api
 
-import "net/http"
+import (
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+)
 
 // RegisterPxPipe mounts pxpipe management routes.
 func RegisterPxPipe(mux *http.ServeMux, deps Deps) {
@@ -25,7 +32,9 @@ func (h *pxpipeHandler) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *pxpipeHandler) status(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"running": false, "installed": false})
+	installed := isPxpipeInstalled()
+	running := installed // library mode: "running" = module loadable = installed
+	writeJSON(w, http.StatusOK, map[string]any{"running": running, "installed": installed})
 }
 
 func (h *pxpipeHandler) start(w http.ResponseWriter, r *http.Request) {
@@ -60,5 +69,40 @@ func (h *pxpipeHandler) logs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *pxpipeHandler) install(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "PxPipe install stubbed in Go build"})
+	npmBin := "npm"
+	if runtime.GOOS == "windows" {
+		npmBin = "npm.cmd"
+	}
+	pxpipeDir := filepath.Join(dataDirFromDeps(h.deps), "pxpipe")
+	cmd := exec.Command(npmBin, "install", "pxpipe-proxy", "--prefix", pxpipeDir)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success": false,
+			"message": "npm install failed: " + err.Error() + "\n" + string(output),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"message": "PxPipe installed successfully",
+	})
 }
+
+
+// isPxpipeInstalled checks if pxpipe-proxy is installed in the data dir.
+func isPxpipeInstalled() bool {
+	pxpipeDir := filepath.Join(".", "data", "pxpipe")
+	modPath := filepath.Join(pxpipeDir, "node_modules", "pxpipe-proxy")
+	if info, err := os.Stat(modPath); err == nil && info.IsDir() {
+		return true
+	}
+	return false
+}
+
+// dataDirFromDeps returns the data directory from the Deps (best-effort).
+func dataDirFromDeps(deps Deps) string {
+	return filepath.Join(".", "data")
+}
+
+var _ = strings.TrimSpace

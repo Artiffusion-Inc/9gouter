@@ -184,7 +184,57 @@ func (h *translatorHandler) save(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *translatorHandler) send(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "message": "Translator send stubbed in Go build"})
+	// The translator "send" endpoint is a raw provider passthrough for the
+	// dashboard translator playground. It takes {provider, model, body} and
+	// forwards to the upstream provider via the v1 chat dispatch, piping the
+	// SSE response back to the client. Mirrors src/app/api/translator/send/
+	// route.js.
+	var req struct {
+		Provider string          `json:"provider"`
+		Model    string          `json:"model"`
+		Body     json.RawMessage `json:"body"`
+	}
+	if err := parseJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Provider == "" || req.Model == "" || len(req.Body) == 0 {
+		writeError(w, http.StatusBadRequest, "provider, model, and body required")
+		return
+	}
+
+	// Rewrite the request as a /v1/chat/completions call and delegate to
+	// V1Dispatch so the full chat pipeline (credentials, proxy, translators,
+	// streaming) handles it. The body already has the model; we just need to
+	// set the path and let the v1 handler resolve the provider connection.
+	// The model in the body is overwritten with the requested model.
+	var bodyMap map[string]any
+	if err := json.Unmarshal(req.Body, &bodyMap); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body JSON")
+		return
+	}
+	bodyMap["model"] = req.Model
+	bodyBytes, _ := json.Marshal(bodyMap)
+
+	// Build a synthetic /v1/chat/completions request.
+	forwardReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, "/v1/chat/completions", strings.NewReader(string(bodyBytes)))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to build forward request")
+		return
+	}
+	forwardReq.Header.Set("Content-Type", "application/json")
+	// Copy auth headers so the v1 handler can resolve the API key.
+	for _, h2 := range []string{"Authorization", "X-Api-Key", "Cookie"} {
+		if v := r.Header.Get(h2); v != "" {
+			forwardReq.Header.Set(h2, v)
+		}
+	}
+
+	if h.deps.V1Dispatch != nil {
+		h.deps.V1Dispatch(w, forwardReq)
+		return
+	}
+	writeError(w, http.StatusServiceUnavailable, "V1 dispatch not configured")
 }
 
 // translate handles POST /api/translator/translate.

@@ -4,8 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os/exec"
 	"path/filepath"
-	"strings"
+	"runtime"
 	"github.com/Artiffusion-Inc/9gouter/internal/adapter/tunnel"
 	"time"
 )
@@ -236,37 +237,48 @@ func (h *tunnelHandler) tailscaleInstall(w http.ResponseWriter, r *http.Request)
 		return true
 	}
 
-	// Best-effort: log the body so users can confirm the request reached us.
-	// We don't act on sudoPassword yet — install is unimplemented.
-	var body struct {
-		SudoPassword string `json:"sudoPassword"`
+	if h.deps.TailscaleTunnel != nil && h.deps.TailscaleTunnel.IsInstalled() {
+		writeSSEFrame("progress", map[string]any{"message": "Tailscale is already installed."})
+		writeSSEFrame("done", map[string]any{"installed": true})
+		return
 	}
-	_ = parseOptionalJSON(r, &body)
 
-	if !writeSSEFrame("progress", map[string]any{
-		"message": "Tailscale install is not yet implemented in the Go backend. Use the legacy JS backend for installer support.",
-	}) {
+	installCmd := tailscaleInstallCommand()
+	if installCmd == nil {
+		writeSSEFrame("progress", map[string]any{"message": "Auto-install not supported. Install from https://tailscale.com/download"})
+		writeSSEFrame("done", map[string]any{"installed": false})
 		return
 	}
-	if !writeSSEFrame("done", map[string]any{
-		"installed": false,
-		"message":   "Install orchestration pending. Returning to dashboard.",
-	}) {
+
+	writeSSEFrame("progress", map[string]any{"message": "Running: " + installCmd.String()})
+	if output, err := installCmd.CombinedOutput(); err != nil {
+		writeSSEFrame("progress", map[string]any{"message": "Install failed: " + err.Error()})
+		writeSSEFrame("done", map[string]any{"installed": false, "message": string(output)})
 		return
+	}
+
+	writeSSEFrame("progress", map[string]any{"message": "Tailscale installed successfully."})
+	writeSSEFrame("done", map[string]any{"installed": true})
+}
+
+func tailscaleInstallCommand() *exec.Cmd {
+	switch runtime.GOOS {
+	case "darwin":
+		return exec.Command("brew", "install", "tailscale")
+	case "linux":
+		return exec.Command("sh", "-c", "curl -fsSL https://tailscale.com/install.sh | sh")
+	default:
+		return nil
 	}
 }
 
-
+// dataDir returns the data directory for storing downloaded binaries.
 // localPort returns the server's local port for tunnel targeting.
 func (h *tunnelHandler) localPort() int {
-	if h.deps.V1Dispatch != nil {
-		// V1Dispatch is set; the server is running on the configured port.
-		// Read from settings or default.
-	}
 	return 20127 // default Go backend port
 }
 
 // dataDir returns the data directory for storing downloaded binaries.
 func (h *tunnelHandler) dataDir() string {
-	return filepath.Join(strings.TrimSpace(""), ".9router")
+	return filepath.Join(".", ".9router")
 }

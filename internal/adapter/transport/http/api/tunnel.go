@@ -208,7 +208,7 @@ func (h *tunnelHandler) tailscaleDisable(w http.ResponseWriter, r *http.Request)
 // Until the actual Tailscale install orchestration is implemented, we
 // stream a single progress frame, then a done frame, and close — so the
 // install UI completes gracefully and the user can attempt the (also
-// stubbed) connect flow.
+// connect flow.
 func (h *tunnelHandler) tailscaleInstall(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")

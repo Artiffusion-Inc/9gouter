@@ -12,7 +12,7 @@ const proxyClientMaxBodySize = process.env.NINEROUTER_PROXY_CLIENT_MAX_BODY_SIZE
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || ".next",
-  output: "standalone",
+  output: "export",
   serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite"],
   turbopack: {
     root: tracingRoot
@@ -32,6 +32,13 @@ const nextConfig = {
     serverComponentsHmrCache: true,
     // Tree-shake heavy barrel imports to cut compile + bundle size
     optimizePackageImports: ["@xyflow/react", "@dnd-kit/core", "@dnd-kit/sortable", "material-symbols", "marked"],
+    // Page-data collection spawns a worker per page; with better-sqlite3 +
+    // serverExternalPackages each worker loads the legacy ~/.9router db
+    // driver. On a memory-constrained host (swap exhausted by other processes)
+    // the default 4-worker pool gets SIGTERM'd at "Collecting page data" with
+    // exit 143 before producing out/. Pin to a single worker so the build
+    // completes without fighting for memory. Output is identical.
+    cpus: 1,
   },
   webpack: (config, { isServer }) => {
     // Ignore fs/path modules in browser bundle
@@ -49,42 +56,6 @@ const nextConfig = {
       ignored: /[\\/](node_modules|\.git|logs|\.next|\.next-cli-build|gitbook|cli|open-sse\.old|tests|docs)[\\/]/,
     };
     return config;
-  },
-  async rewrites() {
-    return [
-      {
-        source: "/v1/v1/:path*",
-        destination: "/api/v1/:path*"
-      },
-      {
-        source: "/v1/v1",
-        destination: "/api/v1"
-      },
-      {
-        source: "/codex/:path*",
-        destination: "/api/v1/responses"
-      },
-      {
-        source: "/responses",
-        destination: "/api/v1/responses"
-      },
-      {
-        source: "/v1beta/:path*",
-        destination: "/api/v1beta/:path*"
-      },
-      {
-        source: "/v1beta",
-        destination: "/api/v1beta"
-      },
-      {
-        source: "/v1/:path*",
-        destination: "/api/v1/:path*"
-      },
-      {
-        source: "/v1",
-        destination: "/api/v1"
-      }
-    ];
   }
 };
 

@@ -297,10 +297,12 @@ func openaiToKiroRequest(model string, raw json.RawMessage, stream bool) (json.R
 		}
 	}
 	tools := []map[string]any{}
+	toolsAsAny := []any{}
 	if rawTools, ok := body["tools"].([]any); ok {
 		for _, t := range rawTools {
 			if tool, ok := t.(map[string]any); ok {
 				tools = append(tools, tool)
+				toolsAsAny = append(toolsAsAny, t)
 			}
 		}
 	}
@@ -323,6 +325,15 @@ func openaiToKiroRequest(model string, raw json.RawMessage, stream bool) (json.R
 	// Simplified conversion matching the golden snapshot shape.
 	history, currentMessage, systemInstruction := convertOpenAIMessagesToKiro(messages, tools, upstreamModel)
 
+	// Canonicalize the conversation for Kiro wire format (upstream 16cb40fd):
+	// alternating turns, adjacent tool use/result pairs, tool specs only on
+	// currentMessage. Without this Kiro rejects malformed conversations with
+	// 400 "toolUseId not found" or "duplicate tool names".
+	toolSpecs, nameMap := normalizeKiroToolSpecs(toolsAsAny)
+	canon := canonicalizeKiroConversation(history, currentMessage, upstreamModel, toolSpecs, nameMap)
+	history = canon.History
+	currentMessage = canon.CurrentMessage
+
 	timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 	currentTimeContext := fmt.Sprintf("[Context: Current time is %s]", timestamp)
 
@@ -336,12 +347,6 @@ func openaiToKiroRequest(model string, raw json.RawMessage, stream bool) (json.R
 		if uim, ok := currentMessage["userInputMessage"].(map[string]any); ok {
 			uim["content"] = prefixCurrentTime(fmt.Sprintf("%v", uim["content"]), currentTimeContext)
 			uim["origin"] = "AI_EDITOR"
-			// Port 5041494e (kiro #2366): deliver the system prompt via the
-			// native systemInstruction field on userInputMessage so Claude
-			// models treat it as an authoritative directive instead of the
-			// info-only <system-reminder> shape. The <instructions> fallback
-			// stays inline in content (wrapSystemText) for upstreams that do
-			// not read the native field.
 			if systemInstruction != "" {
 				uim["systemInstruction"] = systemInstruction
 			}

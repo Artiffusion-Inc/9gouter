@@ -8,7 +8,6 @@ import { getExecutor } from "open-sse/executors/index.js";
 import { CLAUDE_CLI_SPOOF_HEADERS } from "open-sse/providers/shared.js";
 import { proxyAwareFetch } from "open-sse/utils/proxyFetch.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
-import { refreshAndUpdateCredentials } from "@/app/api/usage/[connectionId]/route.js";
 import { QUOTA_AUTOPING_CONFIG } from "@/shared/constants/config";
 
 const C = QUOTA_AUTOPING_CONFIG;
@@ -252,7 +251,7 @@ function createDefaultDeps() {
     getProviderConnections,
     updateProviderConnection,
     resolveConnectionProxyConfig,
-    refreshAndUpdateCredentials,
+    refreshAndUpdateCredentials: null,
     proxyAwareFetch,
     getExecutor,
   };

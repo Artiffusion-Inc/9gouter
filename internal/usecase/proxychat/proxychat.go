@@ -1104,10 +1104,18 @@ func translateNonStreamingResponse(body map[string]any, sourceFormat, targetForm
 		}
 	}
 
-	// Default passthrough (Claude/Gemini/Kiro non-stream translation is
-	// handled by the streaming pipe for stream:true requests; non-stream for
-	// those formats is a follow-up). At minimum return the body so OpenAI
-	// clients that already got an OpenAI-shaped upstream body keep working.
+	// Claude client (POST /v1/messages, non-streaming): convert the upstream
+	// OpenAI/Ollama non-stream body into the Anthropic Messages shape
+	// {content:[...], stop_reason, usage}. Without this, a Claude-format
+	// client gets a raw {choices:[...]} or Ollama {message:{content}} body
+	// that it cannot parse, causing "model may not exist" errors.
+	if sourceFormat == format.Claude {
+		if translated := openaiBodyToClaude(body); translated != nil {
+			return translated
+		}
+	}
+
+	// Default passthrough.
 	if sourceFormat == format.Openai {
 		return body
 	}
@@ -1567,4 +1575,156 @@ type headroomResult struct {
 	skippedReason string
 	tokensBefore  int
 	tokensAfter   int
+}
+
+// openaiBodyToClaude converts a non-streaming OpenAI chat.completion response
+// into the Anthropic Messages API shape so a Claude-format client (POST /v1/messages
+// with stream:false) gets a proper {content:[...], stop_reason, usage} body
+// instead of the raw upstream {choices:[...]} JSON. This is the non-stream
+// counterpart of the streaming Claude SSE translator.
+//
+// Ports the claude branch of nonStreamingHandler.js in the JS build.
+func openaiBodyToClaude(body map[string]any) map[string]any {
+	if body == nil {
+		return nil
+	}
+	// Already Claude-shaped — leave as-is.
+	if _, ok := body["content"]; ok {
+		return nil
+	}
+	// Ollama-shaped ({message:{content}}) — handle via ollamaBodyToOpenAI first.
+	if _, ok := body["message"]; ok && !isArray(body["message"]) {
+		converted := ollamaBodyToOpenAI(body)
+		if converted != nil {
+			body = converted
+		}
+	}
+
+	choices, ok := body["choices"].([]any)
+	if !ok || len(choices) == 0 {
+		return nil
+	}
+	choice, ok := choices[0].(map[string]any)
+	if !ok {
+		return nil
+	}
+	msg, _ := choice["message"].(map[string]any)
+	if msg == nil {
+		return nil
+	}
+
+	var contentBlocks []map[string]any
+
+	// Thinking / reasoning content.
+	if reasoning, ok := msg["reasoning_content"].(string); ok && reasoning != "" {
+		contentBlocks = append(contentBlocks, map[string]any{
+			"type":     "thinking",
+			"thinking": reasoning,
+		})
+	}
+
+	// Text content.
+	if text, ok := msg["content"].(string); ok && text != "" {
+		contentBlocks = append(contentBlocks, map[string]any{
+			"type": "text",
+			"text": text,
+		})
+	}
+
+	// Tool calls.
+	if toolCalls, ok := msg["tool_calls"].([]any); ok {
+		for _, tc := range toolCalls {
+			tcMap, ok := tc.(map[string]any)
+			if !ok {
+				continue
+			}
+			fn, _ := tcMap["function"].(map[string]any)
+			if fn == nil {
+				continue
+			}
+			name, _ := fn["name"].(string)
+			args, _ := fn["arguments"].(string)
+			id, _ := tcMap["id"].(string)
+			if id == "" {
+				id = fmt.Sprintf("toolu_%d", time.Now().UnixMilli())
+			}
+			var input any = map[string]any{}
+			if args != "" {
+				var parsed map[string]any
+				if json.Unmarshal([]byte(args), &parsed) == nil {
+					input = parsed
+				} else {
+					input = args
+				}
+			}
+			contentBlocks = append(contentBlocks, map[string]any{
+				"type":  "tool_use",
+				"id":    id,
+				"name":  name,
+				"input": input,
+			})
+		}
+	}
+
+	if len(contentBlocks) == 0 {
+		contentBlocks = []map[string]any{
+			{"type": "text", "text": ""},
+		}
+	}
+
+	result := map[string]any{
+		"id":      fmt.Sprintf("msg_%d", time.Now().UnixMilli()),
+		"type":    "message",
+		"role":    "assistant",
+		"content": contentBlocks,
+		"model":   body["model"],
+	}
+
+	// Stop reason mapping.
+	stopReason := "end_turn"
+	if sr, ok := choice["finish_reason"].(string); ok {
+		switch sr {
+		case "stop":
+			stopReason = "end_turn"
+		case "length":
+			stopReason = "max_tokens"
+		case "tool_calls":
+			stopReason = "tool_use"
+		case "content_filter":
+			stopReason = "end_turn"
+		default:
+			stopReason = sr
+		}
+	}
+	result["stop_reason"] = stopReason
+
+	// Usage.
+	usage, _ := body["usage"].(map[string]any)
+	if usage != nil {
+		inputTokens := getInt(usage, "prompt_tokens")
+		outputTokens := getInt(usage, "completion_tokens")
+		result["usage"] = map[string]any{
+			"input_tokens":  inputTokens,
+			"output_tokens": outputTokens,
+		}
+	}
+
+	return result
+}
+
+// getInt extracts an int from a map[string]any, handling both int and float64.
+func getInt(m map[string]any, key string) int {
+	v, ok := m[key]
+	if !ok {
+		return 0
+	}
+	switch n := v.(type) {
+	case int:
+		return n
+	case float64:
+		return int(n)
+	case int64:
+		return int(n)
+	}
+	return 0
 }

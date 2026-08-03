@@ -86,6 +86,10 @@ var Default = Capabilities{
 // merges over Default. Mirrors the JS MODEL_CAPABILITIES map.
 var modelCapabilities = map[string]Capabilities{
 	// Claude 4.6/4.7/4.8 and Sonnet 5 — 1M context + adaptive thinking.
+	"claude-opus-5":                  {Vision: true, Reasoning: true, Search: true, ThinkingFormat: ThinkingClaudeAdaptive, ContextWindow: 1000000, MaxOutput: 128000},
+	"claude-opus-5-thinking":         {Vision: true, Reasoning: true, Search: true, ThinkingFormat: ThinkingClaudeAdaptive, ContextWindow: 1000000, MaxOutput: 128000},
+	"claude-opus-5-agentic":          {Vision: true, Reasoning: true, Search: true, ThinkingFormat: ThinkingClaudeAdaptive, ContextWindow: 1000000, MaxOutput: 128000},
+	"claude-opus-5-thinking-agentic": {Vision: true, Reasoning: true, Search: true, ThinkingFormat: ThinkingClaudeAdaptive, ContextWindow: 1000000, MaxOutput: 128000},
 	"claude-opus-4.6":                  {Vision: true, Reasoning: true, Search: true, ThinkingFormat: ThinkingClaudeAdaptive, ContextWindow: 1000000, MaxOutput: 128000},
 	"claude-opus-4.7":                  {Vision: true, Reasoning: true, Search: true, ThinkingFormat: ThinkingClaudeAdaptive, ContextWindow: 1000000, MaxOutput: 128000},
 	"claude-opus-4-7":                  {Vision: true, Reasoning: true, Search: true, ThinkingFormat: ThinkingClaudeAdaptive, ContextWindow: 1000000, MaxOutput: 128000},
@@ -148,6 +152,11 @@ var providerCapabilities = map[string]map[string]Capabilities{
 		"gpt-5.6-luna":         codexGPT56Default,
 		"gpt-5.6-luna-review":  codexGPT56Default,
 	},
+	// Poolside Laguna — OpenAI-compatible, all reasoning-capable (32K max output).
+	"poolside": {
+		"laguna-s-2.1":  {Reasoning: true, ThinkingFormat: ThinkingOpenai, ContextWindow: 1000000, MaxOutput: 32000},
+		"laguna-xs-2.1": {Reasoning: true, ThinkingFormat: ThinkingOpenai, ContextWindow: 200000, MaxOutput: 32000},
+	},
 	"kiro": {
 		"gpt-5.6-sol":                    kiroGPT56,
 		"gpt-5.6-terra":                  kiroGPT56,
@@ -191,6 +200,7 @@ type patternEntry struct {
 // first, text-only/generic families last. Mirrors the JS array order exactly.
 var patternCapabilities = []patternEntry{
 	// ── Claude (4.6+ = adaptive; older/haiku = budget) ──
+	{"*claude*opus-5*",     Capabilities{Vision: true, Reasoning: true, Search: true, ThinkingFormat: ThinkingClaudeAdaptive, ContextWindow: 1000000, MaxOutput: 128000}},
 	{"*claude*opus-4.6*", Capabilities{Vision: true, Reasoning: true, Search: true, ThinkingFormat: ThinkingClaudeAdaptive}},
 	{"*claude*opus-4.7*", Capabilities{Vision: true, Reasoning: true, Search: true, ThinkingFormat: ThinkingClaudeAdaptive}},
 	{"*claude*opus-4.8*", Capabilities{Vision: true, Reasoning: true, Search: true, ThinkingFormat: ThinkingClaudeAdaptive}},

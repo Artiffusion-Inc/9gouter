@@ -72,6 +72,13 @@ func (e *Executor) TransformRequest(model string, body json.RawMessage, stream b
 	// thinkingUnified in JS; harmless no-op in Go where they are not set there).
 	stripBlacklisted(m)
 
+	// OpenAI clients may include stream_options even for non-streaming calls.
+	// Google generateContent rejects that combination before processing the request.
+	// Ports upstream 0afe9493.
+	if !stream {
+		delete(m, "stream_options")
+	}
+
 	// request is the Gemini-shaped payload (contents/generationConfig/tools).
 	req, _ := m["request"].(map[string]any)
 	if req == nil {

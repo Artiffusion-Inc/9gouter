@@ -967,6 +967,19 @@ func addPlaceholders(obj any) {
 	if !ok {
 		return
 	}
+	// Empty schema {} (no type, no properties) after $ref removal — treat as
+	// object with placeholder. Ports upstream e3e3e235.
+	if len(m) == 0 {
+		m["type"] = "object"
+		m["properties"] = map[string]any{
+			"reason": map[string]any{
+				"type":        "string",
+				"description": "Brief explanation of why you are calling this tool",
+			},
+		}
+		m["required"] = []any{"reason"}
+		return
+	}
 	if m["type"] == "object" {
 		props, _ := m["properties"].(map[string]any)
 		if len(props) == 0 {

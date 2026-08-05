@@ -1453,3 +1453,430 @@ func buildResponsesOpenAIChunk(state map[string]any, delta map[string]any, finis
 	}
 	return shared.BuildChunk(id, created, model, delta, finishReason)
 }
+
+// openaiToOpenaiResponsesResponseTranslator converts streaming Chat Completions
+// chunks ({choices:[{delta:{content,tool_calls,reasoning_content}}]}) into
+// OpenAI Responses API events (response.created, response.output_text.delta,
+// response.output_item.added/done, response.completed). Ports
+// openaiToOpenAIResponsesResponse from the JS build
+// (open-sse/translator/response/openai-responses.js).
+//
+// This is the translator that fires when a client sends to /v1/responses
+// (sourceFormat=OpenaiResponses) and the upstream provider speaks Chat
+// Completions (targetFormat=Openai). Without it the client gets raw
+// chat.completion.chunk SSE frames instead of response.* events.
+type openaiToOpenaiResponsesResponseTranslator struct{}
+
+func (openaiToOpenaiResponsesResponseTranslator) TranslateResponse(chunk json.RawMessage, state map[string]any) ([]json.RawMessage, error) {
+	var body map[string]any
+	if err := json.Unmarshal(chunk, &body); err != nil {
+		return nil, nil
+	}
+
+	events := openaiToOpenAIResponsesEvents(body, state)
+	if events == nil {
+		return nil, nil
+	}
+	out := make([]json.RawMessage, 0, len(events))
+	for _, ev := range events {
+		b, err := json.Marshal(ev)
+		if err != nil {
+			continue
+		}
+		out = append(out, b)
+	}
+	return out, nil
+}
+
+// openaiToOpenAIResponsesEvents converts a single Chat Completions chunk into
+// zero or more Responses API event objects. Each event is a map with "type"
+// and the event-specific fields. The caller (pipe) wraps each as
+// "event: <type>\ndata: <json>\n\n".
+func openaiToOpenAIResponsesEvents(chunk map[string]any, state map[string]any) []map[string]any {
+	// Flush on nil chunk.
+	if chunk == nil {
+		return flushResponsesEvents(state)
+	}
+
+	choices, ok := chunk["choices"].([]any)
+	if !ok || len(choices) == 0 {
+		return nil
+	}
+	choice, ok := choices[0].(map[string]any)
+	if !ok {
+		return nil
+	}
+	delta, _ := choice["delta"].(map[string]any)
+	if delta == nil {
+		delta = map[string]any{}
+	}
+
+	events := []map[string]any{}
+	nextSeq := func() int {
+		s, _ := state["seq"].(int)
+		s++
+		state["seq"] = s
+		return s
+	}
+	emit := func(eventType string, data map[string]any) {
+		data["type"] = eventType
+		data["sequence_number"] = nextSeq()
+		events = append(events, data)
+	}
+
+	// Initialize state on first chunk.
+	if state["started"] != true {
+		state["started"] = true
+		rawID, _ := chunk["id"].(string)
+		responseID := "resp_" + rawID
+		if rawID == "" {
+			responseID = fmt.Sprintf("resp_%d", time.Now().UnixMilli())
+		}
+		state["responseId"] = responseID
+		state["created"] = time.Now().Unix()
+
+		emit("response.created", map[string]any{
+			"response": map[string]any{
+				"id":         responseID,
+				"object":     "response",
+				"created_at": state["created"],
+				"status":     "in_progress",
+				"background": false,
+				"error":      nil,
+				"output":     []any{},
+			},
+		})
+		emit("response.in_progress", map[string]any{
+			"response": map[string]any{
+				"id":         responseID,
+				"object":     "response",
+				"created_at": state["created"],
+				"status":     "in_progress",
+			},
+		})
+	}
+
+	responseID, _ := state["responseId"].(string)
+	created, _ := state["created"].(int)
+
+	// Reasoning content.
+	reasoningText := ""
+	if rc, ok := delta["reasoning_content"].(string); ok {
+		reasoningText = rc
+	}
+	if reasoningText != "" {
+		startReasoning(state, emit, responseID, 0)
+		if reasoningText != "" {
+			emit("response.reasoning_summary_text.delta", map[string]any{
+				"item_id":       state["reasoningId"],
+				"output_index":  state["reasoningIndex"],
+				"summary_index": 0,
+				"delta":         reasoningText,
+			})
+			state["reasoningBuf"] = reasoningText + reasoningText
+		}
+	}
+
+	// Text content.
+	if content, ok := delta["content"].(string); ok && content != "" {
+		emitTextContent(state, emit, responseID, 0, content)
+	}
+
+	// Tool calls.
+	if toolCalls, ok := delta["tool_calls"].([]any); ok {
+		closeMessage(state, emit, responseID, 0)
+		for _, tcAny := range toolCalls {
+			tc, ok := tcAny.(map[string]any)
+			if !ok {
+				continue
+			}
+			emitToolCall(state, emit, responseID, tc)
+		}
+	}
+
+	// Finish reason.
+	if finishReason, ok := choice["finish_reason"].(string); ok && finishReason != "" {
+		closeMessage(state, emit, responseID, 0)
+		closeReasoning(state, emit)
+		closeAllToolCalls(state, emit, responseID)
+		sendCompleted(state, emit, responseID, created)
+	}
+
+	return events
+}
+
+func startReasoning(state map[string]any, emit func(string, map[string]any), responseID string, idx int) {
+	if state["reasoningId"] != nil {
+		return
+	}
+	reasoningID := fmt.Sprintf("rs_%s_%d", responseID, idx)
+	state["reasoningId"] = reasoningID
+	state["reasoningIndex"] = idx
+
+	emit("response.output_item.added", map[string]any{
+		"output_index": idx,
+		"item": map[string]any{
+			"id":      reasoningID,
+			"type":    "reasoning",
+			"summary": []any{},
+		},
+	})
+	emit("response.reasoning_summary_part.added", map[string]any{
+		"item_id":       reasoningID,
+		"output_index":  idx,
+		"summary_index": 0,
+		"part": map[string]any{
+			"type": "summary_text",
+			"text": "",
+		},
+	})
+}
+
+func closeReasoning(state map[string]any, emit func(string, map[string]any)) {
+	reasoningID, _ := state["reasoningId"].(string)
+	if reasoningID == "" || state["reasoningDone"] == true {
+		return
+	}
+	state["reasoningDone"] = true
+	reasoningBuf, _ := state["reasoningBuf"].(string)
+	idx, _ := state["reasoningIndex"].(int)
+
+	emit("response.reasoning_summary_text.done", map[string]any{
+		"item_id":       reasoningID,
+		"output_index":  idx,
+		"summary_index": 0,
+		"text":          reasoningBuf,
+	})
+	emit("response.reasoning_summary_part.done", map[string]any{
+		"item_id":       reasoningID,
+		"output_index":  idx,
+		"summary_index": 0,
+		"part": map[string]any{
+			"type": "summary_text",
+			"text": reasoningBuf,
+		},
+	})
+	emit("response.output_item.done", map[string]any{
+		"output_index": idx,
+		"item": map[string]any{
+			"id":      reasoningID,
+			"type":    "reasoning",
+			"summary": []any{map[string]any{"type": "summary_text", "text": reasoningBuf}},
+		},
+	})
+}
+
+func emitTextContent(state map[string]any, emit func(string, map[string]any), responseID string, idx int, content string) {
+	key := fmt.Sprintf("msgAdded_%d", idx)
+	if state[key] != true {
+		state[key] = true
+		msgID := fmt.Sprintf("msg_%s_%d", responseID, idx)
+		state[fmt.Sprintf("msgId_%d", idx)] = msgID
+		emit("response.output_item.added", map[string]any{
+			"output_index": idx,
+			"item": map[string]any{
+				"id":      msgID,
+				"type":    "message",
+				"content": []any{},
+				"role":    "assistant",
+			},
+		})
+	}
+
+	contentKey := fmt.Sprintf("contentAdded_%d", idx)
+	if state[contentKey] != true {
+		state[contentKey] = true
+		msgID, _ := state[fmt.Sprintf("msgId_%d", idx)].(string)
+		emit("response.content_part.added", map[string]any{
+			"item_id":       msgID,
+			"output_index":  idx,
+			"content_index": 0,
+			"part": map[string]any{
+				"type":        "output_text",
+				"annotations": []any{},
+				"logprobs":     []any{},
+				"text":         "",
+			},
+		})
+	}
+
+	msgID, _ := state[fmt.Sprintf("msgId_%d", idx)].(string)
+	emit("response.output_text.delta", map[string]any{
+		"item_id":       msgID,
+		"output_index":  idx,
+		"content_index": 0,
+		"delta":         content,
+		"logprobs":      []any{},
+	})
+
+	bufKey := fmt.Sprintf("msgBuf_%d", idx)
+	state[bufKey] = content + content
+}
+
+func closeMessage(state map[string]any, emit func(string, map[string]any), responseID string, idx int) {
+	key := fmt.Sprintf("msgAdded_%d", idx)
+	doneKey := fmt.Sprintf("msgDone_%d", idx)
+	if state[key] != true || state[doneKey] == true {
+		return
+	}
+	state[doneKey] = true
+	msgID, _ := state[fmt.Sprintf("msgId_%d", idx)].(string)
+	bufKey := fmt.Sprintf("msgBuf_%d", idx)
+	fullText, _ := state[bufKey].(string)
+
+	emit("response.output_text.done", map[string]any{
+		"item_id":       msgID,
+		"output_index":  idx,
+		"content_index": 0,
+		"text":          fullText,
+		"logprobs":      []any{},
+	})
+	emit("response.content_part.done", map[string]any{
+		"item_id":       msgID,
+		"output_index":  idx,
+		"content_index": 0,
+		"part": map[string]any{
+			"type":        "output_text",
+			"annotations": []any{},
+			"logprobs":    []any{},
+			"text":         fullText,
+		},
+	})
+	emit("response.output_item.done", map[string]any{
+		"output_index": idx,
+		"item": map[string]any{
+			"id":      msgID,
+			"type":    "message",
+			"content": []any{map[string]any{"type": "output_text", "annotations": []any{}, "logprobs": []any{}, "text": fullText}},
+			"role":    "assistant",
+		},
+	})
+}
+
+func emitToolCall(state map[string]any, emit func(string, map[string]any), responseID string, tc map[string]any) {
+	tcIdx := 0
+	if i, ok := tc["index"].(float64); ok {
+		tcIdx = int(i)
+	}
+	newCallID, _ := tc["id"].(string)
+	funcName := ""
+	if fn, ok := tc["function"].(map[string]any); ok {
+		funcName, _ = fn["name"].(string)
+	}
+
+	nameKey := fmt.Sprintf("funcName_%d", tcIdx)
+	if funcName != "" {
+		state[nameKey] = funcName
+	}
+
+	idKey := fmt.Sprintf("funcCallId_%d", tcIdx)
+	if state[idKey] == nil && newCallID != "" {
+		state[idKey] = newCallID
+		fn, _ := state[nameKey].(string)
+		emit("response.output_item.added", map[string]any{
+			"output_index": tcIdx,
+			"item": map[string]any{
+				"id":        fmt.Sprintf("fc_%s", newCallID),
+				"type":       "function_call",
+				"arguments":  "",
+				"call_id":    newCallID,
+				"name":       fn,
+			},
+		})
+	}
+
+	argsKey := fmt.Sprintf("funcArgs_%d", tcIdx)
+	if fn, ok := tc["function"].(map[string]any); ok {
+		if argsDelta, ok := fn["arguments"].(string); ok && argsDelta != "" {
+			callID, _ := state[idKey].(string)
+			if callID == "" {
+				callID = newCallID
+			}
+			emit("response.function_call_arguments.delta", map[string]any{
+				"item_id":       fmt.Sprintf("fc_%s", callID),
+				"output_index":  tcIdx,
+				"delta":         argsDelta,
+			})
+			state[argsKey] = argsDelta + argsDelta
+		}
+	}
+}
+
+func closeAllToolCalls(state map[string]any, emit func(string, map[string]any), responseID string) {
+	for i := 0; i < 20; i++ {
+		callID, _ := state[fmt.Sprintf("funcCallId_%d", i)].(string)
+		if callID == "" {
+			continue
+		}
+		doneKey := fmt.Sprintf("funcDone_%d", i)
+		if state[doneKey] == true {
+			continue
+		}
+		state[doneKey] = true
+		args, _ := state[fmt.Sprintf("funcArgs_%d", i)].(string)
+		if args == "" {
+			args = "{}"
+		}
+		fn, _ := state[fmt.Sprintf("funcName_%d", i)].(string)
+		emit("response.function_call_arguments.done", map[string]any{
+			"item_id":       fmt.Sprintf("fc_%s", callID),
+			"output_index":  i,
+			"arguments":     args,
+		})
+		emit("response.output_item.done", map[string]any{
+			"output_index": i,
+			"item": map[string]any{
+				"id":        fmt.Sprintf("fc_%s", callID),
+				"type":       "function_call",
+				"arguments":  args,
+				"call_id":    callID,
+				"name":       fn,
+			},
+		})
+	}
+}
+
+func sendCompleted(state map[string]any, emit func(string, map[string]any), responseID string, created int) {
+	if state["completedSent"] == true {
+		return
+	}
+	state["completedSent"] = true
+	emit("response.completed", map[string]any{
+		"response": map[string]any{
+			"id":         responseID,
+			"object":     "response",
+			"created_at": created,
+			"status":     "completed",
+			"background": false,
+			"error":      nil,
+		},
+	})
+}
+
+func flushResponsesEvents(state map[string]any) []map[string]any {
+	if state["completedSent"] == true {
+		return nil
+	}
+	responseID, _ := state["responseId"].(string)
+	created, _ := state["created"].(int)
+	events := []map[string]any{}
+	nextSeq := func() int {
+		s, _ := state["seq"].(int)
+		s++
+		state["seq"] = s
+		return s
+	}
+	emit := func(eventType string, data map[string]any) {
+		data["type"] = eventType
+		data["sequence_number"] = nextSeq()
+		events = append(events, data)
+	}
+
+	for i := 0; i < 20; i++ {
+		closeMessage(state, emit, responseID, i)
+	}
+	closeReasoning(state, emit)
+	closeAllToolCalls(state, emit, responseID)
+	sendCompleted(state, emit, responseID, created)
+	return events
+}

@@ -475,7 +475,7 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 			// Same-format OpenAI Responses passthrough must terminate with the
 			// OpenAI [DONE] sentinel on EOF (upstream a9785a5f); the sanitizer
 			// tracks terminal events so [DONE] is not duplicated (c22f11de).
-			EmitDoneOnEOF: sourceFormat == format.OpenaiResponses && targetFormat == format.OpenaiResponses,
+			EmitDoneOnEOF: sourceFormat == format.OpenaiResponses,
 			// The Anthropic streaming format requires an "event: <type>\n" line
 			// before each "data: <json>\n\n" frame; the Claude SDK (Claude Code)
 			// rejects a stream that has only "data:" as malformed. Set the flag

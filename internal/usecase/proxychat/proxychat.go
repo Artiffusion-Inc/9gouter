@@ -1083,6 +1083,14 @@ func translateNonStreamingResponse(body map[string]any, sourceFormat, targetForm
 		return ollamaBodyToOpenAI(body)
 	}
 
+	// Ollama upstream → OpenAI Responses client: same Ollama body shape, but the
+	// client speaks the Responses API (POST /v1/responses). Convert to the
+	// {output:[{type:"message",content:[{type:"output_text",text}]}],status:"completed"}
+	// shape that Codex and other Responses-API clients expect.
+	if targetFormat == format.Ollama && sourceFormat == format.OpenaiResponses {
+		return ollamaBodyToOpenAIResponses(body)
+	}
+
 	// Claude upstream → OpenAI client: claude's non-stream reply is
 	// {content:[{type:"text"|"thinking"|"tool_use",...}], stop_reason, usage}.
 	// Convert to OpenAI {choices:[{message}]} so OpenAI clients (and the
@@ -1188,6 +1196,67 @@ func ollamaBodyToOpenAI(body map[string]any) map[string]any {
 // convertOllamaToolCallsNonStream normalizes Ollama tool_calls into the OpenAI
 // shape for a non-streaming completion message. (The streaming variant lives
 // in the ollama translator package; this is the message-level counterpart.)
+
+// ollamaBodyToOpenAIResponses converts a single Ollama non-streaming chat
+// response body into an OpenAI Responses API object. Mirrors
+// ollamaBodyToOpenAI but produces the {id, object:"response", output:[...],
+// status:"completed", usage:{...}} shape that Responses-API clients (Codex
+// with wire_api="responses") expect instead of the chat.completion shape.
+func ollamaBodyToOpenAIResponses(body map[string]any) map[string]any {
+	if body == nil {
+		return nil
+	}
+	message, _ := body["message"].(map[string]any)
+	content, _ := message["content"].(string)
+	thinking, _ := message["thinking"].(string)
+
+	output := []map[string]any{}
+	if thinking != "" {
+		output = append(output, map[string]any{
+			"type": "reasoning",
+			"id":   "rs_" + shared.FallbackChatID(),
+			"summary": []map[string]any{
+				{
+					"type": "summary_text",
+					"text": thinking,
+				},
+			},
+		})
+	}
+	output = append(output, map[string]any{
+		"type": "message",
+		"id":   "msg_" + shared.FallbackChatID(),
+		"role": "assistant",
+		"content": []map[string]any{
+			{
+				"type": "output_text",
+				"text": content,
+				"annotations": []any{},
+			},
+		},
+	})
+
+	model, _ := body["model"].(string)
+	if model == "" {
+		model = "ollama"
+	}
+	respID := "resp_" + shared.FallbackChatID()
+
+	result := map[string]any{
+		"id":          respID,
+		"object":      "response",
+		"created_at":  time.Now().Unix(),
+		"model":        model,
+		"output":       output,
+		"status":       "completed",
+	}
+
+	if usage := shared.ToOpenAIUsage(body, "ollama"); usage != nil {
+		result["usage"] = usage
+	}
+	return result
+}
+
 func convertOllamaToolCallsNonStream(raw []any) []map[string]any {
 	out := make([]map[string]any, 0, len(raw))
 	for i, rawTC := range raw {

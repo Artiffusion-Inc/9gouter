@@ -14,6 +14,16 @@ func TestLookupGrokCli(t *testing.T) {
 	}
 }
 
+func TestLookupCodexShortAlias(t *testing.T) {
+	p, err := Lookup("cx")
+	if err != nil {
+		t.Fatalf("lookup cx: %v", err)
+	}
+	if p.ID() != "codex" {
+		t.Fatalf("cx resolved to %q, want codex", p.ID())
+	}
+}
+
 // TestGrokCliCatalog pins the upstream 59b78282 static model catalog: grok-build
 // (the Grok Build subscription model) + the grok-4.5 family with effort-suffix
 // aliases that remap to the bare grok-4.5 upstream id. grok-cli also has a live

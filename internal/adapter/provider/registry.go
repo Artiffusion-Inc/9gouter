@@ -758,6 +758,7 @@ var aliases = map[string]string{
 	"cl":             "cline",
 	"cf":             "cloudflare-ai",
 	"cbcn":           "codebuddy-cn",
+	"cx":             "codex",
 	"cu":             "cursor",
 	"gcli":           "grok-cli",
 	"gb":             "grok-cli",

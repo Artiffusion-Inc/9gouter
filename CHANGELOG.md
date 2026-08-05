@@ -1,3 +1,11 @@
+# v0.7.0 (2026-08-05)
+
+## Major Changes
+- Full Go backend: all server-side logic ported from Node.js to Go
+- Legacy JS dead code removed (941 → 394 JS files)
+- Docker Hub removed; only GHCR (ghcr.io/artiffusion-inc/9gouter)
+- Docker compose updated for 9gouter (port 20127)
+
 # v0.5.45 (2026-07-30)
 
 ## Features
@@ -57,7 +65,7 @@
 - **CLI tools**: Grok Build setup — choose separate main/general-purpose/explore/plan models and preserve each model's context window
 - **GitHub Copilot**: route Claude models through Copilot's native `/v1/messages`
 - **Kiro**: add GPT-5.6 model family (#2596)
-- **RTK**: `X-9Router-Token-Saver` header to bypass token savers per request
+- **RTK**: `X-9Gouter-Token-Saver` header to bypass token savers per request
 - **Providers**: quota visibility settings
 - **Translator**: drop temperature for all Claude models
 - **i18n**: Thai (th) + Persian (fa) translations / README
@@ -307,7 +315,7 @@
 - Dashboard: show provider node name instead of connection name in topology (#1770) + show explicit `kind="llm"` combos on combos page (#1684)
 
 ## Docs
-- README: add Indonesian 9Router tutorial video (#1709)
+- README: add Indonesian 9Gouter tutorial video (#1709)
 
 # v0.4.71 (2026-06-06)
 

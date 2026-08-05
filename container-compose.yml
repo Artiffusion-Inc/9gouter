@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Containerfile
-    image: ghcr.io/artiffusion/9gouter:latest
+    image: ghcr.io/artiffusion-inc/9gouter:latest
     container_name: 9gouter
     restart: always
     ports:

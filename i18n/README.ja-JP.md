@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="../images/9router.png?1" alt="9Router Dashboard" width="800"/>
+  <img src="../images/9router.png?1" alt="9Gouter Dashboard" width="800"/>
 
-  # 9Router - 無料 AI ルーター
+  # 9Gouter - 無料 AI ルーター
 
   **コーディングを止めない。スマートフォールバックで無料＆格安AIモデルに自動ルーティング。**
 
@@ -9,7 +9,7 @@
 
   [![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
   [![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
-  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
+  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/Artiffusion-Inc/9gouter/blob/main/LICENSE)
 
   [🚀 クイックスタート](#-クイックスタート) • [💡 機能](#-主な機能) • [📖 セットアップ](#-セットアップガイド) • [🌐 ウェブサイト](https://9router.com)
 
@@ -18,7 +18,7 @@
 
 ---
 
-## 🤔 なぜ9Router？
+## 🤔 なぜ9Gouter？
 
 **お金の無駄遣いと制限に悩まされるのはもう終わりです：**
 
@@ -27,7 +27,7 @@
 - ❌ 高額なAPI（プロバイダーごとに月額$20〜50）
 - ❌ プロバイダー間の手動切り替え
 
-**9Routerが解決します：**
+**9Gouterが解決します：**
 
 - ✅ **サブスクリプションを最大化** - クオータを追跡し、リセット前にすべて使い切る
 - ✅ **自動フォールバック** - サブスクリプション → 格安 → 無料、ダウンタイムゼロ
@@ -43,10 +43,10 @@
 │  あなたの    │  （Claude Code、Codex、Gemini CLI、OpenClaw、Cursor、Cline...）
 │   CLIツール  │
 └──────┬──────┘
-       │ http://localhost:20128/v1
+       │ http://localhost:20127/v1
        ↓
 ┌─────────────────────────────────────────┐
-│        9Router（スマートルーター）        │
+│        9Gouter（スマートルーター）        │
 │  • フォーマット変換（OpenAI ↔ Claude）   │
 │  • クオータ追跡                          │
 │  • 自動トークンリフレッシュ               │
@@ -72,7 +72,7 @@ npm install -g 9router
 9router
 ```
 
-🎉 ダッシュボードが `http://localhost:20128` で開きます
+🎉 ダッシュボードが `http://localhost:20127` で開きます
 
 **2. 無料プロバイダーを接続（サインアップ不要）：**
 
@@ -82,7 +82,7 @@ npm install -g 9router
 
 ```
 Claude Code/Codex/Gemini CLI/OpenClaw/Cursor/Clineの設定:
-  エンドポイント: http://localhost:20128/v1
+  エンドポイント: http://localhost:20127/v1
   APIキー: [ダッシュボードからコピー]
   モデル: if/kimi-k2-thinking
 ```
@@ -96,19 +96,19 @@ Claude Code/Codex/Gemini CLI/OpenClaw/Cursor/Clineの設定:
 ```bash
 cp .env.example .env
 npm install
-PORT=20128 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run dev
+PORT=20127 NEXT_PUBLIC_BASE_URL=http://localhost:20127 npm run dev
 ```
 
 本番モード：
 
 ```bash
 npm run build
-PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run start
+PORT=20127 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20127 npm run start
 ```
 
 デフォルトURL：
-- ダッシュボード: `http://localhost:20128/dashboard`
-- OpenAI互換API: `http://localhost:20128/v1`
+- ダッシュボード: `http://localhost:20127/dashboard`
+- OpenAI互換API: `http://localhost:20127/v1`
 
 ---
 
@@ -116,12 +116,12 @@ PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run 
 
 <div align="center">
 
-### 📺 完全セットアップガイド - 9Router + Claude Code 無料
+### 📺 完全セットアップガイド - 9Gouter + Claude Code 無料
 
-[![9Router + Claude Code Setup](https://img.youtube.com/vi/raEyZPg5xE0/maxresdefault.jpg)](https://www.youtube.com/watch?v=raEyZPg5xE0)
+[![9Gouter + Claude Code Setup](https://img.youtube.com/vi/raEyZPg5xE0/maxresdefault.jpg)](https://www.youtube.com/watch?v=raEyZPg5xE0)
 
 **🎬 ステップバイステップのチュートリアルを視聴：**
-- ✅ 9Routerのインストールとセットアップ
+- ✅ 9Gouterのインストールとセットアップ
 - ✅ 無料Claude Sonnet 4.5の設定
 - ✅ Claude Codeとの統合
 - ✅ ライブコーディングデモ
@@ -136,7 +136,7 @@ PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run 
 
 ## 🛠️ 対応CLIツール
 
-9Routerはすべての主要AIコーディングツールとシームレスに連携します：
+9Gouterはすべての主要AIコーディングツールとシームレスに連携します：
 
 <div align="center">
   <table>
@@ -387,7 +387,7 @@ PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run 
 
 フォーマット間のシームレスな変換：
 - **OpenAI** ↔ **Claude** ↔ **Gemini** ↔ **OpenAI Responses**
-- CLIツールがOpenAIフォーマットで送信 → 9Routerが変換 → プロバイダーがネイティブフォーマットで受信
+- CLIツールがOpenAIフォーマットで送信 → 9Gouterが変換 → プロバイダーがネイティブフォーマットで受信
 - カスタムOpenAIエンドポイントをサポートするすべてのツールで動作
 
 ### 👥 マルチアカウント対応
@@ -441,12 +441,12 @@ PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run 
 > **💡 重要 - ダッシュボードのコストについて：**
 >
 > 使用状況分析に表示される「コスト」は**追跡と比較目的のみ**です。
-> 9Router自体は**一切課金しません**。有料サービスを使用する場合のみ、プロバイダーに直接支払います。
+> 9Gouter自体は**一切課金しません**。有料サービスを使用する場合のみ、プロバイダーに直接支払います。
 >
 > **例:** ダッシュボードにiFlowモデルの使用で「合計コスト$290」と表示されている場合、
 > これは有料APIを直接使用した場合に支払うであろう金額を表しています。実際のコスト = **$0**（iFlowは無料無制限）。
 >
-> これは無料モデルや9Router経由のルーティングでどれだけ節約しているかを示す「節約トラッカー」と考えてください！
+> これは無料モデルや9Gouter経由のルーティングでどれだけ節約しているかを示す「節約トラッカー」と考えてください！
 
 ### 🌐 どこでもデプロイ
 
@@ -478,15 +478,15 @@ PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run 
 
 ---
 
-### 📊 9Routerのコストと課金について
+### 📊 9Gouterのコストと課金について
 
-**9Routerの課金の実態：**
+**9Gouterの課金の実態：**
 
-✅ **9Routerソフトウェア = 永久無料**（オープンソース、課金なし）
+✅ **9Gouterソフトウェア = 永久無料**（オープンソース、課金なし）
 ✅ **ダッシュボードの「コスト」= 表示/追跡のみ**（実際の請求ではない）
 ✅ **プロバイダーに直接支払い**（サブスクリプションまたはAPI料金）
 ✅ **無料プロバイダーは無料のまま**（iFlow、Kiro、Qwen = $0 無制限）
-❌ **9Routerは請求書を送ったり**カードに課金したりしません
+❌ **9Gouterは請求書を送ったり**カードに課金したりしません
 
 **コスト表示の仕組み：**
 
@@ -507,9 +507,9 @@ PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run 
 
 **支払いルール：**
 - **サブスクリプションプロバイダー**（Claude Code、Codex）：各ウェブサイトで直接支払い
-- **格安プロバイダー**（GLM、MiniMax）：直接支払い、9Routerはルーティングのみ
+- **格安プロバイダー**（GLM、MiniMax）：直接支払い、9Gouterはルーティングのみ
 - **無料プロバイダー**（iFlow、Kiro、Qwen）：本当に永久無料、隠れた料金なし
-- **9Router**：一切課金しない
+- **9Gouter**：一切課金しない
 
 ---
 
@@ -584,7 +584,7 @@ vs. $20 + 制限に引っかかる = フラストレーション
 <details>
 <summary><b>📊 ダッシュボードに高額なコストが表示されるのはなぜ？</b></summary>
 
-ダッシュボードはトークン使用量を追跡し、有料APIを直接使用した場合の**推定コスト**を表示します。これは**実際の課金ではなく**、9Routerを通じて無料モデルや既存のサブスクリプションを使用することでどれだけ節約しているかを示すための参考値です。
+ダッシュボードはトークン使用量を追跡し、有料APIを直接使用した場合の**推定コスト**を表示します。これは**実際の課金ではなく**、9Gouterを通じて無料モデルや既存のサブスクリプションを使用することでどれだけ節約しているかを示すための参考値です。
 
 **例：**
 - **ダッシュボード表示:** 「合計コスト$290」
@@ -597,16 +597,16 @@ vs. $20 + 制限に引っかかる = フラストレーション
 </details>
 
 <details>
-<summary><b>💳 9Routerに課金されますか？</b></summary>
+<summary><b>💳 9Gouterに課金されますか？</b></summary>
 
-**いいえ。** 9Routerはあなたのコンピューター上で動作する無料のオープンソースソフトウェアです。一切課金しません。
+**いいえ。** 9Gouterはあなたのコンピューター上で動作する無料のオープンソースソフトウェアです。一切課金しません。
 
 **支払い先：**
 - ✅ **サブスクリプションプロバイダー**（Claude Code $20/月、Codex $20-200/月）→ 各ウェブサイトで直接支払い
-- ✅ **格安プロバイダー**（GLM、MiniMax）→ 直接支払い、9Routerはリクエストをルーティングするだけ
-- ❌ **9Router自体** → **一切課金しない**
+- ✅ **格安プロバイダー**（GLM、MiniMax）→ 直接支払い、9Gouterはリクエストをルーティングするだけ
+- ❌ **9Gouter自体** → **一切課金しない**
 
-9Routerはローカルプロキシ/ルーターです。クレジットカード情報を持たず、請求書を送信できず、課金システムもありません。完全に無料のソフトウェアです。
+9Gouterはローカルプロキシ/ルーターです。クレジットカード情報を持たず、請求書を送信できず、課金システムもありません。完全に無料のソフトウェアです。
 
 </details>
 
@@ -620,9 +620,9 @@ vs. $20 + 制限に引っかかる = フラストレーション
 - **Kiro**: AWS Builder ID経由で無料無制限Claudeモデル
 - **Qwen**: デバイス認証経由でQwenモデルに無料無制限アクセス
 
-9Routerはリクエストをルーティングするだけで、「罠」や将来の課金はありません。本当に無料のサービスであり、9Routerはフォールバックサポートでそれらを使いやすくしています。
+9Gouterはリクエストをルーティングするだけで、「罠」や将来の課金はありません。本当に無料のサービスであり、9Gouterはフォールバックサポートでそれらを使いやすくしています。
 
-**注意:** 一部のサブスクリプションプロバイダー（Antigravity、GitHub Copilot）には無料プレビュー期間があり、後に有料になる可能性がありますが、それは9Routerではなく各プロバイダーから明確に告知されます。
+**注意:** 一部のサブスクリプションプロバイダー（Antigravity、GitHub Copilot）には無料プレビュー期間があり、後に有料になる可能性がありますが、それは9Gouterではなく各プロバイダーから明確に告知されます。
 
 </details>
 
@@ -647,7 +647,7 @@ vs. $20 + 制限に引っかかる = フラストレーション
 
 3. **サブスクリプションプロバイダーは最後に使用：**
    - 既にお持ちの場合のみ
-   - 9Routerがクオータ追跡で価値を最大化
+   - 9Gouterがクオータ追跡で価値を最大化
 
 **結果:** ほとんどのユーザーは無料ティアのみで月額$0で運用可能！
 
@@ -656,20 +656,20 @@ vs. $20 + 制限に引っかかる = フラストレーション
 <details>
 <summary><b>📈 使用量が突然急増したら？</b></summary>
 
-9Routerのスマートフォールバックが予期しない課金を防止します：
+9Gouterのスマートフォールバックが予期しない課金を防止します：
 
 **シナリオ:** コーディングスプリント中にクオータを使い切った
 
-**9Routerなし：**
+**9Gouterなし：**
 - ❌ レート制限に到達 → 作業停止 → フラストレーション
 - ❌ または: 意図せず高額なAPI請求が発生
 
-**9Routerあり：**
+**9Gouterあり：**
 - ✅ サブスクリプションが上限に達する → 格安ティアに自動フォールバック
 - ✅ 格安ティアが高くなる → 無料ティアに自動フォールバック
 - ✅ コーディングが止まらない → 予測可能なコスト
 
-**あなたがコントロール:** ダッシュボードでプロバイダーごとの支出上限を設定し、9Routerはそれを遵守します。
+**あなたがコントロール:** ダッシュボードでプロバイダーごとの支出上限を設定し、9Gouterはそれを遵守します。
 
 </details>
 
@@ -693,7 +693,7 @@ vs. $20 + 制限に引っかかる = フラストレーション
   cc/claude-haiku-4-5-20251001
 ```
 
-**プロのヒント:** 複雑なタスクにはOpus、スピード重視ならSonnet。9Routerはモデルごとにクオータを追跡します！
+**プロのヒント:** 複雑なタスクにはOpus、スピード重視ならSonnet。9Gouterはモデルごとにクオータを追跡します！
 
 ### OpenAI Codex (Plus/Pro)
 
@@ -861,7 +861,7 @@ CLIでの使用: premium-coding
 
 ```
 設定 → Models → Advanced:
-  OpenAI API Base URL: http://localhost:20128/v1
+  OpenAI API Base URL: http://localhost:20127/v1
   OpenAI API Key: [9routerダッシュボードから]
   Model: cc/claude-opus-4-6
 ```
@@ -874,7 +874,7 @@ CLIでの使用: premium-coding
 
 ```json
 {
-  "anthropic_api_base": "http://localhost:20128/v1",
+  "anthropic_api_base": "http://localhost:20127/v1",
   "anthropic_api_key": "your-9router-api-key"
 }
 ```
@@ -882,7 +882,7 @@ CLIでの使用: premium-coding
 ### Codex CLI
 
 ```bash
-export OPENAI_BASE_URL="http://localhost:20128"
+export OPENAI_BASE_URL="http://localhost:20127"
 export OPENAI_API_KEY="your-9router-api-key"
 
 codex "your prompt"
@@ -910,7 +910,7 @@ codex "your prompt"
   "models": {
     "providers": {
       "9router": {
-        "baseUrl": "http://127.0.0.1:20128/v1",
+        "baseUrl": "http://127.0.0.1:20127/v1",
         "apiKey": "sk_9router",
         "api": "openai-completions",
         "models": [
@@ -925,13 +925,13 @@ codex "your prompt"
 }
 ```
 
-> **注意:** OpenClawはローカルの9Routerのみで動作します。IPv6解決の問題を避けるため、`localhost` ではなく `127.0.0.1` を使用してください。
+> **注意:** OpenClawはローカルの9Gouterのみで動作します。IPv6解決の問題を避けるため、`localhost` ではなく `127.0.0.1` を使用してください。
 
 ### Cline / Continue / RooCode
 
 ```
 プロバイダー: OpenAI Compatible
-Base URL: http://localhost:20128/v1
+Base URL: http://localhost:20127/v1
 API Key: [ダッシュボードから]
 Model: cc/claude-opus-4-6
 ```
@@ -945,7 +945,7 @@ Model: cc/claude-opus-4-6
 
 ```bash
 # クローンとインストール
-git clone https://github.com/decolua/9router.git
+git clone https://github.com/Artiffusion-Inc/9gouter.git
 cd 9router
 npm install
 npm run build
@@ -954,10 +954,10 @@ npm run build
 export JWT_SECRET="your-secure-secret-change-this"
 export INITIAL_PASSWORD="your-password"
 export DATA_DIR="/var/lib/9router"
-export PORT="20128"
+export PORT="20127"
 export HOSTNAME="0.0.0.0"
 export NODE_ENV="production"
-export NEXT_PUBLIC_BASE_URL="http://localhost:20128"
+export NEXT_PUBLIC_BASE_URL="http://localhost:20127"
 export NEXT_PUBLIC_CLOUD_URL="https://9router.com"
 export API_KEY_SECRET="endpoint-proxy-api-key-secret"
 export MACHINE_ID_SALT="endpoint-proxy-salt"
@@ -981,7 +981,7 @@ docker build -t 9router .
 # コンテナを実行（現在のセットアップで使用しているコマンド）
 docker run -d \
   --name 9router \
-  -p 20128:20128 \
+  -p 20127:20127 \
   --env-file /root/dev/9router/.env \
   -v 9router-data:/app/data \
   -v 9router-usage:/root/.9router \
@@ -993,7 +993,7 @@ docker run -d \
 ```bash
 docker run -d \
   --name 9router \
-  -p 20128:20128 \
+  -p 20127:20127 \
   --env-file ./.env \
   -v 9router-data:/app/data \
   -v 9router-usage:/root/.9router \
@@ -1001,7 +1001,7 @@ docker run -d \
 ```
 
 コンテナのデフォルト：
-- `PORT=20128`
+- `PORT=20127`
 - `HOSTNAME=0.0.0.0`
 
 便利なコマンド：
@@ -1019,10 +1019,10 @@ docker stop 9router && docker rm 9router
 | `JWT_SECRET` | 自動生成（`~/.9router/jwt-secret`） | ダッシュボード認証クッキーのJWT署名シークレット（複数インスタンス間で共有する場合に設定） |
 | `INITIAL_PASSWORD` | `123456` | 保存されたハッシュがない場合の初回ログインパスワード |
 | `DATA_DIR` | `~/.9router` | メインアプリのデータベース格納場所（`db.json`） |
-| `PORT` | フレームワークデフォルト | サービスポート（例では`20128`） |
+| `PORT` | フレームワークデフォルト | サービスポート（例では`20127`） |
 | `HOSTNAME` | フレームワークデフォルト | バインドホスト（Dockerデフォルトは`0.0.0.0`） |
 | `NODE_ENV` | ランタイムデフォルト | デプロイ時は`production`に設定 |
-| `BASE_URL` | `http://localhost:20128` | クラウド同期ジョブで使用されるサーバーサイド内部ベースURL |
+| `BASE_URL` | `http://localhost:20127` | クラウド同期ジョブで使用されるサーバーサイド内部ベースURL |
 | `CLOUD_URL` | `https://9router.com` | サーバーサイドのクラウド同期エンドポイントベースURL |
 | `NEXT_PUBLIC_BASE_URL` | `http://localhost:3000` | 後方互換/公開ベースURL（サーバーランタイムには`BASE_URL`を推奨） |
 | `NEXT_PUBLIC_CLOUD_URL` | `https://9router.com` | 後方互換/公開クラウドURL（サーバーランタイムには`CLOUD_URL`を推奨） |
@@ -1106,7 +1106,7 @@ docker stop 9router && docker rm 9router
 - コンボを追加: `cc/claude-opus-4-6 → glm/glm-4.7 → if/kimi-k2-thinking`
 
 **OAuthトークンの期限切れ**
-- 9Routerが自動リフレッシュ
+- 9Gouterが自動リフレッシュ
 - 問題が続く場合: ダッシュボード → Provider → 再接続
 
 **高コスト**
@@ -1115,7 +1115,7 @@ docker stop 9router && docker rm 9router
 - 重要でないタスクには無料ティア（Gemini CLI、iFlow）を使用
 
 **ダッシュボードが違うポートで開く**
-- `PORT=20128` と `NEXT_PUBLIC_BASE_URL=http://localhost:20128` を設定
+- `PORT=20127` と `NEXT_PUBLIC_BASE_URL=http://localhost:20127` を設定
 
 **初回ログインできない**
 - `.env` の `INITIAL_PASSWORD` を確認
@@ -1142,7 +1142,7 @@ docker stop 9router && docker rm 9router
 ### チャット補完
 
 ```bash
-POST http://localhost:20128/v1/chat/completions
+POST http://localhost:20127/v1/chat/completions
 Authorization: Bearer your-api-key
 Content-Type: application/json
 
@@ -1158,7 +1158,7 @@ Content-Type: application/json
 ### モデル一覧
 
 ```bash
-GET http://localhost:20128/v1/models
+GET http://localhost:20127/v1/models
 Authorization: Bearer your-api-key
 
 → すべてのモデル + コンボをOpenAI形式で返却
@@ -1167,28 +1167,28 @@ Authorization: Bearer your-api-key
 ## 📧 サポート
 
 - **ウェブサイト**: [9router.com](https://9router.com)
-- **GitHub**: [github.com/decolua/9router](https://github.com/decolua/9router)
-- **Issues**: [github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
+- **GitHub**: [github.com/Artiffusion-Inc/9gouter](https://github.com/Artiffusion-Inc/9gouter)
+- **Issues**: [github.com/Artiffusion-Inc/9gouter/issues](https://github.com/Artiffusion-Inc/9gouter/issues)
 
 ---
 
 ## 👥 コントリビューター
 
-9Routerの改善に貢献してくださったすべてのコントリビューターに感謝します！
+9Gouterの改善に貢献してくださったすべてのコントリビューターに感謝します！
 
-[![Contributors](https://contrib.rocks/image?repo=decolua/9router&max=150&columns=15&anon=1&v=20260309)](https://github.com/decolua/9router/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=Artiffusion-Inc/9gouter&max=150&columns=15&anon=1&v=20260309)](https://github.com/Artiffusion-Inc/9gouter/graphs/contributors)
 
 ---
 
 ## 📊 スターチャート
 
-[![Star Chart](https://starchart.cc/decolua/9router.svg?variant=adaptive)](https://starchart.cc/decolua/9router)
+[![Star Chart](https://starchart.cc/Artiffusion-Inc/9gouter.svg?variant=adaptive)](https://starchart.cc/Artiffusion-Inc/9gouter)
 
 
 
 ## 🔀 フォーク
 
-**[OmniRoute](https://github.com/diegosouzapw/OmniRoute)** — 9RouterのフルフィーチャーTypeScriptフォーク。36以上のプロバイダー、4段階自動フォールバック、マルチモーダルAPI（画像、埋め込み、音声、TTS）、サーキットブレーカー、セマンティックキャッシュ、LLM評価、洗練されたダッシュボードを追加。368以上のユニットテスト。npmとDockerで利用可能。
+**[OmniRoute](https://github.com/diegosouzapw/OmniRoute)** — 9GouterのフルフィーチャーTypeScriptフォーク。36以上のプロバイダー、4段階自動フォールバック、マルチモーダルAPI（画像、埋め込み、音声、TTS）、サーキットブレーカー、セマンティックキャッシュ、LLM評価、洗練されたダッシュボードを追加。368以上のユニットテスト。npmとDockerで利用可能。
 
 ---
 

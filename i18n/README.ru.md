@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="../images/9router.png?1" alt="Панель управления 9Router" width="800"/>
+  <img src="../images/9router.png?1" alt="Панель управления 9Gouter" width="800"/>
   
-  # 9Router - Free AI Router
+  # 9Gouter - Free AI Router
   
   **Никогда не прекращайте кодить. Автоматическая маршрутизация к БЕСПЛАТНЫМ и дешёвым AI-моделям с умным механизмом резервирования.**
   
@@ -13,14 +13,14 @@
   
   [![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
   [![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
-  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
+  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/Artiffusion-Inc/9gouter/blob/main/LICENSE)
   
   [🚀 Быстрый старт](#-quick-start) • [💡 Возможности](#-key-features) • [📖 Установка](#-setup-guide) • [🌐 Сайт](https://9router.com)
 </div>
 
 ---
 
-## 🤔 Почему 9Router?
+## 🤔 Почему 9Gouter?
 
 **Перестаньте тратить деньги и упираться в лимиты:**
 
@@ -29,7 +29,7 @@
 - ❌ Дорогие API ($20-50/мес за каждого провайдера)
 - ❌ Приходится вручную переключаться между провайдерами
 
-**9Router решает это:**
+**9Gouter решает это:**
 
 - ✅ **Максимум из подписки** — Отслеживает квоту, использует каждый бит до сброса
 - ✅ **Автоматическое резервирование** — Подписка → Дёшево → Бесплатно, нулевой простой
@@ -45,10 +45,10 @@
 │  Your CLI   │  (Claude Code, Codex, Gemini CLI, OpenClaw, Cursor, Cline...)
 │   Tool      │
 └──────┬──────┘
-       │ http://localhost:20128/v1
+       │ http://localhost:20127/v1
        ↓
 ┌────────────────────────────────────────┐
-│           9Router (Smart Router)        │
+│           9Gouter (Smart Router)        │
 │  • Format translation (OpenAI ↔ Claude) │
 │  • Quota tracking                       │
 │  • Auto token refresh                   │
@@ -74,7 +74,7 @@ npm install -g 9router
 9router
 ```
 
-🎉 Панель управления откроется на `http://localhost:20128`
+🎉 Панель управления откроется на `http://localhost:20127`
 
 **2. Подключите БЕСПЛАТНОГО провайдера (без подписки):**
 
@@ -84,7 +84,7 @@ npm install -g 9router
 
 ```
 Настройки Claude Code/Codex/Gemini CLI/OpenClaw/Cursor/Cline:
-  Endpoint: http://localhost:20128/v1
+  Endpoint: http://localhost:20127/v1
   API Key: [скопируйте из панели управления]
   Model: if/kimi-k2-thinking
 ```
@@ -98,19 +98,19 @@ npm install -g 9router
 ```bash
 cp .env.example .env
 npm install
-PORT=20128 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run dev
+PORT=20127 NEXT_PUBLIC_BASE_URL=http://localhost:20127 npm run dev
 ```
 
 Режим Production:
 
 ```bash
 npm run build
-PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run start
+PORT=20127 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20127 npm run start
 ```
 
 URL по умолчанию:
-- Панель управления: `http://localhost:20128/dashboard`
-- OpenAI-совместимый API: `http://localhost:20128/v1`
+- Панель управления: `http://localhost:20127/dashboard`
+- OpenAI-совместимый API: `http://localhost:20127/v1`
 
 ---
 
@@ -118,12 +118,12 @@ URL по умолчанию:
 
 <div align="center">
   
-### 📺 Полное руководство по настройке - 9Router + Claude Code БЕСПЛАТНО
+### 📺 Полное руководство по настройке - 9Gouter + Claude Code БЕСПЛАТНО
   
-[![Настройка 9Router + Claude Code](https://img.youtube.com/vi/raEyZPg5xE0/maxresdefault.jpg)](https://www.youtube.com/watch?v=raEyZPg5xE0)
+[![Настройка 9Gouter + Claude Code](https://img.youtube.com/vi/raEyZPg5xE0/maxresdefault.jpg)](https://www.youtube.com/watch?v=raEyZPg5xE0)
 
 **🎬 Полное пошаговое руководство:**
-- ✅ Установка и настройка 9Router
+- ✅ Установка и настройка 9Gouter
 - ✅ Настройка Claude Sonnet 4.5 БЕСПЛАТНО
 - ✅ Интеграция с Claude Code
 - ✅ Тестирование кода вживую
@@ -138,7 +138,7 @@ URL по умолчанию:
 
 ## 🛠️ Поддерживаемые CLI-инструменты
 
-9Router бесшовно работает со всеми основными AI-инструментами для кодинга:
+9Gouter бесшовно работает со всеми основными AI-инструментами для кодинга:
 
 <div align="center">
   <table>
@@ -389,7 +389,7 @@ Combo: "my-coding-stack"
 
 Бесшовная трансляция между форматами:
 - **OpenAI** ↔ **Claude** ↔ **Gemini** ↔ **OpenAI Responses**
-- Ваш CLI-инструмент отправляет формат OpenAI → 9Router транслирует → Провайдер получает родной формат
+- Ваш CLI-инструмент отправляет формат OpenAI → 9Gouter транслирует → Провайдер получает родной формат
 - Работает с любым инструментом, поддерживающим пользовательский эндпоинт OpenAI
 
 ### 👥 Поддержка нескольких аккаунтов
@@ -443,13 +443,13 @@ Combo: "my-coding-stack"
 > **💡 ВАЖНО - Понимание «Затрат» на панели управления:**
 > 
 > «Затраты», показанные в Аналитике использования, предназначены **только для отслеживания и сравнения**. 
-> Сам 9Router **никогда ничего не взимает** с вас. Вы платите напрямую провайдерам (если используете платные сервисы).
+> Сам 9Gouter **никогда ничего не взимает** с вас. Вы платите напрямую провайдерам (если используете платные сервисы).
 > 
 > **Пример:** Если на панели показано «общие затраты $290» при использовании моделей iFlow, это представляет 
 > сумму, которую вы заплатили бы при прямом использовании платного API. Ваши фактические затраты = **$0** (iFlow бесплатен без ограничений).
 > 
 > Считайте это «трекером экономии», показывающим, сколько вы экономите, используя бесплатные модели или 
-> маршрутизацию через 9Router!
+> маршрутизацию через 9Gouter!
 
 ### 🌐 Развёртывание где угодно
 
@@ -481,15 +481,15 @@ Combo: "my-coding-stack"
 
 ---
 
-### 📊 Понимание затрат и оплаты в 9Router
+### 📊 Понимание затрат и оплаты в 9Gouter
 
-**Реальность оплаты 9Router:**
+**Реальность оплаты 9Gouter:**
 
-✅ **Софт 9Router = БЕСПЛАТНО навсегда** (открытый код, никогда не взимает плату)  
+✅ **Софт 9Gouter = БЕСПЛАТНО навсегда** (открытый код, никогда не взимает плату)  
 ✅ **«Затраты» на панели = Только для отображения/отслеживания** (не реальный счёт)  
 ✅ **Вы платите напрямую провайдерам** (подписка или плата за API)  
 ✅ **БЕСПЛАТНЫЕ провайдеры остаются БЕСПЛАТНЫМИ** (iFlow, Kiro, Qwen = $0 без ограничений)  
-❌ **9Router никогда не выставляет счёт** и не списывает с вашей карты
+❌ **9Gouter никогда не выставляет счёт** и не списывает с вашей карты
 
 **Как работает отображение затрат:**
 
@@ -510,9 +510,9 @@ Combo: "my-coding-stack"
 
 **Правила оплаты:**
 - **Провайдеры подписки** (Claude Code, Codex): Платите им напрямую через их сайт
-- **Дешёвые провайдеры** (GLM, MiniMax): Платите им напрямую, 9Router только маршрутизирует
+- **Дешёвые провайдеры** (GLM, MiniMax): Платите им напрямую, 9Gouter только маршрутизирует
 - **БЕСПЛАТНЫЕ провайдеры** (iFlow, Kiro, Qwen): Действительно бесплатны навсегда, без скрытых платежей
-- **9Router**: Никогда ничего не взимает, никогда
+- **9Gouter**: Никогда ничего не взимает, никогда
 
 ---
 
@@ -587,7 +587,7 @@ Combo: "openclaw-free"
 <details>
 <summary><b>📊 Почему моя панель показывает высокие затраты?</b></summary>
 
-Панель отслеживает ваше использование токенов и показывает **оценочные затраты**, как если бы вы напрямую использовали платный API. Это **не реальная оплата** — это справка, показывающая, сколько вы экономите, используя бесплатные модели или существующие подписки через 9Router.
+Панель отслеживает ваше использование токенов и показывает **оценочные затраты**, как если бы вы напрямую использовали платный API. Это **не реальная оплата** — это справка, показывающая, сколько вы экономите, используя бесплатные модели или существующие подписки через 9Gouter.
 
 **Пример:**
 - **Панель показывает:** «Общие затраты $290»
@@ -600,16 +600,16 @@ Combo: "openclaw-free"
 </details>
 
 <details>
-<summary><b>💳 Взимает ли с меня плату 9Router?</b></summary>
+<summary><b>💳 Взимает ли с меня плату 9Gouter?</b></summary>
 
-**Нет.** 9Router — это бесплатное ПО с открытым кодом, работающее на вашем собственном компьютере. Оно никогда ничего с вас не взимает.
+**Нет.** 9Gouter — это бесплатное ПО с открытым кодом, работающее на вашем собственном компьютере. Оно никогда ничего с вас не взимает.
 
 **Вы платите только:**
 - ✅ **Провайдерам подписки** (Claude Code $20/мес, Codex $20-200/мес) → Платите им напрямую на их сайте
-- ✅ **Дешёвым провайдерам** (GLM, MiniMax) → Платите им напрямую, 9Router только маршрутизирует ваши запросы
-- ❌ **Самому 9Router** → **Никогда ничего не взимает, никогда**
+- ✅ **Дешёвым провайдерам** (GLM, MiniMax) → Платите им напрямую, 9Gouter только маршрутизирует ваши запросы
+- ❌ **Самому 9Gouter** → **Никогда ничего не взимает, никогда**
 
-9Router — это локальный прокси/роутер. У него нет вашей кредитной карты, он не может выставлять счета и не имеет платёжной системы. Это полностью бесплатное ПО.
+9Gouter — это локальный прокси/роутер. У него нет вашей кредитной карты, он не может выставлять счета и не имеет платёжной системы. Это полностью бесплатное ПО.
 
 </details>
 
@@ -623,9 +623,9 @@ Combo: "openclaw-free"
 - **Kiro**: Бесплатные безлимитные модели Claude через AWS Builder ID  
 - **Qwen**: Бесплатный безлимитный доступ к моделям Qwen через аутентификацию устройства
 
-9Router только маршрутизирует ваши запросы к ним — никаких «ловушек» или будущих платежей. Это действительно бесплатные сервисы, а 9Router облегчает их использование с поддержкой резервирования.
+9Gouter только маршрутизирует ваши запросы к ним — никаких «ловушек» или будущих платежей. Это действительно бесплатные сервисы, а 9Gouter облегчает их использование с поддержкой резервирования.
 
-**Примечание:** Некоторые провайдеры подписки (Antigravity, GitHub Copilot) могут иметь бесплатные пробные периоды, которые позже становятся платными, но об этом чётко уведомляют сами провайдеры, а не 9Router.
+**Примечание:** Некоторые провайдеры подписки (Antigravity, GitHub Copilot) могут иметь бесплатные пробные периоды, которые позже становятся платными, но об этом чётко уведомляют сами провайдеры, а не 9Gouter.
 
 </details>
 
@@ -650,7 +650,7 @@ Combo: "openclaw-free"
 
 3. **Используйте провайдеров подписки в последнюю очередь:**
    - Только если они у вас уже есть
-   - 9Router помогает максимизировать их ценность через отслеживание квоты
+   - 9Gouter помогает максимизировать их ценность через отслеживание квоты
 
 **Результат:** Большинство пользователей могут работать за $0/мес, используя только бесплатные уровни!
 
@@ -659,20 +659,20 @@ Combo: "openclaw-free"
 <details>
 <summary><b>📈 Что если моё использование внезапно вырастет?</b></summary>
 
-Умный механизм резервирования 9Router предотвращает неожиданные расходы:
+Умный механизм резервирования 9Gouter предотвращает неожиданные расходы:
 
 **Сценарий:** Вы в спринте кодинга и превышаете квоты
 
-**Без 9Router:**
+**Без 9Gouter:**
 - ❌ Упёрлись в rate limit → Работа остановилась → Разочарование
 - ❌ Или: Случайно накопили огромный счёт за API
 
-**С 9Router:**
+**С 9Gouter:**
 - ✅ Подписка упёрлась в лимит → Авторезервирование на дешёвый уровень
 - ✅ Дешёвый уровень становится дорогим → Авторезервирование на бесплатный уровень
 - ✅ Никогда не прекращаете кодить → Предсказуемая стоимость
 
-**Вы контролируете:** Установите лимиты расходов на каждого провайдера в панели, и 9Router будет их соблюдать.
+**Вы контролируете:** Установите лимиты расходов на каждого провайдера в панели, и 9Gouter будет их соблюдать.
 
 </details>
 
@@ -696,7 +696,7 @@ Combo: "openclaw-free"
   cc/claude-haiku-4-5-20251001
 ```
 
-**Профи-совет:** Используйте Opus для сложных задач, Sonnet для скорости. 9Router отслеживает квоту для каждой модели!
+**Профи-совет:** Используйте Opus для сложных задач, Sonnet для скорости. 9Gouter отслеживает квоту для каждой модели!
 
 ### OpenAI Codex (Plus/Pro)
 
@@ -864,7 +864,7 @@ Combo: "openclaw-free"
 
 ```
 Settings → Models → Advanced:
-  OpenAI API Base URL: http://localhost:20128/v1
+  OpenAI API Base URL: http://localhost:20127/v1
   OpenAI API Key: [из панели управления 9router]
   Model: cc/claude-opus-4-6
 ```
@@ -877,7 +877,7 @@ Settings → Models → Advanced:
 
 ```json
 {
-  "anthropic_api_base": "http://localhost:20128/v1",
+  "anthropic_api_base": "http://localhost:20127/v1",
   "anthropic_api_key": "your-9router-api-key"
 }
 ```
@@ -885,7 +885,7 @@ Settings → Models → Advanced:
 ### Codex CLI
 
 ```bash
-export OPENAI_BASE_URL="http://localhost:20128"
+export OPENAI_BASE_URL="http://localhost:20127"
 export OPENAI_API_KEY="your-9router-api-key"
 
 codex "ваш промпт"
@@ -913,7 +913,7 @@ codex "ваш промпт"
   "models": {
     "providers": {
       "9router": {
-        "baseUrl": "http://127.0.0.1:20128/v1",
+        "baseUrl": "http://127.0.0.1:20127/v1",
         "apiKey": "sk_9router",
         "api": "openai-completions",
         "models": [
@@ -928,13 +928,13 @@ codex "ваш промпт"
 }
 ```
 
-> **Примечание:** OpenClaw работает только с локальным 9Router. Используйте `127.0.0.1` вместо `localhost`, чтобы избежать проблем с разрешением имён.
+> **Примечание:** OpenClaw работает только с локальным 9Gouter. Используйте `127.0.0.1` вместо `localhost`, чтобы избежать проблем с разрешением имён.
 
 ### Cline / Continue / RooCode
 
 ```
 Provider: OpenAI Compatible
-Base URL: http://localhost:20128/v1
+Base URL: http://localhost:20127/v1
 API Key: [из панели управления]
 Model: cc/claude-opus-4-6
 ```
@@ -948,7 +948,7 @@ Model: cc/claude-opus-4-6
 
 ```bash
 # Clone and install
-git clone https://github.com/decolua/9router.git
+git clone https://github.com/Artiffusion-Inc/9gouter.git
 cd 9router
 npm install
 npm run build
@@ -957,10 +957,10 @@ npm run build
 export JWT="your-secure-secret-change-this"
 export INITIAL_PASSWORD="your-password"
 export DATA_DIR="/var/lib/9router"
-export PORT="20128"
+export PORT="20127"
 export HOSTNAME="0.0.0.0"
 export NODE_ENV="production"
-export NEXT_PUBLIC_BASE_URL="http://localhost:20128"
+export NEXT_PUBLIC_BASE_URL="http://localhost:20127"
 export NEXT_PUBLIC_CLOUD_URL="https://9router.com"
 export API_KEY_SECRET="endpoint-proxy-api-key-secret"
 export MACHINE_ID_SALT="endpoint-proxy-salt"
@@ -984,7 +984,7 @@ docker build -t 9router .
 # Run container (command used in current setup)
 docker run -d \
   --name 9router \
-  -p 20128:20128 \
+  -p 20127:20127 \
   --env-file /root/dev/9router/.env \
   -v 9router-data:/app/data \
   -v 9router-usage:/root/.9router \
@@ -996,7 +996,7 @@ docker run -d \
 ```bash
 docker run -d \
   --name 9router \
-  -p 20128:20128 \
+  -p 20127:20127 \
   --env-file ./.env \
   -v 9router-data:/app/data \
   -v 9router-usage:/root/.9router \
@@ -1004,7 +1004,7 @@ docker run -d \
 ```
 
 Значения по умолчанию контейнера:
-- `PORT=20128`
+- `PORT=20127`
 - `HOSTNAME=0.0.0.0`
 
 Полезные команды:
@@ -1022,10 +1022,10 @@ docker stop 9router && docker rm 9router
 | `JWT_SECRET` | Автогенерация (`~/.9router/jwt-secret`) | Секрет подписи JWT для cookie аутентификации панели (задайте для общего доступа между инстансами) |
 | `INITIAL_PASSWORD` | `123456` | Пароль первого входа при отсутствии сохранённого хеша |
 | `DATA_DIR` | `~/.9router` | Расположение основной БД приложения (`db.json`) |
-| `PORT` | framework default | Порт сервиса (`20128` в примерах) |
+| `PORT` | framework default | Порт сервиса (`20127` в примерах) |
 | `HOSTNAME` | framework default | Bind host (Docker по умолчанию `0.0.0.0`) |
 | `NODE_ENV` | runtime default | Установите `production` для развёртывания |
-| `BASE_URL` | `http://localhost:20128` | Внутренний серверный базовый URL для задач облачной синхронизации |
+| `BASE_URL` | `http://localhost:20127` | Внутренний серверный базовый URL для задач облачной синхронизации |
 | `CLOUD_URL` | `https://9router.com` | Серверный базовый URL эндпоинта облачной синхронизации |
 | `NEXT_PUBLIC_BASE_URL` | `http://localhost:3000` | Обратно совместимый/публичный базовый URL (приоритет `BASE_URL` для серверного рантайма) |
 | `NEXT_PUBLIC_CLOUD_URL` | `https://9router.com` | Обратно совместимый/публичный облачный URL (приоритет `CLOUD_URL` для серверного рантайма) |
@@ -1109,7 +1109,7 @@ docker stop 9router && docker rm 9router
 - Добавьте комбо: `cc/claude-opus-4-6 → glm/glm-4.7 → if/kimi-k2-thinking`
 
 **OAuth-токен истёк**
-- Автообновление 9Router
+- Автообновление 9Gouter
 - Если проблема сохраняется: Панель управления → Провайдеры → Переподключить
 
 **Высокие затраты**
@@ -1118,10 +1118,10 @@ docker stop 9router && docker rm 9router
 - Используйте бесплатные уровни (Gemini CLI, iFlow) для некритичных задач
 
 **Панель открывается на неверном порту**
-- Установите `PORT=20128` и `NEXT_PUBLIC_BASE_URL=http://localhost:20128`
+- Установите `PORT=20127` и `NEXT_PUBLIC_BASE_URL=http://localhost:20127`
 
 **Ошибки облачной синхронизации**
-- Убедитесь, что `BASE_URL` указывает на ваш работающий инстанс (например, `http://localhost:20128`)
+- Убедитесь, что `BASE_URL` указывает на ваш работающий инстанс (например, `http://localhost:20127`)
 - Убедитесь, что `CLOUD_URL` указывает на ожидаемый облачный эндпоинт (например, `https://9router.com`)
 - По возможности держите значения `NEXT_PUBLIC_*` согласованными с серверными значениями.
 
@@ -1129,7 +1129,7 @@ docker stop 9router && docker rm 9router
 - Симптом обычно появляется на публичном облачном эндпоинте (`https://9router.com/v1`) для непотоковых (non-streaming) вызовов.
 - Корневая причина: upstream возвращает SSE-payload (`data: ...`), тогда как клиент ожидает JSON.
 - Обходное решение: используйте `stream=true` для прямых вызовов в облако.
-- Локальный рантайм 9Router включает резервирование SSE→JSON для непотоковых вызовов, когда upstream возвращает `text/event-stream`.
+- Локальный рантайм 9Gouter включает резервирование SSE→JSON для непотоковых вызовов, когда upstream возвращает `text/event-stream`.
 
 **Облако сообщает о подключении, но запрос всё равно падает с `Invalid API key`**
 - Создайте новый ключ в локальной панели (`/api/keys`) и запустите облачную синхронизацию (`Enable Cloud`, затем `Sync Now`).
@@ -1160,7 +1160,7 @@ docker stop 9router && docker rm 9router
 ### Chat Completions
 
 ```bash
-POST http://localhost:20128/v1/chat/completions
+POST http://localhost:20127/v1/chat/completions
 Authorization: Bearer your-api-key
 Content-Type: application/json
 
@@ -1176,7 +1176,7 @@ Content-Type: application/json
 ### Список моделей
 
 ```bash
-GET http://localhost:20128/v1/models
+GET http://localhost:20127/v1/models
 Authorization: Bearer your-api-key
 
 → Возвращает все модели + комбо в формате OpenAI
@@ -1218,7 +1218,7 @@ OPENAI_API_KEY="your-cloud-key" bash tester/security/test-cloud-openai-compatibl
 
 Ожидаемое поведение по результатам недавней проверки:
 
-- Локально (`http://127.0.0.1:20128/v1/chat/completions`): работает с `stream=false` и `stream=true`.
+- Локально (`http://127.0.0.1:20127/v1/chat/completions`): работает с `stream=false` и `stream=true`.
 - Docker-рантайм (тот же API-путь, экспонируемый контейнером): hardening-проверки проходят, cloud auth guard работает, строгий режим API-ключа работает при включении.
 - Публичный облачный эндпоинт (`https://9router.com/v1/chat/completions`):
   - `stream=true`: ожидается успех (возвращает SSE-чанки).
@@ -1259,22 +1259,22 @@ OPENAI_API_KEY="your-cloud-key" bash tester/security/test-cloud-openai-compatibl
 ## 📧 Поддержка
 
 - **Сайт**: [9router.com](https://9router.com)
-- **GitHub**: [github.com/decolua/9router](https://github.com/decolua/9router)
-- **Issues**: [github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
+- **GitHub**: [github.com/Artiffusion-Inc/9gouter](https://github.com/Artiffusion-Inc/9gouter)
+- **Issues**: [github.com/Artiffusion-Inc/9gouter/issues](https://github.com/Artiffusion-Inc/9gouter/issues)
 
 ---
 
 ## 👥 Контрибьюторы
 
-Спасибо всем, кто помогает делать 9Router лучше!
+Спасибо всем, кто помогает делать 9Gouter лучше!
 
-[![Contributors](https://contrib.rocks/image?repo=decolua/9router&max=100&columns=20&anon=1)](https://github.com/decolua/9router/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=Artiffusion-Inc/9gouter&max=100&columns=20&anon=1)](https://github.com/Artiffusion-Inc/9gouter/graphs/contributors)
 
 ---
 
 ## 📊 Star Chart
 
-[![Star Chart](https://starchart.cc/decolua/9router.svg?variant=adaptive)](https://starchart.cc/decolua/9router)
+[![Star Chart](https://starchart.cc/Artiffusion-Inc/9gouter.svg?variant=adaptive)](https://starchart.cc/Artiffusion-Inc/9gouter)
 
 ### Как внести вклад
 
@@ -1284,13 +1284,13 @@ OPENAI_API_KEY="your-cloud-key" bash tester/security/test-cloud-openai-compatibl
 4. Запушьте в ветку (`git push origin feature/amazing-feature`)
 5. Откройте Pull Request
 
-См. [Pull Requests](https://github.com/decolua/9router/pulls) для подробных инструкций.
+См. [Pull Requests](https://github.com/Artiffusion-Inc/9gouter/pulls) для подробных инструкций.
 
 ---
 
 ## 🔀 Форки
 
-**[OmniRoute](https://github.com/diegosouzapw/OmniRoute)** — Полнофункциональный TypeScript-форк 9Router. Добавляет 36+ провайдеров, авторезервирование на 4 уровнях, мультимодальный API (изображения, embedding, аудио, TTS), circuit breaker, семантическое кеширование, оценку LLM и доработанную панель. 368+ юнит-тестов. Доступен через npm.
+**[OmniRoute](https://github.com/diegosouzapw/OmniRoute)** — Полнофункциональный TypeScript-форк 9Gouter. Добавляет 36+ провайдеров, авторезервирование на 4 уровнях, мультимодальный API (изображения, embedding, аудио, TTS), circuit breaker, семантическое кеширование, оценку LLM и доработанную панель. 368+ юнит-тестов. Доступен через npm.
 
 ---
 

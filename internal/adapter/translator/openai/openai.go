@@ -56,6 +56,7 @@ func init() {
 	translator.Register(format.Openai, format.OpenaiResponses, openaiToOpenaiResponsesTranslator{})
 	translator.Register(format.OpenaiResponses, format.Openai, openaiResponsesToOpenaiTranslator{})
 	translator.RegisterResponse(format.OpenaiResponses, format.Openai, openaiResponsesToOpenaiResponseTranslator{})
+	translator.RegisterResponse(format.Openai, format.OpenaiResponses, openaiToOpenaiResponsesResponseTranslator{})
 }
 
 type openaiToClaudeTranslator struct{}

@@ -481,7 +481,7 @@ func (h *Handler) Handle(ctx context.Context, req Request) (Result, error) {
 			// rejects a stream that has only "data:" as malformed. Set the flag
 			// when the CLIENT source format is Claude, mirroring legacy
 			// streamHelpers.js formatSSE (sourceFormat === CLAUDE).
-			EmitEventPrefix: sourceFormat == format.Claude,
+			EmitEventPrefix: sourceFormat == format.Claude || sourceFormat == format.OpenaiResponses,
 		}
 		// Stream usage/timing collector (ports JS streamingHandler.js
 		// onStreamComplete): the pipe invokes OnFrame for every de-framed

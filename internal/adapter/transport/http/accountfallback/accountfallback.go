@@ -18,6 +18,13 @@ import (
 const (
 	cooldownLong  = 2 * 60 * 1000
 	cooldownShort = 5 * 1000
+	// cooldownPlanModel is the cooldown for 403 on a model that is likely
+	// unavailable on the account's current plan (e.g. ollama free-tier
+	// accounts cannot access pro models). 10 minutes balances two goals:
+	// avoid re-trying free accounts on every request (fast path to a working
+	// account), while still re-checking periodically in case the account's
+	// plan has been upgraded.
+	cooldownPlanModel = 10 * 60 * 1000
 
 	// TransientCooldown is the default cooldown for any unmatched error.
 	TransientCooldown = 30 * 1000
@@ -61,7 +68,7 @@ var ErrorRules = []ErrorRule{
 	{Text: "overloaded", Backoff: true},
 	{Status: 401, CooldownMs: cooldownLong},
 	{Status: 402, CooldownMs: cooldownLong},
-	{Status: 403, CooldownMs: cooldownLong},
+	{Status: 403, CooldownMs: cooldownPlanModel},
 	{Status: 404, CooldownMs: cooldownLong},
 	{Status: 429, Backoff: true},
 }

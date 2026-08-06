@@ -999,17 +999,32 @@ func (h *v1Handler) resolveCredentialsWithOpts(ctx context.Context, providerID, 
 		return domainProv.Credentials{}, err
 	}
 
-	// Filter out connections excluded by the fallback loop (Fix 3) and
-	// connections whose model-lock is still active (Fix 3). For now only the
-	// exclude filter is applied; model-lock filtering lands with Fix 3.
+	// Filter out connections excluded by the fallback loop and connections
+	// whose model-lock is still active. Model-locked accounts are skipped
+	// first (they already failed for this model recently); if every account
+	// is locked, we fall back to the locked pool — an account may have
+	// upgraded its plan since the lock was written.
 	available := connections[:0:0]
+	lockedPool := connections[:0:0]
 	for _, c := range connections {
 		if excludedIDs != nil {
 			if _, skip := excludedIDs[c.ID]; skip {
 				continue
 			}
 		}
+		// Check model lock: skip accounts locked for this model.
+		var connData map[string]any
+		_ = json.Unmarshal(c.Data, &connData)
+		if accountfallback.IsModelLockActive(connData, model) {
+			lockedPool = append(lockedPool, c)
+			continue
+		}
 		available = append(available, c)
+	}
+	// If all connections are model-locked, fall back to the locked pool
+	// rather than failing — the plan may have changed since the lock.
+	if len(available) == 0 && len(lockedPool) > 0 {
+		available = lockedPool
 	}
 	if len(available) == 0 {
 		if len(connections) == 0 {

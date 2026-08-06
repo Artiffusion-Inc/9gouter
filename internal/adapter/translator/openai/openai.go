@@ -1574,7 +1574,8 @@ func openaiToOpenAIResponsesEvents(chunk map[string]any, state map[string]any) [
 				"summary_index": 0,
 				"delta":         reasoningText,
 			})
-			state["reasoningBuf"] = reasoningText + reasoningText
+			prev, _ := state["reasoningBuf"].(string)
+		state["reasoningBuf"] = prev + reasoningText
 		}
 	}
 
@@ -1668,13 +1669,29 @@ func closeReasoning(state map[string]any, emit func(string, map[string]any)) {
 }
 
 func emitTextContent(state map[string]any, emit func(string, map[string]any), responseID string, idx int, content string) {
-	key := fmt.Sprintf("msgAdded_%d", idx)
+	// Close any open reasoning item before starting the message item.
+	// Without this, the reasoning output_item.done is emitted after the
+	// message output_item.done (in flushEvents), and both share the same
+	// output_index — confusing clients (Codex CLI) that expect reasoning
+	// to be closed before the message begins on a distinct index.
+	closeReasoning(state, emit)
+
+	// Use a separate output_index for the message: if reasoning was on
+	// index 0, the message should be on index 1. Real OpenAI API uses
+	// incrementing output_index per item type.
+	msgIdx := idx
+	if reasoningIdx, ok := state["reasoningIndex"].(int); ok && state["reasoningDone"] == true {
+		msgIdx = reasoningIdx + 1
+	}
+	state["msgIndex"] = msgIdx
+
+	key := fmt.Sprintf("msgAdded_%d", msgIdx)
 	if state[key] != true {
 		state[key] = true
-		msgID := fmt.Sprintf("msg_%s_%d", responseID, idx)
-		state[fmt.Sprintf("msgId_%d", idx)] = msgID
+		msgID := fmt.Sprintf("msg_%s_%d", responseID, msgIdx)
+		state[fmt.Sprintf("msgId_%d", msgIdx)] = msgID
 		emit("response.output_item.added", map[string]any{
-			"output_index": idx,
+			"output_index": msgIdx,
 			"item": map[string]any{
 				"id":      msgID,
 				"type":    "message",
@@ -1684,57 +1701,64 @@ func emitTextContent(state map[string]any, emit func(string, map[string]any), re
 		})
 	}
 
-	contentKey := fmt.Sprintf("contentAdded_%d", idx)
+	contentKey := fmt.Sprintf("contentAdded_%d", msgIdx)
 	if state[contentKey] != true {
 		state[contentKey] = true
-		msgID, _ := state[fmt.Sprintf("msgId_%d", idx)].(string)
+		msgID, _ := state[fmt.Sprintf("msgId_%d", msgIdx)].(string)
 		emit("response.content_part.added", map[string]any{
 			"item_id":       msgID,
-			"output_index":  idx,
+			"output_index":  msgIdx,
 			"content_index": 0,
 			"part": map[string]any{
 				"type":        "output_text",
 				"annotations": []any{},
-				"logprobs":     []any{},
+				"logprobs":    []any{},
 				"text":         "",
 			},
 		})
 	}
 
-	msgID, _ := state[fmt.Sprintf("msgId_%d", idx)].(string)
+	msgID, _ := state[fmt.Sprintf("msgId_%d", msgIdx)].(string)
 	emit("response.output_text.delta", map[string]any{
 		"item_id":       msgID,
-		"output_index":  idx,
+		"output_index":  msgIdx,
 		"content_index": 0,
 		"delta":         content,
 		"logprobs":      []any{},
 	})
 
-	bufKey := fmt.Sprintf("msgBuf_%d", idx)
-	state[bufKey] = content + content
+	bufKey := fmt.Sprintf("msgBuf_%d", msgIdx)
+	prevMsg, _ := state[bufKey].(string)
+	state[bufKey] = prevMsg + content
 }
 
 func closeMessage(state map[string]any, emit func(string, map[string]any), responseID string, idx int) {
-	key := fmt.Sprintf("msgAdded_%d", idx)
-	doneKey := fmt.Sprintf("msgDone_%d", idx)
+	// Use the actual message index from state (may differ from idx when
+	// reasoning was emitted on a separate output_index).
+	msgIdx := idx
+	if mi, ok := state["msgIndex"].(int); ok {
+		msgIdx = mi
+	}
+	key := fmt.Sprintf("msgAdded_%d", msgIdx)
+	doneKey := fmt.Sprintf("msgDone_%d", msgIdx)
 	if state[key] != true || state[doneKey] == true {
 		return
 	}
 	state[doneKey] = true
-	msgID, _ := state[fmt.Sprintf("msgId_%d", idx)].(string)
-	bufKey := fmt.Sprintf("msgBuf_%d", idx)
+	msgID, _ := state[fmt.Sprintf("msgId_%d", msgIdx)].(string)
+	bufKey := fmt.Sprintf("msgBuf_%d", msgIdx)
 	fullText, _ := state[bufKey].(string)
 
 	emit("response.output_text.done", map[string]any{
 		"item_id":       msgID,
-		"output_index":  idx,
+		"output_index":  msgIdx,
 		"content_index": 0,
 		"text":          fullText,
 		"logprobs":      []any{},
 	})
 	emit("response.content_part.done", map[string]any{
 		"item_id":       msgID,
-		"output_index":  idx,
+		"output_index":  msgIdx,
 		"content_index": 0,
 		"part": map[string]any{
 			"type":        "output_text",
@@ -1744,7 +1768,7 @@ func closeMessage(state map[string]any, emit func(string, map[string]any), respo
 		},
 	})
 	emit("response.output_item.done", map[string]any{
-		"output_index": idx,
+		"output_index": msgIdx,
 		"item": map[string]any{
 			"id":      msgID,
 			"type":    "message",
@@ -1842,15 +1866,53 @@ func sendCompleted(state map[string]any, emit func(string, map[string]any), resp
 		return
 	}
 	state["completedSent"] = true
+
+	// Build the output array from accumulated state so clients (Codex CLI)
+	// can render the final response without relying solely on streaming
+	// deltas. Real OpenAI API includes this in response.completed.
+	output := []any{}
+
+	// Reasoning output item (if reasoning was emitted).
+	if reasoningID, ok := state["reasoningId"].(string); ok && reasoningID != "" {
+		reasoningBuf, _ := state["reasoningBuf"].(string)
+		reasoningIdx, _ := state["reasoningIndex"].(int)
+		output = append(output, map[string]any{
+			"id":            reasoningID,
+			"type":          "reasoning",
+			"summary":       []any{map[string]any{"type": "summary_text", "text": reasoningBuf}},
+			"_output_index": reasoningIdx,
+		})
+	}
+
+	// Message output item (if text was emitted).
+	msgIdx, _ := state["msgIndex"].(int)
+	if msgID, ok := state[fmt.Sprintf("msgId_%d", msgIdx)].(string); ok && msgID != "" {
+		bufKey := fmt.Sprintf("msgBuf_%d", msgIdx)
+		fullText, _ := state[bufKey].(string)
+		output = append(output, map[string]any{
+			"id":            msgID,
+			"type":          "message",
+			"role":          "assistant",
+			"content":       []any{map[string]any{"type": "output_text", "annotations": []any{}, "logprobs": []any{}, "text": fullText}},
+			"_output_index": msgIdx,
+		})
+	}
+
+	resp := map[string]any{
+		"id":         responseID,
+		"object":     "response",
+		"created_at": created,
+		"status":     "completed",
+		"background": false,
+		"error":      nil,
+		"output":     output,
+	}
+	if model, ok := state["model"].(string); ok && model != "" {
+		resp["model"] = model
+	}
+
 	emit("response.completed", map[string]any{
-		"response": map[string]any{
-			"id":         responseID,
-			"object":     "response",
-			"created_at": created,
-			"status":     "completed",
-			"background": false,
-			"error":      nil,
-		},
+		"response": resp,
 	})
 }
 

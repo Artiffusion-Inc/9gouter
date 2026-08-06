@@ -1822,7 +1822,8 @@ func emitToolCall(state map[string]any, emit func(string, map[string]any), respo
 				"output_index":  tcIdx,
 				"delta":         argsDelta,
 			})
-			state[argsKey] = argsDelta + argsDelta
+			prevArgs, _ := state[argsKey].(string)
+			state[argsKey] = prevArgs + argsDelta
 		}
 	}
 }

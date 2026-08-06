@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="../images/9router.png?1" alt="9Gouter Dashboard" width="800"/>
+  <img src="../images/9gouter.png?1" alt="9Gouter Dashboard" width="800"/>
   
   # 9Gouter - 免费 AI 路由器
   

@@ -1,7 +1,7 @@
 นี่คือเอกสารแปลภาษาไทยของไฟล์ Markdown ต้นฉบับ โดยรักษาโครงสร้างและซินแท็กซ์ทางเทคนิคทั้งหมดไว้เหมือนเดิม
 
 <div align="center">
-  <img src="../images/9router.png?1" alt="แดชบอร์ด 9Gouter" width="800"/>
+  <img src="../images/9gouter.png?1" alt="แดชบอร์ด 9Gouter" width="800"/>
   
   # 9Gouter - Free AI Router
   

@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./images/9router.png?1" alt="داشبورد 9Gouter" width="800"/>
+  <img src="./images/9gouter.png?1" alt="داشبورد 9Gouter" width="800"/>
   
   # 9Gouter - مسیریاب رایگان هوش مصنوعی و ذخیره‌ساز توکن
   

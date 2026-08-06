@@ -88,6 +88,8 @@ graphify-out/*
 .next-analyze/*
 
 # Go build artifacts
+/shadowdiff
+/start.sh
 /9gouter
 /9gouter-arm64
 

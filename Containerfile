@@ -27,7 +27,7 @@ COPY --from=builder /app/node_modules/node-forge ./node_modules/node-forge
 COPY --from=builder /app/node_modules/next ./node_modules/next
 COPY --from=builder /app/node_modules/sql.js ./node_modules/sql.js
 COPY --from=builder /app/node_modules/node-machine-id ./node_modules/node-machine-id
-RUN mkdir -p /app/data /app/data-home && chown -R node:node /app && \
+RUN mkdir -p /app/data /app/data-home && chown node:node /app/data /app/data-home && \
     ln -sf /app/data-home /root/.9router && apk add --no-cache su-exec && \
     printf '#!/bin/sh\nchown -R node:node /app/data /app/data-home 2>/dev/null\nexec su-exec node "$@"\n' > /entrypoint.sh && chmod +x /entrypoint.sh
 EXPOSE 20128

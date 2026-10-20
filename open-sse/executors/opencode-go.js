@@ -157,7 +157,8 @@ export class OpenCodeGoExecutor extends DefaultExecutor {
 
   transformRequest(model, body, stream, credentials) {
     const out = super.transformRequest(model, body);
-    if (!isResponsesModel(model || body?.model)) return out;
+    const responsesTransport = credentials?.runtimeTransport?.format === FORMATS.OPENAI_RESPONSES;
+    if (!isResponsesModel(model || body?.model) && !responsesTransport) return out;
     const normalized = normalizeResponsesInput(out.input);
     if (normalized) out.input = normalized;
     if (!Array.isArray(out.input) || out.input.length === 0) {
@@ -177,6 +178,7 @@ export class OpenCodeGoExecutor extends DefaultExecutor {
       if (!out.reasoning.summary) out.reasoning.summary = "auto";
     }
     delete out.reasoning_effort;
+    delete out.thinking;
     out.stream = true;
     out.store = false;
     normalizeResponsesTools(out);

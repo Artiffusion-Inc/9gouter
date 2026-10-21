@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { DefaultExecutor } from "./default.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getModelTargetFormat } from "../config/providerModels.js";
-import { isMuseSparkModel } from "../providers/models/helpers.js";
+import { isDeepSeekModel, isMuseSparkModel } from "../providers/models/helpers.js";
 import { FORMATS } from "../translator/formats.js";
 import {
   normalizeResponsesInput,
@@ -82,11 +82,44 @@ function normalizeResponsesTools(body) {
   }
 }
 
+// DeepSeek accepts plaintext reasoning content, but ignores summary and encrypted_content.
+// Older Responses bridges stored the actual reasoning text in summary instead.
+function normalizeDeepSeekReasoning(item) {
+  if (item?.type !== "reasoning") return item;
+  const content = item.content;
+  if (typeof content === "string" && content.trim()) return item;
+  if (Array.isArray(content) && content.some(part => typeof part?.text === "string" && part.text.trim())) return item;
+  if (!Array.isArray(item.summary)) return item;
+  const reasoning = item.summary
+    .filter(part => typeof part?.text === "string" && part.text.trim())
+    .map(part => ({ type: "reasoning_text", text: part.text }));
+  return reasoning.length ? { ...item, content: reasoning } : item;
+}
+
+function normalizeDeepSeekHistory(input) {
+  let haveReasoning = false;
+  return input.flatMap(original => {
+    const item = normalizeDeepSeekReasoning(original);
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [item];
+    const kind = item.type || (item.role ? "message" : undefined);
+    if ((kind === "message" && ["user", "developer", "system"].includes(item.role)) ||
+        kind === "function_call_output" || kind === "custom_tool_call_output") haveReasoning = false;
+    if (kind === "reasoning") haveReasoning = true;
+    const assistant = (kind === "message" && item.role === "assistant") ||
+      kind === "function_call" || kind === "custom_tool_call";
+    if (!assistant || haveReasoning) return [item];
+    haveReasoning = true;
+    // An explicit empty value represents absent historical reasoning; never invent text.
+    return [{ type: "reasoning", summary: [], content: [{ type: "reasoning_text", text: "" }] }, item];
+  });
+}
+
 // Last line of defense for native Responses clients (sourceFormat === targetFormat
 // skips translation): coerce items in place so malformed tool payloads 400 here
 // with a clear shape instead of upstream as InputValidationError.
 function sanitizeResponsesItems(body, model) {
   if (!Array.isArray(body.input)) return;
+  if (isDeepSeekModel(model)) body.input = normalizeDeepSeekHistory(body.input);
   body.input = body.input.filter((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return true;
     // Strip prior-turn reasoning items: Muse Spark contributor models route to

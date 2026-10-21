@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { DefaultExecutor } from "./default.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { getModelTargetFormat } from "../config/providerModels.js";
+import { isMuseSparkModel } from "../providers/models/helpers.js";
 import { FORMATS } from "../translator/formats.js";
 import {
   normalizeResponsesInput,
@@ -84,16 +85,18 @@ function normalizeResponsesTools(body) {
 // Last line of defense for native Responses clients (sourceFormat === targetFormat
 // skips translation): coerce items in place so malformed tool payloads 400 here
 // with a clear shape instead of upstream as InputValidationError.
-function sanitizeResponsesItems(body) {
+function sanitizeResponsesItems(body, model) {
   if (!Array.isArray(body.input)) return;
   body.input = body.input.filter((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return true;
     // Strip prior-turn reasoning items: Muse Spark contributor models route to
     // an upstream Console backend where encrypted_content cannot be validated across
     // rotated accounts or sessions, causing 400 "reasoning encrypted_content was not issued to this caller".
-    if (item.type === "reasoning") return false;
-    delete item.encrypted_content;
-    delete item.reasoning_encrypted_content;
+    if (isMuseSparkModel(model)) {
+      if (item.type === "reasoning") return false;
+      delete item.encrypted_content;
+      delete item.reasoning_encrypted_content;
+    }
     if (item.type === "function_call") {
       if (!item.name || typeof item.name !== "string" || item.name.trim() === "") return false;
       item.name = item.name.trim().slice(0, MAX_TOOL_NAME_LEN);
@@ -182,7 +185,7 @@ export class OpenCodeGoExecutor extends DefaultExecutor {
     out.stream = true;
     out.store = false;
     normalizeResponsesTools(out);
-    sanitizeResponsesItems(out);
+    sanitizeResponsesItems(out, model || body?.model);
     return out;
   }
 }
